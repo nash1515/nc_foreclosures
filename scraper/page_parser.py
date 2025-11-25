@@ -53,6 +53,11 @@ def parse_search_results(page_content):
     """
     Parse search results page to extract case information.
 
+    Portal uses Kendo UI Grid with structure:
+    - Grid container: #CasesGrid
+    - Rows: tbody tr.k-master-row
+    - Case links: a.caseLink with data-url attribute
+
     Args:
         page_content: HTML content of search results page
 
@@ -65,21 +70,20 @@ def parse_search_results(page_content):
     soup = BeautifulSoup(page_content, 'html.parser')
     cases = []
 
-    # Find all result rows in the search results table
-    rows = soup.select('table.searchResults tbody tr')
+    # Kendo UI Grid rows (not simple table)
+    rows = soup.select('#CasesGrid tbody tr.k-master-row')
 
     for row in rows:
-        # Extract case number and URL from each row
-        # The case number link is typically the first link in the row
-        case_link = row.select_one('td a')
+        # Extract case link from Kendo grid row
+        case_link = row.select_one('a.caseLink')
         if case_link:
             case_number = case_link.text.strip()
-            case_url = case_link.get('href', '')
+            # Kendo stores URL in data-url attribute, not href
+            case_url = case_link.get('data-url', '')
 
-            # Make URL absolute if needed
+            # Make URL absolute
             if case_url and not case_url.startswith('http'):
-                # Extract base URL from PORTAL_URL
-                base_url = '/'.join(PORTAL_URL.split('/')[:3])
+                base_url = 'https://portal-nc.tylertech.cloud'
                 case_url = f"{base_url}{case_url}"
 
             if case_number and case_url:
@@ -188,7 +192,8 @@ def extract_total_count(page_content):
     """
     Extract total case count from search results.
 
-    Looks for text like "1 - 10 of 154 items"
+    Kendo UI Grid displays pager info in .k-pager-info element.
+    Format: "1 - 10 of 75 items"
 
     Args:
         page_content: HTML content of search results page
@@ -198,18 +203,18 @@ def extract_total_count(page_content):
     """
     soup = BeautifulSoup(page_content, 'html.parser')
 
-    # Look for the paging summary text
-    summary = soup.select_one('.pagingSummary')
-    if summary:
-        text = summary.text.strip()
-        logger.debug(f"Paging summary text: {text}")
+    # Kendo pager info element
+    pager_info = soup.select_one('.k-pager-info')
+    if pager_info:
+        text = pager_info.text.strip()
+        logger.debug(f"Kendo pager info: {text}")
 
-        # Parse "1 - 10 of 154 items" or similar patterns
+        # Parse "1 - 10 of 75 items"
         match = re.search(r'of\s+(\d+)\s+items?', text, re.IGNORECASE)
         if match:
             total = int(match.group(1))
             logger.info(f"Total count extracted: {total}")
             return total
 
-    logger.warning("Could not extract total count from page")
+    logger.warning("Could not extract total count from Kendo pager")
     return None

@@ -20,6 +20,8 @@ def fill_search_form(page, county_name, start_date, end_date, search_text):
     """
     Fill out the search form.
 
+    Portal uses Kendo UI dropdowns which require special handling.
+
     Args:
         page: Playwright page object
         county_name: County name (e.g., 'Wake County')
@@ -38,43 +40,67 @@ def fill_search_form(page, county_name, start_date, end_date, search_text):
     page.fill(FILE_DATE_END, end_date.strftime('%m/%d/%Y'))
     logger.info(f"  Date range: {start_date} to {end_date}")
 
-    # Select county from Court Location dropdown
-    # This is a custom dropdown - need to interact with it properly
+    # Select county from Court Location dropdown (Kendo DropDownList)
     logger.info(f"  Selecting county: {county_name}")
     try:
+        # Wait for dropdown to be ready
+        page.wait_for_selector(COURT_LOCATION_DROPDOWN, state='visible', timeout=10000)
+
         # Click the dropdown to open it
-        page.click(COURT_LOCATION_DROPDOWN)
+        page.click(COURT_LOCATION_DROPDOWN, timeout=10000)
+        logger.debug("    Dropdown clicked, waiting for options...")
+
+        # Wait for dropdown list to appear
+        page.wait_for_selector('ul.k-list-ul', state='visible', timeout=10000)
         time.sleep(0.5)
 
-        # Select the county option
-        # The dropdown uses a custom list, so we click on the text
-        page.click(f'li:has-text("{county_name}")')
+        # Select the county option from Kendo list
+        page.click(f'ul.k-list-ul li:has-text("{county_name}")', timeout=10000)
         time.sleep(0.5)
         logger.info(f"    ✓ Selected {county_name}")
     except Exception as e:
-        logger.warning(f"  County selection may have failed: {e}")
+        logger.error(f"  County selection failed: {e}")
+        # Try JavaScript fallback if clicking fails
+        try:
+            logger.debug("  Attempting JavaScript fallback...")
+            page.evaluate(f'''
+                const dropdown = document.querySelector("{COURT_LOCATION_DROPDOWN}");
+                if (dropdown) {{
+                    const kendoDropDown = $(dropdown).data("kendoDropDownList");
+                    if (kendoDropDown) {{
+                        kendoDropDown.select(function(dataItem) {{
+                            return dataItem.text === "{county_name}";
+                        }});
+                    }}
+                }}
+            ''')
+            logger.info(f"    ✓ Selected {county_name} via JavaScript")
+        except Exception as js_error:
+            logger.error(f"  JavaScript fallback also failed: {js_error}")
 
-    # Select Case Status: Pending
+    # Select Case Status: Pending (Kendo DropDownList)
     try:
-        page.click(CASE_STATUS_DROPDOWN)
+        page.wait_for_selector(CASE_STATUS_DROPDOWN, state='visible', timeout=10000)
+        page.click(CASE_STATUS_DROPDOWN, timeout=10000)
+        page.wait_for_selector('ul.k-list-ul', state='visible', timeout=10000)
         time.sleep(0.5)
-        page.click(f'li:has-text("{PENDING_STATUS}")')
+        page.click(f'ul.k-list-ul li:has-text("{PENDING_STATUS}")', timeout=10000)
         time.sleep(0.5)
         logger.info(f"    ✓ Selected status: {PENDING_STATUS}")
     except Exception as e:
-        logger.warning(f"  Status selection may have failed: {e}")
+        logger.error(f"  Status selection failed: {e}")
 
-    # Select Case Type: Special Proceedings (non-confidential)
-    # This requires finding the case type selector
+    # Select Case Type: Special Proceedings (Kendo DropDownList)
     try:
-        # Look for case type dropdown
-        page.click('#caseCriteria_CaseType')
+        page.wait_for_selector('#caseCriteria_CaseType', state='visible', timeout=10000)
+        page.click('#caseCriteria_CaseType', timeout=10000)
+        page.wait_for_selector('ul.k-list-ul', state='visible', timeout=10000)
         time.sleep(0.5)
-        page.click(f'li:has-text("{SPECIAL_PROCEEDINGS}")')
+        page.click(f'ul.k-list-ul li:has-text("{SPECIAL_PROCEEDINGS}")', timeout=10000)
         time.sleep(0.5)
         logger.info(f"    ✓ Selected type: {SPECIAL_PROCEEDINGS}")
     except Exception as e:
-        logger.warning(f"  Case type selection may have failed: {e}")
+        logger.error(f"  Case type selection failed: {e}")
 
     logger.info("  ✓ Form filled")
 
@@ -82,6 +108,8 @@ def fill_search_form(page, county_name, start_date, end_date, search_text):
 def solve_and_submit_captcha(page):
     """
     Solve reCAPTCHA and submit the form.
+
+    Waits for Kendo Grid to initialize after submission.
 
     Args:
         page: Playwright page object
@@ -108,10 +136,21 @@ def solve_and_submit_captcha(page):
 
         # Submit the form
         logger.info("Submitting search...")
-        page.click(SUBMIT_BUTTON)
-        page.wait_for_load_state('networkidle', timeout=30000)
+        page.click(SUBMIT_BUTTON, timeout=10000)
+        logger.info("  Submit button clicked, waiting for results...")
 
-        logger.info("  ✓ Search submitted")
+        # Wait for Kendo grid to initialize
+        logger.info("  Waiting for Kendo grid to load...")
+        page.wait_for_selector('#CasesGrid.k-grid', state='visible', timeout=60000)
+        logger.debug("    Grid container found")
+
+        # Wait for actual data rows to appear
+        page.wait_for_selector('#CasesGrid tbody tr.k-master-row', state='visible', timeout=60000)
+        logger.debug("    Grid rows found")
+
+        time.sleep(2)  # Give grid time to fully render
+
+        logger.info("  ✓ Search submitted, results loaded")
         return True
 
     except Exception as e:
@@ -145,7 +184,7 @@ def extract_total_count_from_page(page):
     """
     Extract total case count from results page.
 
-    Looks for text like "1 - 10 of 154 items"
+    Kendo UI Grid pager info: "1 - 10 of 75 items"
 
     Args:
         page: Playwright page object
@@ -154,14 +193,15 @@ def extract_total_count_from_page(page):
         int: Total count or None
     """
     try:
-        summary_elem = page.locator(RESULTS_COUNT_TEXT).first
-        if summary_elem.is_visible():
-            text = summary_elem.inner_text()
-            logger.debug(f"Results summary text: {text}")
+        # Kendo pager info element
+        pager_info = page.locator('.k-pager-info').first
+        if pager_info.is_visible():
+            text = pager_info.inner_text()
+            logger.debug(f"Kendo pager info: {text}")
 
-            # Parse "1 - 10 of 154 items"
+            # Parse "1 - 10 of 75 items"
             import re
-            match = re.search(r'of\s+(\d+)\s+items', text, re.IGNORECASE)
+            match = re.search(r'of\s+(\d+)\s+items?', text, re.IGNORECASE)
             if match:
                 total = int(match.group(1))
                 logger.info(f"Total cases found: {total}")
@@ -176,6 +216,9 @@ def go_to_next_page(page):
     """
     Navigate to next page of results.
 
+    Kendo UI Grid uses .k-pager-wrap with arrow icons.
+    Next button: a.k-link:has(.k-i-arrow-e):not(.k-state-disabled)
+
     Args:
         page: Playwright page object
 
@@ -183,13 +226,15 @@ def go_to_next_page(page):
         bool: True if next page exists and was clicked
     """
     try:
-        next_button = page.locator(NEXT_PAGE_BUTTON).first
+        # Look for next arrow button in Kendo pager that's not disabled
+        next_button = page.locator('.k-pager-wrap a.k-link:has(.k-i-arrow-e):not(.k-state-disabled)').first
         if next_button.is_visible():
             next_button.click()
-            page.wait_for_load_state('networkidle', timeout=30000)
+            page.wait_for_load_state('networkidle', timeout=60000)
             logger.info("  ✓ Navigated to next page")
             return True
-    except:
+    except Exception as e:
+        logger.debug(f"Next page navigation failed: {e}")
         pass
 
     logger.info("  No more pages")
