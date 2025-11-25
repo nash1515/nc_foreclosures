@@ -269,9 +269,15 @@ class InitialScraper:
         # Navigate to case detail
         page.goto(case_url, wait_until='networkidle')
 
-        # Wait for Angular app to load
-        import time
-        time.sleep(2)
+        # Wait for Angular ROA table to load (contains Case Type)
+        try:
+            page.wait_for_selector('table.roa-caseinfo-info-rows', state='visible', timeout=30000)
+            logger.debug(f"  ROA table found, Angular loaded")
+        except Exception as e:
+            logger.warning(f"  ROA table not found after 30s: {e}")
+            # Try alternative wait
+            import time
+            time.sleep(3)
 
         # Parse case detail
         html_content = page.content()

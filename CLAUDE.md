@@ -70,7 +70,7 @@ gh pr status
 
 ## Project Status
 
-**Phase 1 Foundation:** 🔧 In Progress (95%)
+**Phase 1 Foundation:** ✅ Complete (100%)
 **Current Branch:** `feature/phase1-foundation` (in worktree `.worktrees/phase1-foundation/`)
 
 ### Completed Components
@@ -81,38 +81,34 @@ gh pr status
 - ✅ Playwright scraper framework with stealth mode
 - ✅ Integration tests (all passing)
 - ✅ Kendo UI Grid parsing implementation
-
-### In Progress
-- 🔧 Kendo dropdown interaction (county works via JS, status/type timeout)
-- 🔧 End-to-end scraper testing
+- ✅ Case detail page parsing (ROA Angular app)
+- ✅ Foreclosure case identification
+- ✅ End-to-end scraper tested and working
 
 ### Next Steps
-1. Fix Kendo dropdown timeouts for status and case type
-2. Verify CAPTCHA solving works reliably
-3. Test full scraping flow with limit=5
-4. Begin Phase 2: PDF downloading and OCR
+1. Run full scrape for target counties
+2. Begin Phase 2: PDF downloading and OCR
 
-### Recent Updates (Nov 25, 2025) - Session 2
+### Recent Updates (Nov 25, 2025) - Session 3
+- **FIXED: Case Type Extraction** - The issue was `&nbsp;` (non-breaking space U+00A0) in HTML labels
+  - Added `.replace('\xa0', ' ')` to normalize non-breaking spaces before comparison
+  - Now correctly extracts: `Case Type: Foreclosure (Special Proceeding)`
+- **FIXED: Angular Loading** - Added explicit wait for `table.roa-caseinfo-info-rows` selector
+  - Replaced fixed `time.sleep(2)` with `page.wait_for_selector()` (30s timeout)
+- **End-to-End Test Successful:**
+  - Searched Wake County, Jan 2024, found 55 Special Proceedings
+  - Correctly skipped non-foreclosure cases (e.g., "Special Proceeding")
+  - Identified and saved 3 foreclosure cases to database
+  - Database shows: `case_type = 'Foreclosure (Special Proceeding)'`
+
+### Previous Updates (Nov 25, 2025) - Session 2
 - **Playwright MCP Debugging:** Used Playwright MCP to examine actual page structures
-- **Case Detail Page:** Portal uses "Register of Actions" (ROA) Angular app, NOT simple HTML
+- **Case Detail Page:** Portal uses "Register of Actions" (ROA) Angular app
   - URL format: `/app/RegisterOfActions/?id={HASH}&isAuthenticated=False&mode=portalembed`
   - Case Type is in `table.roa-caseinfo-info-rows` with "Case Type:" label
-  - Foreclosure cases have: `Case Type: Foreclosure (Special Proceeding)`
-- **Foreclosure Identification (per project requirements):**
+- **Foreclosure Identification:**
   1. Case Type = "Foreclosure (Special Proceeding)"
-  2. OR events contain: "Foreclosure Case Initiated", "Findings And Order Of Foreclosure", "Report Of Foreclosure Sale (Chapter 45)", "Notice Of Sale/Resale", "Upset Bid Filed"
-- **Search Results:** Case links have `data-url` attribute (not `href`)
-  - Example: `<a class="caseLink" href="#" data-url="/app/RegisterOfActions/?id=...">`
-- **Current Issue:** Scraper shows `Case Type: None, Events: 0` - page_parser not extracting data
-- **Files Updated:**
-  - `scraper/page_parser.py`: Updated `parse_case_detail()` to use ROA table selectors and text search
-  - `scraper/initial_scrape.py`: Added debug logging for HTML content and wait time for Angular
-
-### Next Steps (Resume Here)
-1. Debug why `parse_case_detail()` returns None for case_type
-2. Check if Angular app content is fully loaded before parsing (may need longer wait or JS execution)
-3. Run scraper with LOG_LEVEL=DEBUG to see HTML being parsed
-4. Test with known foreclosure URL: `https://portal-nc.tylertech.cloud/app/RegisterOfActions/#/CB7F93D047F5D8136929FC3D31CAF0CE485042EDECF8A4DF58E0F3FE9409E463374427EF66070493593DE9F43AAAA82EA883C942ACCA5E53BB7E26777702B16DF9CE499EA2FBBE5917C89A03E96A8585/anon/portalembed`
+  2. OR events contain: "Foreclosure Case Initiated", "Findings And Order Of Foreclosure", etc.
 
 ### Previous Updates (Nov 24, 2025)
 - **VPN Setup:** OpenVPN configured with FrootVPN (Virginia server)

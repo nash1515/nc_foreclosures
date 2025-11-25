@@ -178,14 +178,19 @@ def parse_case_detail(page_content):
 
     # Method 1: Parse ROA Case Information table (class="roa-caseinfo-info-rows")
     # This table has "Case Type:" and "Case Status:" rows
+    # Note: Labels use &nbsp; (non-breaking space U+00A0) which must be normalized
     roa_table = soup.find('table', class_='roa-caseinfo-info-rows')
     if roa_table:
+        logger.debug(f"Found ROA table with class 'roa-caseinfo-info-rows'")
         rows = roa_table.find_all('tr')
         for row in rows:
             cells = row.find_all('td')
             if len(cells) >= 2:
-                label = cells[0].get_text(strip=True).lower()
-                value = cells[1].get_text(strip=True)
+                # Normalize non-breaking spaces to regular spaces
+                label = cells[0].get_text(strip=True).replace('\xa0', ' ').lower()
+                value = cells[1].get_text(strip=True).replace('\xa0', ' ')
+
+                logger.debug(f"ROA table row - label: '{label}', value: '{value[:50] if value else ''}'")
 
                 if 'case type' in label:
                     case_data['case_type'] = value
