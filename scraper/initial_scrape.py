@@ -18,6 +18,7 @@ from scraper.portal_interactions import (
     go_to_next_page as navigate_next_page
 )
 from scraper.portal_selectors import PORTAL_URL
+from scraper.pdf_downloader import download_case_documents
 from common.county_codes import get_county_code, get_search_text, is_valid_county
 from common.config import config
 from common.logger import setup_logger
@@ -161,14 +162,16 @@ class InitialScraper:
             logger.error("Too many results error - need to reduce date range")
             raise Exception("Too many results - implement date range splitting")
 
-        # Step 5: Extract total count
+        # Step 5: Extract total count for validation
+        # Per startup doc: "Use this to validate that you scraped all of the cases for each search"
         total_count = extract_total_count(page.content())
         cases_found = total_count if total_count else 0
         if total_count:
-            logger.info(f"Found {total_count} total cases")
+            logger.info(f"Found {total_count} total cases to review")
 
         # Step 6: Process all pages
-        cases_processed = 0
+        cases_processed = 0  # Foreclosure cases saved to database
+        cases_reviewed = 0   # All cases reviewed (for validation)
         page_num = 1
 
         while True:
@@ -194,9 +197,17 @@ class InitialScraper:
                 logger.debug(f"First case: {cases[0]['case_number']}, URL: {cases[0].get('case_url')}")
 
             for case_info in cases:
+                cases_reviewed += 1  # Count every case we look at
+
                 if self.limit and cases_processed >= self.limit:
                     logger.info(f"Reached limit of {self.limit} cases")
-                    return {'cases_processed': cases_processed, 'cases_found': cases_found}
+                    return {
+                        'cases_processed': cases_processed,
+                        'cases_found': cases_found,
+                        'cases_reviewed': cases_reviewed,
+                        'validation_passed': False,  # Limit was hit, incomplete
+                        'validation_message': f"Stopped early due to limit ({self.limit})"
+                    }
 
                 # Process individual case
                 if self._process_case(page, case_info):
@@ -208,7 +219,24 @@ class InitialScraper:
 
             page_num += 1
 
-        return {'cases_processed': cases_processed, 'cases_found': cases_found}
+        # Validation: Ensure we reviewed all cases from search results
+        validation_passed = True
+        validation_message = "OK"
+
+        if cases_found and cases_reviewed != cases_found:
+            validation_passed = False
+            validation_message = f"MISMATCH: Expected {cases_found} cases, reviewed {cases_reviewed}"
+            logger.error(f"VALIDATION FAILED: {validation_message}")
+        else:
+            logger.info(f"VALIDATION PASSED: Reviewed {cases_reviewed}/{cases_found} cases")
+
+        return {
+            'cases_processed': cases_processed,
+            'cases_found': cases_found,
+            'cases_reviewed': cases_reviewed,
+            'validation_passed': validation_passed,
+            'validation_message': validation_message
+        }
 
     def _fill_search_form(self, page):
         """Fill out the search form."""
@@ -294,7 +322,22 @@ class InitialScraper:
         logger.info(f"  ✓ Foreclosure case identified")
 
         # Save to database
-        self._save_case(case_number, case_url, case_data)
+        case_id = self._save_case(case_number, case_url, case_data)
+
+        # Download documents (if any)
+        if case_id:
+            try:
+                doc_count = download_case_documents(
+                    page=page,
+                    case_id=case_id,
+                    county=self.county,
+                    case_number=case_number
+                )
+                if doc_count > 0:
+                    logger.info(f"  ✓ Downloaded {doc_count} document(s)")
+            except Exception as e:
+                logger.warning(f"  Document download failed: {e}")
+                # Don't fail the case processing if document download fails
 
         return True
 
@@ -390,6 +433,8 @@ class InitialScraper:
             hearing_count = len(case_data.get('hearings', []))
             logger.info(f"  Saved to database (ID: {case.id}) - "
                        f"{party_count} parties, {event_count} events, {hearing_count} hearings")
+
+            return case.id
 
 
 def main():

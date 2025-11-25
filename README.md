@@ -17,24 +17,34 @@ This system scrapes foreclosure data from the North Carolina Online Courts Porta
 - Playwright-based web scraper framework
 - Comprehensive logging and error handling
 
-### Phase 2 - Complete Scraper (Planned)
-- PDF downloading
-- OCR text extraction
-- Daily scrape automation
-- Error recovery and retry logic
+### Phase 2 - PDF & OCR (✅ Complete)
+- PDF downloading from case detail pages
+- OCR text extraction (pdftotext + Tesseract fallback)
+- Batch scrape script with monthly/quarterly strategies
 
-### Phase 3 - Analysis (Planned)
-- Structured data extraction
-- Case classification (upcoming vs upset bid)
-- AI-powered insights for actionable cases
+### Phase 2.5 - Data Extraction (✅ Complete)
+- Regex-based structured data extraction from OCR text
+- Extracts: property address, bid amounts, legal description, attorney info
+- Case classification (upcoming vs upset_bid)
+- Auto-triggers after OCR processing
 
-### Phase 4 - Web Application (Planned)
+### Phase 3 - AI Analysis (Planned)
+- AI-powered insights for edge cases
+- Handle complex status changes (bankruptcy, motions)
+- Investment opportunity scoring
+
+### Phase 4 - Enrichment (Planned)
+- Zillow property links
+- County property record links
+- Tax assessment values
+
+### Phase 5 - Web Application (Planned)
 - Flask web interface
 - Case search and filtering
 - Notes and bookmarking
 - External resource links
 
-### Phase 5 - Automation (Planned)
+### Phase 6 - Automation (Planned)
 - Scheduled daily scrapes
 - Performance optimization
 - Additional features
@@ -71,13 +81,14 @@ PYTHONPATH=$(pwd) venv/bin/python tests/test_phase1_integration.py
 nc_foreclosures/
 ├── common/          # Shared utilities (config, logging, county codes)
 ├── database/        # PostgreSQL models and connection management
-├── scraper/         # Web scraping (VPN, CAPTCHA, Playwright)
-├── ocr/            # PDF processing and text extraction
-├── analysis/       # Data extraction and AI analysis
-├── web_app/        # Flask web application
-├── tests/          # Integration and unit tests
-├── data/pdfs/      # Downloaded PDF storage
-└── docs/           # Documentation and implementation plans
+├── scraper/         # Web scraping (VPN, CAPTCHA, Playwright, PDF download)
+├── ocr/             # PDF processing and text extraction
+├── extraction/      # Structured data extraction and classification
+├── analysis/        # AI analysis (Phase 3)
+├── web_app/         # Flask web application (Phase 5)
+├── tests/           # Integration and unit tests
+├── data/pdfs/       # Downloaded PDF storage (gitignored)
+└── docs/            # Documentation and implementation plans
 ```
 
 ## Documentation
@@ -89,13 +100,17 @@ nc_foreclosures/
 
 ## Development Status
 
-**Current Phase:** Phase 1 Foundation - ✅ Complete
+**Current Phase:** Phase 2.5 Data Extraction - ✅ Complete
+
+**Completed:**
+- Phase 1: Foundation (database, VPN, CAPTCHA, scraper framework)
+- Phase 2: PDF downloading and OCR processing
+- Phase 2.5: Structured data extraction and case classification
 
 **Next Steps:**
-1. Explore NC Courts Portal to identify HTML structure
-2. Implement portal-specific parsing logic
-3. Test scraper with small samples
-4. Begin Phase 2: PDF downloading and OCR
+1. Run full initial scrape for all 6 counties
+2. Implement daily scrape functionality
+3. Build enrichment module for external data (Zillow, county records)
 
 ## Technology Stack
 
@@ -103,9 +118,10 @@ nc_foreclosures/
 - **Database:** PostgreSQL 16
 - **Web Scraping:** Playwright, BeautifulSoup4
 - **CAPTCHA:** CapSolver API
-- **VPN:** FROOT VPN
+- **VPN:** FrootVPN (OpenVPN)
 - **ORM:** SQLAlchemy
-- **Web Framework:** Flask (Phase 4)
+- **OCR:** pdftotext (poppler-utils), Tesseract
+- **Web Framework:** Flask (Phase 5)
 
 ## Contributing
 

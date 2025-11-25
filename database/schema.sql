@@ -16,6 +16,12 @@ CREATE TABLE IF NOT EXISTS cases (
     current_bid_amount DECIMAL(12, 2),
     next_bid_deadline TIMESTAMP,
     classification VARCHAR(20), -- null, 'upcoming', 'upset_bid'
+    sale_date DATE,
+    legal_description TEXT,
+    trustee_name VARCHAR(255),
+    attorney_name VARCHAR(255),
+    attorney_phone VARCHAR(50),
+    attorney_email VARCHAR(255),
     last_scraped_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

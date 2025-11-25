@@ -26,6 +26,12 @@ class Case(Base):
     current_bid_amount = Column(DECIMAL(12, 2))
     next_bid_deadline = Column(TIMESTAMP)
     classification = Column(String(20))  # null, 'upcoming', 'upset_bid'
+    sale_date = Column(Date)
+    legal_description = Column(Text)
+    trustee_name = Column(String(255))
+    attorney_name = Column(String(255))
+    attorney_phone = Column(String(50))
+    attorney_email = Column(String(255))
     last_scraped_at = Column(TIMESTAMP)
     created_at = Column(TIMESTAMP, server_default=func.current_timestamp())
     updated_at = Column(TIMESTAMP, server_default=func.current_timestamp(), onupdate=func.current_timestamp())

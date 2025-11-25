@@ -63,3 +63,6 @@ temp/
 
 # Git worktrees
 .worktrees/
+
+# Downloaded PDFs and data files
+data/

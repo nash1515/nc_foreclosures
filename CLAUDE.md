@@ -71,23 +71,56 @@ gh pr status
 ## Project Status
 
 **Phase 1 Foundation:** ✅ Complete (100%)
-**Current Branch:** `feature/phase1-foundation` (in worktree `.worktrees/phase1-foundation/`)
+**Phase 2 PDF & OCR:** ✅ Complete (100%)
+**Phase 2.5 Extraction:** ✅ Complete (100%)
+**Current Branch:** `feature/phase1-foundation`
 
 ### Completed Components
-- ✅ PostgreSQL database with full schema (5 tables)
+- ✅ PostgreSQL database with full schema (7 tables + new extraction fields)
 - ✅ SQLAlchemy ORM models
 - ✅ VPN verification system (OpenVPN + FrootVPN)
 - ✅ CapSolver reCAPTCHA integration
 - ✅ Playwright scraper framework with stealth mode
-- ✅ Integration tests (all passing)
 - ✅ Kendo UI Grid parsing implementation
 - ✅ Case detail page parsing (ROA Angular app)
 - ✅ Foreclosure case identification
-- ✅ End-to-end scraper tested and working
+- ✅ Comprehensive data extraction (parties, events, hearings)
+- ✅ PDF downloading (Playwright-based)
+- ✅ OCR processing module (Tesseract + pdf2image)
+- ✅ Batch scrape script (quarterly/monthly strategy)
+- ✅ **NEW: Extraction module** (regex-based data parsing from OCR text)
+- ✅ **NEW: Classification module** (upcoming/upset_bid status)
 
 ### Next Steps
-1. Run full scrape for target counties
-2. Begin Phase 2: PDF downloading and OCR
+1. Run full initial scrape for all 6 counties
+2. Implement daily scrape functionality
+3. Implement enrichment module (Zillow, county records, tax values)
+
+### Recent Updates (Nov 25, 2025) - Session 5
+- **Extraction Module:** New `extraction/` module for structured data extraction
+  - `extraction/extractor.py` - Regex-based extraction from OCR text
+  - `extraction/classifier.py` - Case status classification (upcoming/upset_bid)
+  - `extraction/run_extraction.py` - CLI for batch processing
+  - Auto-triggers after OCR processing completes
+  - **Extracted fields:** property_address, current_bid_amount, next_bid_deadline, sale_date, legal_description, trustee_name, attorney_name, attorney_phone, attorney_email, classification
+- **Database Schema Updates:** Added new columns to cases table:
+  - `sale_date`, `legal_description`, `trustee_name`
+  - `attorney_name`, `attorney_phone`, `attorney_email`
+- **Pipeline:** Scrape -> PDF Download -> OCR -> Extraction (fully automated)
+
+### Recent Updates (Nov 25, 2025) - Session 4
+- **PDF Downloading:** New `scraper/pdf_downloader.py` module
+  - Downloads documents from case detail pages via Playwright
+  - Stores in `data/pdfs/{county}/{case_number}/`
+  - Creates Document records in database
+- **OCR Processing:** New `ocr/` module (separate from scraper)
+  - `ocr/processor.py` - Text extraction using pdftotext and Tesseract
+  - `ocr/run_ocr.py` - Standalone CLI for batch OCR processing
+  - Run with: `PYTHONPATH=$(pwd) venv/bin/python ocr/run_ocr.py`
+- **Batch Scraping:** New `scraper/batch_initial_scrape.py`
+  - Wake County: Monthly searches
+  - Other 5 counties: Quarterly searches with bi-monthly fallback
+  - Dry run mode: `--dry-run`
 
 ### Recent Updates (Nov 25, 2025) - Session 3
 - **FIXED: Case Type Extraction** - The issue was `&nbsp;` (non-breaking space U+00A0) in HTML labels

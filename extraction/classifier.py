@@ -1,0 +1,288 @@
+"""Case status classification based on events and PDF text.
+
+Classification logic:
+- 'upcoming': Case filed, no sale report event yet
+- 'upset_bid': Has sale report AND within 10-day upset period
+- None: Blocking event (bankruptcy, dismissed) OR past upset period
+"""
+
+from datetime import datetime, timedelta
+from typing import Optional, List
+
+from database.connection import get_session
+from database.models import Case, CaseEvent, Document
+from common.logger import setup_logger
+
+logger = setup_logger(__name__)
+
+
+# =============================================================================
+# EVENT TYPE CONSTANTS
+# =============================================================================
+
+# Events indicating a sale has occurred
+SALE_REPORT_EVENTS = [
+    'report of foreclosure sale',
+    'report of sale',
+    'foreclosure sale report',
+    'report of foreclosure sale (chapter 45)',
+]
+
+# Events that block/override foreclosure process
+BLOCKING_EVENTS = [
+    'bankruptcy',
+    'motion to dismiss',
+    'dismissed',
+    'voluntary dismissal',
+    'order of dismissal',
+    'case dismissed',
+    'stay of proceedings',
+    'motion for stay',
+]
+
+# Events indicating upset bid activity
+UPSET_BID_EVENTS = [
+    'upset bid filed',
+    'upset bid',
+    'notice of upset bid',
+]
+
+# Events indicating foreclosure process started
+FORECLOSURE_INITIATED_EVENTS = [
+    'foreclosure case initiated',
+    'petition for foreclosure',
+    'notice of hearing',
+    'findings and order of foreclosure',
+]
+
+
+# =============================================================================
+# CLASSIFICATION FUNCTIONS
+# =============================================================================
+
+def get_case_events(case_id: int) -> List[CaseEvent]:
+    """
+    Get all events for a case ordered by date.
+
+    Args:
+        case_id: Database ID of the case
+
+    Returns:
+        List of CaseEvent objects ordered by event_date descending
+    """
+    with get_session() as session:
+        events = session.query(CaseEvent).filter_by(case_id=case_id).order_by(
+            CaseEvent.event_date.desc()
+        ).all()
+        # Detach from session so we can use them after session closes
+        session.expunge_all()
+        return events
+
+
+def has_event_type(events: List[CaseEvent], event_types: List[str]) -> bool:
+    """
+    Check if any event matches the given types.
+
+    Args:
+        events: List of CaseEvent objects
+        event_types: List of event type strings to match (case-insensitive)
+
+    Returns:
+        True if any event matches
+    """
+    event_types_lower = [et.lower() for et in event_types]
+
+    for event in events:
+        if event.event_type:
+            event_type_lower = event.event_type.lower()
+            for et in event_types_lower:
+                if et in event_type_lower:
+                    return True
+
+    return False
+
+
+def get_latest_event_of_type(events: List[CaseEvent], event_types: List[str]) -> Optional[CaseEvent]:
+    """
+    Get the most recent event matching the given types.
+
+    Args:
+        events: List of CaseEvent objects (should be sorted by date desc)
+        event_types: List of event type strings to match
+
+    Returns:
+        Most recent matching CaseEvent or None
+    """
+    event_types_lower = [et.lower() for et in event_types]
+
+    for event in events:
+        if event.event_type:
+            event_type_lower = event.event_type.lower()
+            for et in event_types_lower:
+                if et in event_type_lower:
+                    return event
+
+    return None
+
+
+def classify_case(case_id: int) -> Optional[str]:
+    """
+    Classify a case as 'upcoming', 'upset_bid', or None.
+
+    Classification logic:
+    1. If has blocking event (bankruptcy, dismissed) -> None
+    2. If no sale report event -> 'upcoming'
+    3. If has sale report AND within upset period -> 'upset_bid'
+    4. If past upset period -> None (sale completed)
+
+    Args:
+        case_id: Database ID of the case
+
+    Returns:
+        'upcoming', 'upset_bid', or None
+    """
+    events = get_case_events(case_id)
+
+    # Step 1: Check for blocking events
+    if has_event_type(events, BLOCKING_EVENTS):
+        logger.debug(f"  Case {case_id}: Has blocking event")
+        return None
+
+    # Step 2: Check for sale report
+    sale_event = get_latest_event_of_type(events, SALE_REPORT_EVENTS)
+
+    if not sale_event:
+        # No sale yet - check if foreclosure has been initiated
+        if has_event_type(events, FORECLOSURE_INITIATED_EVENTS):
+            logger.debug(f"  Case {case_id}: Foreclosure initiated, no sale -> 'upcoming'")
+            return 'upcoming'
+        else:
+            # No foreclosure events at all - might be too early
+            logger.debug(f"  Case {case_id}: No foreclosure events")
+            return None
+
+    # Step 3: Has sale report - check if within upset period
+    # Get next_bid_deadline from database (populated by extractor)
+    with get_session() as session:
+        case = session.query(Case).filter_by(id=case_id).first()
+        if case and case.next_bid_deadline:
+            deadline = case.next_bid_deadline
+            if datetime.now() <= deadline:
+                logger.debug(f"  Case {case_id}: Within upset period -> 'upset_bid'")
+                return 'upset_bid'
+            else:
+                logger.debug(f"  Case {case_id}: Past upset deadline")
+                return None
+
+    # If no deadline in database, estimate from sale event date
+    if sale_event and sale_event.event_date:
+        # NC upset bid period is 10 days from sale
+        estimated_deadline = datetime.combine(
+            sale_event.event_date + timedelta(days=10),
+            datetime.min.time()
+        )
+        if datetime.now() <= estimated_deadline:
+            logger.debug(f"  Case {case_id}: Estimated upset period -> 'upset_bid'")
+            return 'upset_bid'
+        else:
+            logger.debug(f"  Case {case_id}: Past estimated deadline")
+            return None
+
+    # Default: has sale but can't determine deadline
+    logger.debug(f"  Case {case_id}: Has sale, unknown deadline")
+    return None
+
+
+def update_case_classification(case_id: int) -> Optional[str]:
+    """
+    Classify case and update the database.
+
+    Args:
+        case_id: Database ID of the case
+
+    Returns:
+        New classification value
+    """
+    try:
+        classification = classify_case(case_id)
+
+        with get_session() as session:
+            case = session.query(Case).filter_by(id=case_id).first()
+            if case:
+                old_classification = case.classification
+                case.classification = classification
+                session.commit()
+
+                if old_classification != classification:
+                    logger.info(f"  Case {case_id}: {old_classification} -> {classification}")
+
+                return classification
+
+    except Exception as e:
+        logger.error(f"  Error classifying case {case_id}: {e}")
+
+    return None
+
+
+def classify_all_cases(limit: int = None) -> dict:
+    """
+    Classify all cases in the database.
+
+    Args:
+        limit: Maximum number of cases to process
+
+    Returns:
+        Dict with counts: {'upcoming': N, 'upset_bid': N, 'null': N, 'total': N}
+    """
+    results = {'upcoming': 0, 'upset_bid': 0, 'null': 0, 'total': 0}
+
+    with get_session() as session:
+        query = session.query(Case)
+        if limit:
+            query = query.limit(limit)
+        cases = query.all()
+
+    logger.info(f"Classifying {len(cases)} cases...")
+
+    for case in cases:
+        classification = update_case_classification(case.id)
+        results['total'] += 1
+
+        if classification == 'upcoming':
+            results['upcoming'] += 1
+        elif classification == 'upset_bid':
+            results['upset_bid'] += 1
+        else:
+            results['null'] += 1
+
+    return results
+
+
+def reclassify_stale_cases() -> int:
+    """
+    Re-classify cases that may have changed status due to time passing.
+
+    For example, cases in 'upset_bid' status that are now past their deadline.
+
+    Returns:
+        Number of cases reclassified
+    """
+    reclassified = 0
+
+    with get_session() as session:
+        # Find upset_bid cases with passed deadlines
+        now = datetime.now()
+        cases = session.query(Case).filter(
+            Case.classification == 'upset_bid',
+            Case.next_bid_deadline < now
+        ).all()
+
+        logger.info(f"Found {len(cases)} potentially stale upset_bid cases")
+
+    for case in cases:
+        old_class = case.classification
+        new_class = update_case_classification(case.id)
+        if old_class != new_class:
+            reclassified += 1
+
+    return reclassified
