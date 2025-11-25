@@ -1,0 +1,78 @@
+-- NC Foreclosures Database Schema
+-- PostgreSQL 16+
+
+-- Cases table - Main case information
+CREATE TABLE IF NOT EXISTS cases (
+    id SERIAL PRIMARY KEY,
+    case_number VARCHAR(50) UNIQUE NOT NULL,
+    county_code VARCHAR(10) NOT NULL,
+    county_name VARCHAR(50) NOT NULL,
+    case_type VARCHAR(100),
+    case_status VARCHAR(50),
+    file_date DATE,
+    case_url TEXT,
+    property_address TEXT,
+    current_bid_amount DECIMAL(12, 2),
+    next_bid_deadline TIMESTAMP,
+    classification VARCHAR(20), -- null, 'upcoming', 'upset_bid'
+    last_scraped_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Case events table - Timeline of events within each case
+CREATE TABLE IF NOT EXISTS case_events (
+    id SERIAL PRIMARY KEY,
+    case_id INTEGER NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
+    event_date DATE,
+    event_type VARCHAR(200),
+    event_description TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Documents table - PDFs and extracted text
+CREATE TABLE IF NOT EXISTS documents (
+    id SERIAL PRIMARY KEY,
+    case_id INTEGER NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
+    document_name VARCHAR(255),
+    file_path TEXT,
+    ocr_text TEXT,
+    document_date DATE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Scrape logs table - Track scraping activity
+CREATE TABLE IF NOT EXISTS scrape_logs (
+    id SERIAL PRIMARY KEY,
+    scrape_type VARCHAR(20) NOT NULL, -- 'initial' or 'daily'
+    county_code VARCHAR(10),
+    start_date DATE,
+    end_date DATE,
+    cases_found INTEGER,
+    cases_processed INTEGER,
+    status VARCHAR(20), -- 'success', 'failed', 'partial'
+    error_message TEXT,
+    started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    completed_at TIMESTAMP
+);
+
+-- User notes table - Annotations from web app
+CREATE TABLE IF NOT EXISTS user_notes (
+    id SERIAL PRIMARY KEY,
+    case_id INTEGER NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
+    user_name VARCHAR(100),
+    note_text TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Indexes for performance
+CREATE INDEX IF NOT EXISTS idx_cases_case_number ON cases(case_number);
+CREATE INDEX IF NOT EXISTS idx_cases_county_code ON cases(county_code);
+CREATE INDEX IF NOT EXISTS idx_cases_classification ON cases(classification);
+CREATE INDEX IF NOT EXISTS idx_cases_file_date ON cases(file_date);
+CREATE INDEX IF NOT EXISTS idx_case_events_case_id ON case_events(case_id);
+CREATE INDEX IF NOT EXISTS idx_documents_case_id ON documents(case_id);
+CREATE INDEX IF NOT EXISTS idx_user_notes_case_id ON user_notes(case_id);
+
+-- Full-text search index on OCR text
+CREATE INDEX IF NOT EXISTS idx_documents_ocr_text ON documents USING GIN(to_tsvector('english', COALESCE(ocr_text, '')));

@@ -1,0 +1,15 @@
+# Web scraping
+playwright==1.40.0
+playwright-stealth==1.0.6
+requests==2.31.0
+beautifulsoup4==4.12.2
+
+# Database
+psycopg2-binary==2.9.9
+sqlalchemy==2.0.23
+
+# CAPTCHA solving
+capsolver-python==1.0
+
+# Configuration and utilities
+python-dotenv==1.0.0
