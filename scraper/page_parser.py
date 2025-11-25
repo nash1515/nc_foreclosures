@@ -151,17 +151,15 @@ def parse_case_detail(page_content):
     The NC Courts Portal uses an Angular "Register of Actions" (ROA) page with:
     - table.roa-caseinfo-info-rows: Contains Case Type and Case Status
     - Case Summary section with style (e.g., "FORECLOSURE- Name") and Filed on date
-    - Case Events section with event listings
-
-    For foreclosure identification:
-    - Case Type = "Foreclosure (Special Proceeding)"
-    - OR events contain foreclosure indicators
+    - Party Information table with respondents, petitioners, trustees
+    - Case Events section with event listings, dates, and document links
+    - Hearings section with scheduled hearing dates
 
     Args:
         page_content: HTML content of case detail page
 
     Returns:
-        dict: Case data including case info, events, documents
+        dict: Case data including case info, parties, events, hearings, documents
     """
     soup = BeautifulSoup(page_content, 'html.parser')
 
@@ -173,24 +171,24 @@ def parse_case_detail(page_content):
         'property_address': None,
         'parties': [],
         'events': [],
+        'hearings': [],
         'documents': []
     }
 
-    # Method 1: Parse ROA Case Information table (class="roa-caseinfo-info-rows")
-    # This table has "Case Type:" and "Case Status:" rows
+    page_text = soup.get_text()
+
+    # ========== 1. CASE TYPE AND STATUS ==========
+    # Parse ROA Case Information table (class="roa-caseinfo-info-rows")
     # Note: Labels use &nbsp; (non-breaking space U+00A0) which must be normalized
     roa_table = soup.find('table', class_='roa-caseinfo-info-rows')
     if roa_table:
-        logger.debug(f"Found ROA table with class 'roa-caseinfo-info-rows'")
+        logger.debug("Found ROA table with class 'roa-caseinfo-info-rows'")
         rows = roa_table.find_all('tr')
         for row in rows:
             cells = row.find_all('td')
             if len(cells) >= 2:
-                # Normalize non-breaking spaces to regular spaces
                 label = cells[0].get_text(strip=True).replace('\xa0', ' ').lower()
                 value = cells[1].get_text(strip=True).replace('\xa0', ' ')
-
-                logger.debug(f"ROA table row - label: '{label}', value: '{value[:50] if value else ''}'")
 
                 if 'case type' in label:
                     case_data['case_type'] = value
@@ -199,67 +197,159 @@ def parse_case_detail(page_content):
                     case_data['case_status'] = value
                     logger.debug(f"Case status: {value}")
 
-    # Method 2: Fallback - search all tables for Case Type/Status
-    if not case_data['case_type']:
-        all_tables = soup.find_all('table')
-        for table in all_tables:
-            rows = table.find_all('tr')
-            for row in rows:
-                cells = row.find_all('td')
-                if len(cells) >= 2:
-                    label = cells[0].get_text(strip=True).lower()
-                    value = cells[1].get_text(strip=True)
+    # ========== 2. STYLE (Case Title) ==========
+    # Look for the case title like "FORECLOSURE (HOA) - Mark Dwayne Ellis"
+    # It's in a div within the Case Summary section
+    style_match = re.search(r'(FORECLOSURE[^§\n]{3,100})', page_text)
+    if style_match:
+        style_text = style_match.group(1).strip()
+        # Clean up the style - remove extra whitespace
+        style_text = ' '.join(style_text.split())
+        if len(style_text) < 150:  # Sanity check
+            case_data['style'] = style_text
+            logger.debug(f"Style: {style_text}")
 
-                    if 'case type' in label and not case_data['case_type']:
-                        case_data['case_type'] = value
-                        logger.debug(f"Case type (fallback): {value}")
-                    elif 'case status' in label and not case_data['case_status']:
-                        case_data['case_status'] = value
-                        logger.debug(f"Case status (fallback): {value}")
-
-    # Method 3: Extract file date from "Filed on:" text
-    # The ROA page has "Filed on:" followed by a date
-    page_text = soup.get_text()
+    # ========== 3. FILE DATE ==========
     filed_match = re.search(r'Filed on:\s*(\d{2}/\d{2}/\d{4})', page_text)
     if filed_match:
         case_data['file_date'] = filed_match.group(1)
         logger.debug(f"File date: {case_data['file_date']}")
 
-    # Method 4: Check for foreclosure indicators in the full page text
-    # This is a backup method to identify foreclosures even if parsing fails
-    page_text_lower = page_text.lower()
-    foreclosure_text_indicators = [
-        'foreclosure (special proceeding)',
-        'foreclosure case initiated',
-        'findings and order of foreclosure',
-        'report of foreclosure sale',
-        'notice of sale/resale',
-        'upset bid filed',
-        'notice of foreclosure'
-    ]
+    # ========== 4. PARTIES ==========
+    # Party Information is in a table with class "roa-table td-pad-5"
+    # Structure: Respondent | Name | (empty)
+    party_table = soup.find('table', class_=lambda c: c and 'roa-table' in c and 'td-pad-5' in c)
+    if party_table:
+        party_rows = party_table.find_all('tr')
+        for row in party_rows:
+            cells = row.find_all('td')
+            if len(cells) >= 2:
+                party_type = cells[0].get_text(strip=True).replace('\xa0', ' ')
+                party_name = cells[1].get_text(strip=True).replace('\xa0', ' ')
 
-    # Extract events from page text using patterns
-    # Events have format: DATE followed by event type text
-    # Look for common event types
-    event_patterns = [
-        r'(\d{2}/\d{2}/\d{4})\s*(?:.*?)(Foreclosure[^§\n]*)',
-        r'(\d{2}/\d{2}/\d{4})\s*(?:.*?)(Notice Of Sale/Resale[^§\n]*)',
-        r'(\d{2}/\d{2}/\d{4})\s*(?:.*?)(Report Of Foreclosure Sale[^§\n]*)',
-        r'(\d{2}/\d{2}/\d{4})\s*(?:.*?)(Findings And Order Of Foreclosure[^§\n]*)',
-        r'(\d{2}/\d{2}/\d{4})\s*(?:.*?)(Upset Bid[^§\n]*)',
-    ]
+                # Validate this looks like a party row
+                valid_party_types = ['Respondent', 'Petitioner', 'Trustee', 'Plaintiff', 'Defendant',
+                                    'Garnishee', 'Applicant', 'Attorney', 'Guardian']
+                if party_type and party_name and any(pt in party_type for pt in valid_party_types):
+                    case_data['parties'].append({
+                        'party_type': party_type,
+                        'party_name': party_name
+                    })
+                    logger.debug(f"Party: {party_type} - {party_name}")
 
-    for indicator in foreclosure_text_indicators:
-        if indicator in page_text_lower:
-            # Add as a pseudo-event for foreclosure detection
-            case_data['events'].append({
-                'event_date': None,
-                'event_type': indicator,
-                'event_description': f'Found in page: {indicator}'
+    # ========== 5. EVENTS ==========
+    # Events are in divs with ng-repeat="event in ..." attribute
+    # Each event has: date, type, filed by, against, hearing date/time, document link
+    event_divs = soup.find_all(attrs={'ng-repeat': lambda v: v and 'event' in v.lower()}) if soup.find_all(attrs={'ng-repeat': True}) else []
+
+    for event_div in event_divs:
+        event_text = event_div.get_text()
+
+        # Extract event date (first date in the block)
+        date_match = re.search(r'(\d{2}/\d{2}/\d{4})', event_text)
+        event_date = date_match.group(1) if date_match else None
+
+        # Extract event type - look for capitalized text that's an event description
+        event_type = None
+        lines = [l.strip() for l in event_text.split('\n') if l.strip()]
+        for line in lines:
+            # Event types are usually capitalized phrases
+            if (re.match(r'^[A-Z][a-zA-Z\s()]+$', line) and
+                5 < len(line) < 100 and
+                not any(skip in line for skip in ['Index', 'Created', 'Filed By', 'Against'])):
+                event_type = line
+                break
+
+        # Extract Index number
+        index_match = re.search(r'Index\s*#\s*(\d+)', event_text)
+
+        # Extract Filed By and Against
+        filed_by_match = re.search(r'Filed By:\s*([^§\n]+)', event_text)
+        against_match = re.search(r'Against:\s*([^§\n]+)', event_text)
+
+        # Extract hearing date/time if present
+        hearing_match = re.search(r'(\d{2}/\d{2}/\d{4})\s+(\d{1,2}:\d{2})', event_text)
+
+        # Check for document link
+        doc_button = event_div.find('button', attrs={'aria-label': lambda v: v and 'document' in v.lower()}) if event_div.find('button') else None
+        has_document = doc_button is not None
+
+        if event_date or event_type:
+            event_data = {
+                'event_date': event_date,
+                'event_type': event_type,
+                'event_description': None,
+                'filed_by': filed_by_match.group(1).strip() if filed_by_match else None,
+                'filed_against': against_match.group(1).strip() if against_match else None,
+                'hearing_date': f"{hearing_match.group(1)} {hearing_match.group(2)}" if hearing_match else None,
+                'document_url': None,  # Will need JS execution to get actual URL
+                'has_document': has_document
+            }
+            case_data['events'].append(event_data)
+            logger.debug(f"Event: {event_date} - {event_type}")
+
+    # ========== 6. HEARINGS ==========
+    # Hearings are in a separate section with ng-repeat="hearing in ..."
+    hearing_divs = soup.find_all(attrs={'ng-repeat': lambda v: v and 'hearing' in v.lower()}) if soup.find_all(attrs={'ng-repeat': True}) else []
+
+    for hearing_div in hearing_divs:
+        hearing_text = hearing_div.get_text()
+
+        # Extract hearing date
+        date_match = re.search(r'(\d{2}/\d{2}/\d{4})', hearing_text)
+
+        # Extract time (usually in parentheses like "(2:30 PM)")
+        time_match = re.search(r'\((\d{1,2}:\d{2}\s*(?:AM|PM)?)\)', hearing_text, re.IGNORECASE)
+
+        # Extract hearing type
+        hearing_type = None
+        lines = [l.strip() for l in hearing_text.split('\n') if l.strip()]
+        for line in lines:
+            if not re.match(r'^\d', line) and 'Created' not in line and len(line) < 50:
+                # Remove time in parentheses
+                clean_line = re.sub(r'\([^)]+\)', '', line).strip()
+                if clean_line:
+                    hearing_type = clean_line
+                    break
+
+        if date_match:
+            case_data['hearings'].append({
+                'hearing_date': date_match.group(1),
+                'hearing_time': time_match.group(1) if time_match else None,
+                'hearing_type': hearing_type
             })
-            logger.debug(f"Found foreclosure indicator in text: {indicator}")
+            logger.debug(f"Hearing: {date_match.group(1)} - {hearing_type}")
 
-    logger.info(f"Parsed case - Type: {case_data['case_type']}, Events: {len(case_data['events'])}")
+    # ========== 7. FALLBACK: Text-based foreclosure detection ==========
+    # If structured parsing didn't find events, fall back to text search
+    if not case_data['events']:
+        page_text_lower = page_text.lower()
+        foreclosure_indicators = [
+            'foreclosure (special proceeding)',
+            'foreclosure case initiated',
+            'findings and order of foreclosure',
+            'report of foreclosure sale',
+            'notice of sale/resale',
+            'upset bid filed'
+        ]
+
+        for indicator in foreclosure_indicators:
+            if indicator in page_text_lower:
+                case_data['events'].append({
+                    'event_date': None,
+                    'event_type': indicator,
+                    'event_description': f'Found in page text: {indicator}',
+                    'filed_by': None,
+                    'filed_against': None,
+                    'hearing_date': None,
+                    'document_url': None,
+                    'has_document': False
+                })
+                logger.debug(f"Found foreclosure indicator in text: {indicator}")
+
+    logger.info(f"Parsed case - Type: {case_data['case_type']}, Style: {case_data['style']}, "
+                f"Parties: {len(case_data['parties'])}, Events: {len(case_data['events'])}, "
+                f"Hearings: {len(case_data['hearings'])}")
 
     return case_data
 

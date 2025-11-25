@@ -21,6 +21,7 @@ class Case(Base):
     case_status = Column(String(50))
     file_date = Column(Date)
     case_url = Column(Text)
+    style = Column(Text)  # Full case title (e.g., "FORECLOSURE (HOA) - Mark Dwayne Ellis")
     property_address = Column(Text)
     current_bid_amount = Column(DECIMAL(12, 2))
     next_bid_deadline = Column(TIMESTAMP)
@@ -31,6 +32,8 @@ class Case(Base):
 
     # Relationships
     events = relationship("CaseEvent", back_populates="case", cascade="all, delete-orphan")
+    parties = relationship("Party", back_populates="case", cascade="all, delete-orphan")
+    hearings = relationship("Hearing", back_populates="case", cascade="all, delete-orphan")
     documents = relationship("Document", back_populates="case", cascade="all, delete-orphan")
     notes = relationship("UserNote", back_populates="case", cascade="all, delete-orphan")
 
@@ -48,6 +51,10 @@ class CaseEvent(Base):
     event_date = Column(Date)
     event_type = Column(String(200))
     event_description = Column(Text)
+    filed_by = Column(Text)  # Party who filed the event
+    filed_against = Column(Text)  # Party the event is against
+    hearing_date = Column(TIMESTAMP)  # If event has associated hearing
+    document_url = Column(Text)  # URL to associated document (for Phase 2)
     created_at = Column(TIMESTAMP, server_default=func.current_timestamp())
 
     # Relationship
@@ -55,6 +62,43 @@ class CaseEvent(Base):
 
     def __repr__(self):
         return f"<CaseEvent(case_id={self.case_id}, type='{self.event_type}')>"
+
+
+class Party(Base):
+    """People/entities involved in each case."""
+
+    __tablename__ = 'parties'
+
+    id = Column(Integer, primary_key=True)
+    case_id = Column(Integer, ForeignKey('cases.id', ondelete='CASCADE'), nullable=False)
+    party_type = Column(String(50), nullable=False)  # 'Respondent', 'Petitioner', 'Trustee', etc.
+    party_name = Column(String(255), nullable=False)
+    created_at = Column(TIMESTAMP, server_default=func.current_timestamp())
+
+    # Relationship
+    case = relationship("Case", back_populates="parties")
+
+    def __repr__(self):
+        return f"<Party(case_id={self.case_id}, type='{self.party_type}', name='{self.party_name}')>"
+
+
+class Hearing(Base):
+    """Scheduled hearings for each case."""
+
+    __tablename__ = 'hearings'
+
+    id = Column(Integer, primary_key=True)
+    case_id = Column(Integer, ForeignKey('cases.id', ondelete='CASCADE'), nullable=False)
+    hearing_date = Column(Date)
+    hearing_time = Column(String(20))  # Store as string for flexibility
+    hearing_type = Column(String(100))  # 'Hearing Before the Clerk', etc.
+    created_at = Column(TIMESTAMP, server_default=func.current_timestamp())
+
+    # Relationship
+    case = relationship("Case", back_populates="hearings")
+
+    def __repr__(self):
+        return f"<Hearing(case_id={self.case_id}, type='{self.hearing_type}', date='{self.hearing_date}')>"
 
 
 class Document(Base):
