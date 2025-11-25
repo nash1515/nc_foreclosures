@@ -19,6 +19,7 @@ from scraper.portal_interactions import (
 )
 from scraper.portal_selectors import PORTAL_URL
 from common.county_codes import get_county_code, get_search_text, is_valid_county
+from common.config import config
 from common.logger import setup_logger
 
 logger = setup_logger(__name__)
@@ -59,11 +60,18 @@ class InitialScraper:
         logger.info("STARTING INITIAL SCRAPE")
         logger.info("=" * 60)
 
-        # Step 1: Verify VPN
-        verify_vpn_or_exit()
+        # Step 1: Verify VPN (with auto-start if configured)
+        verify_vpn_or_exit(
+            auto_start=config.VPN_AUTO_START,
+            sudo_password=config.SUDO_PASSWORD
+        )
 
         # Step 2: Create scrape log
-        scrape_log = self._create_scrape_log()
+        scrape_log_id = self._create_scrape_log()
+        cases_processed = 0
+        status = 'failed'
+        error_message = None
+        cases_found = 0
 
         try:
             # Step 3: Launch browser and scrape
@@ -72,15 +80,16 @@ class InitialScraper:
                 page = browser.new_page()
 
                 try:
-                    cases_processed = self._scrape_cases(page, scrape_log)
-                    scrape_log.cases_processed = cases_processed
-                    scrape_log.status = 'success'
+                    result = self._scrape_cases(page)
+                    cases_processed = result['cases_processed']
+                    cases_found = result['cases_found']
+                    status = 'success'
                     logger.info(f"✓ Scrape completed successfully: {cases_processed} cases processed")
 
                 except Exception as e:
                     logger.error(f"Scrape failed: {e}", exc_info=True)
-                    scrape_log.status = 'failed'
-                    scrape_log.error_message = str(e)
+                    status = 'failed'
+                    error_message = str(e)
                     raise
 
                 finally:
@@ -88,9 +97,9 @@ class InitialScraper:
 
         finally:
             # Update scrape log
-            self._complete_scrape_log(scrape_log)
+            self._complete_scrape_log(scrape_log_id, cases_processed, cases_found, status, error_message)
 
-        return scrape_log
+        return scrape_log_id
 
     def _create_scrape_log(self):
         """Create initial scrape log entry."""
@@ -107,33 +116,33 @@ class InitialScraper:
             session.add(scrape_log)
             session.commit()
             session.refresh(scrape_log)
-            log_id = scrape_log.id
+            # Store the ID to track this log
+            self.scrape_log_id = scrape_log.id
 
-        logger.info(f"Created scrape log (ID: {log_id})")
-        return scrape_log
+        logger.info(f"Created scrape log (ID: {self.scrape_log_id})")
+        return self.scrape_log_id
 
-    def _complete_scrape_log(self, scrape_log):
+    def _complete_scrape_log(self, scrape_log_id, cases_processed, cases_found, status, error_message):
         """Update scrape log with final status."""
         with get_session() as session:
-            log = session.query(ScrapeLog).filter_by(id=scrape_log.id).first()
+            log = session.query(ScrapeLog).filter_by(id=scrape_log_id).first()
             if log:
                 log.completed_at = datetime.now()
-                log.status = scrape_log.status
-                log.cases_processed = scrape_log.cases_processed
-                log.cases_found = scrape_log.cases_found
-                log.error_message = scrape_log.error_message
+                log.status = status
+                log.cases_processed = cases_processed
+                log.cases_found = cases_found
+                log.error_message = error_message
                 session.commit()
 
-    def _scrape_cases(self, page, scrape_log):
+    def _scrape_cases(self, page):
         """
         Main scraping logic.
 
         Args:
             page: Playwright page object
-            scrape_log: ScrapeLog object to update
 
         Returns:
-            int: Number of cases processed
+            dict: {'cases_processed': int, 'cases_found': int}
         """
         logger.info(f"Navigating to {PORTAL_URL}")
         page.goto(PORTAL_URL, wait_until='networkidle')
@@ -158,9 +167,9 @@ class InitialScraper:
 
         # Step 5: Extract total count
         total_count = extract_total_count(page.content())
+        cases_found = total_count if total_count else 0
         if total_count:
             logger.info(f"Found {total_count} total cases")
-            scrape_log.cases_found = total_count
 
         # Step 6: Process all pages
         cases_processed = 0
@@ -176,7 +185,7 @@ class InitialScraper:
             for case_info in cases:
                 if self.limit and cases_processed >= self.limit:
                     logger.info(f"Reached limit of {self.limit} cases")
-                    return cases_processed
+                    return {'cases_processed': cases_processed, 'cases_found': cases_found}
 
                 # Process individual case
                 if self._process_case(page, case_info):
@@ -188,7 +197,7 @@ class InitialScraper:
 
             page_num += 1
 
-        return cases_processed
+        return {'cases_processed': cases_processed, 'cases_found': cases_found}
 
     def _fill_search_form(self, page):
         """Fill out the search form."""
@@ -313,17 +322,24 @@ def main():
             limit=args.limit
         )
 
-        scrape_log = scraper.run()
+        scrape_log_id = scraper.run()
 
-        logger.info("=" * 60)
-        logger.info("SCRAPE SUMMARY")
-        logger.info("=" * 60)
-        logger.info(f"Status: {scrape_log.status}")
-        logger.info(f"Cases found: {scrape_log.cases_found}")
-        logger.info(f"Cases processed: {scrape_log.cases_processed}")
-        logger.info("=" * 60)
+        # Fetch final scrape log status
+        from database.connection import get_session
+        with get_session() as session:
+            scrape_log = session.query(ScrapeLog).filter_by(id=scrape_log_id).first()
 
-        sys.exit(0 if scrape_log.status == 'success' else 1)
+            logger.info("=" * 60)
+            logger.info("SCRAPE SUMMARY")
+            logger.info("=" * 60)
+            logger.info(f"Status: {scrape_log.status}")
+            logger.info(f"Cases found: {scrape_log.cases_found}")
+            logger.info(f"Cases processed: {scrape_log.cases_processed}")
+            logger.info("=" * 60)
+
+            exit_code = 0 if scrape_log.status == 'success' else 1
+
+        sys.exit(exit_code)
 
     except Exception as e:
         logger.error(f"Fatal error: {e}", exc_info=True)

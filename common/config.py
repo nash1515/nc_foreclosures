@@ -18,6 +18,8 @@ class Config:
 
     # VPN
     VPN_BASELINE_IP = os.getenv('VPN_BASELINE_IP')
+    VPN_AUTO_START = os.getenv('VPN_AUTO_START', 'false').lower() == 'true'
+    SUDO_PASSWORD = os.getenv('SUDO_PASSWORD', None)
 
     # Storage
     PDF_STORAGE_PATH = os.getenv('PDF_STORAGE_PATH', './data/pdfs')
