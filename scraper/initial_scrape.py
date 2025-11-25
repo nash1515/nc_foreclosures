@@ -9,13 +9,19 @@ from database.models import Case, CaseEvent, ScrapeLog
 from scraper.vpn_manager import verify_vpn_or_exit
 from scraper.captcha_solver import solve_recaptcha
 from scraper.page_parser import is_foreclosure_case, parse_search_results, parse_case_detail, extract_total_count
+from scraper.portal_interactions import (
+    click_advanced_filter,
+    fill_search_form as fill_portal_form,
+    solve_and_submit_captcha,
+    check_for_error,
+    extract_total_count_from_page,
+    go_to_next_page as navigate_next_page
+)
+from scraper.portal_selectors import PORTAL_URL
 from common.county_codes import get_county_code, get_search_text, is_valid_county
 from common.logger import setup_logger
 
 logger = setup_logger(__name__)
-
-# NC Courts Portal URL
-PORTAL_URL = 'https://portal-nc.tylertech.cloud/Portal/Home/Dashboard/29'
 
 
 class InitialScraper:
@@ -186,40 +192,38 @@ class InitialScraper:
 
     def _fill_search_form(self, page):
         """Fill out the search form."""
-        # TODO: Implement based on actual portal structure
-        # For now, this is a placeholder
+        # Click advanced filter first
+        click_advanced_filter(page)
 
+        # Generate search text
         year = self.start_date.year
         search_text = get_search_text(self.county, year)
 
-        logger.info(f"Search text: {search_text}")
-        logger.info(f"County: {self.county.title()}")
-        logger.info(f"Dates: {self.start_date} to {self.end_date}")
-
-        # Placeholder - actual implementation needs portal exploration
-        logger.warning("Search form filling not yet implemented - needs portal structure")
+        # Fill the form
+        fill_portal_form(
+            page,
+            county_name=f"{self.county.title()} County",
+            start_date=self.start_date,
+            end_date=self.end_date,
+            search_text=search_text
+        )
 
     def _solve_captcha(self, page):
         """Solve reCAPTCHA on the page."""
-        # TODO: Implement based on actual portal structure
-        # For now, this is a placeholder
-
-        logger.warning("CAPTCHA solving not yet implemented - needs portal structure")
-
-        # Example:
-        # site_key = page.locator('div.g-recaptcha').get_attribute('data-sitekey')
-        # token = solve_recaptcha(PORTAL_URL, site_key)
-        # page.evaluate(f"document.getElementById('g-recaptcha-response').value = '{token}'")
+        success = solve_and_submit_captcha(page)
+        if not success:
+            raise Exception("Failed to solve CAPTCHA and submit form")
 
     def _check_for_too_many_results(self, page):
         """Check if 'too many results' error is displayed."""
-        # TODO: Implement based on actual portal structure
+        has_error, error_msg = check_for_error(page)
+        if has_error and error_msg and 'too many' in error_msg.lower():
+            return True
         return False
 
     def _go_to_next_page(self, page):
         """Navigate to next page of results."""
-        # TODO: Implement based on actual portal structure
-        return False
+        return navigate_next_page(page)
 
     def _process_case(self, page, case_info):
         """
