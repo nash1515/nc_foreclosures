@@ -91,15 +91,17 @@ gh pr status
 
 ### Recent Updates (Nov 25, 2025) - Session 3
 - **FIXED: Case Type Extraction** - The issue was `&nbsp;` (non-breaking space U+00A0) in HTML labels
-  - Added `.replace('\xa0', ' ')` to normalize non-breaking spaces before comparison
-  - Now correctly extracts: `Case Type: Foreclosure (Special Proceeding)`
 - **FIXED: Angular Loading** - Added explicit wait for `table.roa-caseinfo-info-rows` selector
-  - Replaced fixed `time.sleep(2)` with `page.wait_for_selector()` (30s timeout)
-- **End-to-End Test Successful:**
-  - Searched Wake County, Jan 2024, found 55 Special Proceedings
-  - Correctly skipped non-foreclosure cases (e.g., "Special Proceeding")
-  - Identified and saved 3 foreclosure cases to database
-  - Database shows: `case_type = 'Foreclosure (Special Proceeding)'`
+- **ADDED: Comprehensive Data Extraction** - Now captures ALL data from case detail pages:
+  - **Style**: Full case title (e.g., "FORECLOSURE (HOA) - Mark Dwayne Ellis")
+  - **Parties**: Respondent, Petitioner, Trustee with names (new `parties` table)
+  - **Events**: Date, type, filed_by, filed_against, hearing_date, document_url
+  - **Hearings**: Date, time, type (new `hearings` table)
+- **Database Schema Updates:**
+  - Added `parties` table (party_type, party_name)
+  - Added `hearings` table (hearing_date, hearing_time, hearing_type)
+  - Added `style` column to `cases`
+  - Added event detail columns to `case_events`
 
 ### Previous Updates (Nov 25, 2025) - Session 2
 - **Playwright MCP Debugging:** Used Playwright MCP to examine actual page structures
