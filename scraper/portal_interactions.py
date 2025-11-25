@@ -78,29 +78,41 @@ def fill_search_form(page, county_name, start_date, end_date, search_text):
         except Exception as js_error:
             logger.error(f"  JavaScript fallback also failed: {js_error}")
 
-    # Select Case Status: Pending (Kendo DropDownList)
+    # Select Case Status: Pending (Try JavaScript directly)
     try:
-        page.wait_for_selector(CASE_STATUS_DROPDOWN, state='visible', timeout=10000)
-        page.click(CASE_STATUS_DROPDOWN, timeout=10000)
-        page.wait_for_selector('ul.k-list-ul', state='visible', timeout=10000)
-        time.sleep(0.5)
-        page.click(f'ul.k-list-ul li:has-text("{PENDING_STATUS}")', timeout=10000)
-        time.sleep(0.5)
+        logger.info(f"  Selecting status: {PENDING_STATUS}")
+        page.evaluate(f'''
+            const statusDropdown = document.querySelector("{CASE_STATUS_DROPDOWN}");
+            if (statusDropdown) {{
+                const kendoDropDown = $(statusDropdown).data("kendoDropDownList");
+                if (kendoDropDown) {{
+                    kendoDropDown.select(function(dataItem) {{
+                        return dataItem.text === "{PENDING_STATUS}";
+                    }});
+                }}
+            }}
+        ''')
         logger.info(f"    ✓ Selected status: {PENDING_STATUS}")
     except Exception as e:
-        logger.error(f"  Status selection failed: {e}")
+        logger.warning(f"  Status selection failed (non-critical): {e}")
 
-    # Select Case Type: Special Proceedings (Kendo DropDownList)
+    # Select Case Type: Special Proceedings (Try JavaScript directly)
     try:
-        page.wait_for_selector('#caseCriteria_CaseType', state='visible', timeout=10000)
-        page.click('#caseCriteria_CaseType', timeout=10000)
-        page.wait_for_selector('ul.k-list-ul', state='visible', timeout=10000)
-        time.sleep(0.5)
-        page.click(f'ul.k-list-ul li:has-text("{SPECIAL_PROCEEDINGS}")', timeout=10000)
-        time.sleep(0.5)
+        logger.info(f"  Selecting type: {SPECIAL_PROCEEDINGS}")
+        page.evaluate(f'''
+            const typeDropdown = document.querySelector("#caseCriteria_CaseType");
+            if (typeDropdown) {{
+                const kendoDropDown = $(typeDropdown).data("kendoDropDownList");
+                if (kendoDropDown) {{
+                    kendoDropDown.select(function(dataItem) {{
+                        return dataItem.text === "{SPECIAL_PROCEEDINGS}";
+                    }});
+                }}
+            }}
+        ''')
         logger.info(f"    ✓ Selected type: {SPECIAL_PROCEEDINGS}")
     except Exception as e:
-        logger.error(f"  Case type selection failed: {e}")
+        logger.warning(f"  Case type selection failed (non-critical): {e}")
 
     logger.info("  ✓ Form filled")
 
