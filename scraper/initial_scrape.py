@@ -151,14 +151,10 @@ class InitialScraper:
         logger.info("Filling search form...")
         self._fill_search_form(page)
 
-        # Step 2: Solve CAPTCHA
+        # Step 2: Solve CAPTCHA and submit (handled together in solve_and_submit_captcha)
         logger.info("Solving CAPTCHA...")
         self._solve_captcha(page)
-
-        # Step 3: Submit search
-        logger.info("Submitting search...")
-        page.click('button[type="submit"]')  # Placeholder selector
-        page.wait_for_load_state('networkidle')
+        # Note: _solve_captcha already clicks submit and waits for results
 
         # Step 4: Check for errors
         if self._check_for_too_many_results(page):
@@ -179,8 +175,23 @@ class InitialScraper:
             logger.info(f"Processing page {page_num}...")
 
             # Extract cases from current page
-            results = parse_search_results(page.content())
+            page_html = page.content()
+            logger.debug(f"Search results HTML length: {len(page_html)}")
+
+            # Debug: Check if caseLink elements exist
+            if 'caseLink' in page_html:
+                logger.debug("Found 'caseLink' in HTML")
+            if 'data-url' in page_html:
+                logger.debug("Found 'data-url' in HTML")
+            else:
+                logger.warning("'data-url' NOT found in HTML - case URLs may be missing")
+
+            results = parse_search_results(page_html)
             cases = results['cases']
+
+            # Debug: Log first case URL
+            if cases:
+                logger.debug(f"First case: {cases[0]['case_number']}, URL: {cases[0].get('case_url')}")
 
             for case_info in cases:
                 if self.limit and cases_processed >= self.limit:
@@ -246,15 +257,28 @@ class InitialScraper:
             bool: True if case was processed and saved
         """
         case_number = case_info['case_number']
-        case_url = case_info['case_url']
+        case_url = case_info.get('case_url')
 
         logger.info(f"Processing case: {case_number}")
+        logger.debug(f"  Case URL: {case_url}")
+
+        if not case_url or case_url == '#':
+            logger.warning(f"  No valid URL for case {case_number}, skipping")
+            return False
 
         # Navigate to case detail
         page.goto(case_url, wait_until='networkidle')
 
+        # Wait for Angular app to load
+        import time
+        time.sleep(2)
+
         # Parse case detail
-        case_data = parse_case_detail(page.content())
+        html_content = page.content()
+        logger.debug(f"  Page title: {page.title()}")
+        logger.debug(f"  HTML length: {len(html_content)}")
+
+        case_data = parse_case_detail(html_content)
 
         # Check if foreclosure
         if not is_foreclosure_case(case_data):

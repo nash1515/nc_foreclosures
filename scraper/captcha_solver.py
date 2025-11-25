@@ -1,11 +1,14 @@
 """CAPTCHA solving using CapSolver API."""
 
 import time
-from capsolver_python import RecaptchaV2Task
+import capsolver
 from common.config import config
 from common.logger import setup_logger
 
 logger = setup_logger(__name__)
+
+# Set CapSolver API key globally
+capsolver.api_key = config.CAPSOLVER_API_KEY
 
 
 class CaptchaSolver:
@@ -16,7 +19,7 @@ class CaptchaSolver:
         if not config.CAPSOLVER_API_KEY:
             raise ValueError("CAPSOLVER_API_KEY not configured")
 
-        self.api_key = config.CAPSOLVER_API_KEY
+        capsolver.api_key = config.CAPSOLVER_API_KEY
         logger.info("CapSolver client initialized")
 
     def solve_recaptcha_v2(self, page_url, site_key, max_retries=3):
@@ -40,18 +43,17 @@ class CaptchaSolver:
                 logger.debug(f"Page URL: {page_url}")
                 logger.debug(f"Site key: {site_key}")
 
-                # Create task
-                task = RecaptchaV2Task(
-                    api_key=self.api_key,
-                    website_url=page_url,
-                    website_key=site_key
-                )
+                # Solve CAPTCHA using CapSolver
+                solution = capsolver.solve({
+                    "type": "ReCaptchaV2TaskProxyLess",
+                    "websiteURL": page_url,
+                    "websiteKey": site_key
+                })
 
-                # Get solution
-                result = task.get_solution()
+                logger.debug(f"Solution received: {solution}")
 
-                if result and 'gRecaptchaResponse' in result:
-                    token = result['gRecaptchaResponse']
+                if solution and 'gRecaptchaResponse' in solution:
+                    token = solution['gRecaptchaResponse']
                     logger.info(f"✓ CAPTCHA solved successfully (attempt {attempt})")
                     logger.debug(f"Token: {token[:50]}...")
                     return token

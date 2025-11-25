@@ -20,7 +20,11 @@ def fill_search_form(page, county_name, start_date, end_date, search_text):
     """
     Fill out the search form.
 
-    Portal uses Kendo UI dropdowns which require special handling.
+    Portal Form Structure (discovered via Playwright MCP):
+    - Location: Uses CHECKBOXES (not dropdown). Must uncheck "All Locations" first.
+    - Case Type/Status: Use Kendo ComboBox widgets (set via JavaScript).
+    - Dates: Standard text inputs with MM/DD/YYYY format.
+    - Search text: Required field at top.
 
     Args:
         page: Playwright page object
@@ -31,88 +35,85 @@ def fill_search_form(page, county_name, start_date, end_date, search_text):
     """
     logger.info("Filling search form...")
 
-    # Fill search criteria (case number pattern)
+    # 1. Fill search criteria (required field at top)
     page.fill(SEARCH_CRITERIA_INPUT, search_text)
     logger.info(f"  Search text: {search_text}")
 
-    # Fill date range
+    # 2. Fill date range
     page.fill(FILE_DATE_START, start_date.strftime('%m/%d/%Y'))
     page.fill(FILE_DATE_END, end_date.strftime('%m/%d/%Y'))
-    logger.info(f"  Date range: {start_date} to {end_date}")
+    # Click elsewhere to close any calendar popup
+    page.keyboard.press('Escape')
+    logger.info(f"  Date range: {start_date.strftime('%m/%d/%Y')} to {end_date.strftime('%m/%d/%Y')}")
 
-    # Select county from Court Location dropdown (Kendo DropDownList)
+    # 3. Select county using CHECKBOXES (not dropdown!)
     logger.info(f"  Selecting county: {county_name}")
     try:
-        # Wait for dropdown to be ready
-        page.wait_for_selector(COURT_LOCATION_DROPDOWN, state='visible', timeout=10000)
+        # First, uncheck "All Locations" checkbox
+        all_locations = page.locator(f'input[type="checkbox"]').filter(has_text="").locator('xpath=..').filter(has_text="All Locations").locator('input')
 
-        # Click the dropdown to open it
-        page.click(COURT_LOCATION_DROPDOWN, timeout=10000)
-        logger.debug("    Dropdown clicked, waiting for options...")
+        # Use JavaScript to find and uncheck "All Locations"
+        page.evaluate('''
+            const checkboxes = document.querySelectorAll('input[type="checkbox"]');
+            for (const cb of checkboxes) {
+                const label = cb.closest('label') || cb.parentElement;
+                if (label && label.textContent.includes('All Locations')) {
+                    if (cb.checked) {
+                        cb.click();
+                    }
+                    break;
+                }
+            }
+        ''')
+        time.sleep(0.3)
+        logger.info("    ✓ Unchecked 'All Locations'")
 
-        # Wait for dropdown list to appear
-        page.wait_for_selector('ul.k-list-ul', state='visible', timeout=10000)
-        time.sleep(0.5)
-
-        # Select the county option from Kendo list
-        page.click(f'ul.k-list-ul li:has-text("{county_name}")', timeout=10000)
-        time.sleep(0.5)
-        logger.info(f"    ✓ Selected {county_name}")
-    except Exception as e:
-        logger.error(f"  County selection failed: {e}")
-        # Try JavaScript fallback if clicking fails
-        try:
-            logger.debug("  Attempting JavaScript fallback...")
-            page.evaluate(f'''
-                const dropdown = document.querySelector("{COURT_LOCATION_DROPDOWN}");
-                if (dropdown) {{
-                    const kendoDropDown = $(dropdown).data("kendoDropDownList");
-                    if (kendoDropDown) {{
-                        kendoDropDown.select(function(dataItem) {{
-                            return dataItem.text === "{county_name}";
-                        }});
-                    }}
-                }}
-            ''')
-            logger.info(f"    ✓ Selected {county_name} via JavaScript")
-        except Exception as js_error:
-            logger.error(f"  JavaScript fallback also failed: {js_error}")
-
-    # Select Case Status: Pending (Try JavaScript directly)
-    try:
-        logger.info(f"  Selecting status: {PENDING_STATUS}")
+        # Now check the specific county checkbox
         page.evaluate(f'''
-            const statusDropdown = document.querySelector("{CASE_STATUS_DROPDOWN}");
-            if (statusDropdown) {{
-                const kendoDropDown = $(statusDropdown).data("kendoDropDownList");
-                if (kendoDropDown) {{
-                    kendoDropDown.select(function(dataItem) {{
-                        return dataItem.text === "{PENDING_STATUS}";
-                    }});
+            const checkboxes = document.querySelectorAll('input[type="checkbox"]');
+            for (const cb of checkboxes) {{
+                const label = cb.closest('label') || cb.parentElement;
+                if (label && label.textContent.includes('{county_name}')) {{
+                    if (!cb.checked) {{
+                        cb.click();
+                    }}
+                    break;
                 }}
             }}
         ''')
-        logger.info(f"    ✓ Selected status: {PENDING_STATUS}")
+        time.sleep(0.3)
+        logger.info(f"    ✓ Selected {county_name}")
     except Exception as e:
-        logger.warning(f"  Status selection failed (non-critical): {e}")
+        logger.error(f"  County selection failed: {e}")
 
-    # Select Case Type: Special Proceedings (Try JavaScript directly)
+    # 4. Select Case Type using Kendo ComboBox (NOT DropDownList!)
     try:
         logger.info(f"  Selecting type: {SPECIAL_PROCEEDINGS}")
         page.evaluate(f'''
-            const typeDropdown = document.querySelector("#caseCriteria_CaseType");
-            if (typeDropdown) {{
-                const kendoDropDown = $(typeDropdown).data("kendoDropDownList");
-                if (kendoDropDown) {{
-                    kendoDropDown.select(function(dataItem) {{
-                        return dataItem.text === "{SPECIAL_PROCEEDINGS}";
-                    }});
-                }}
+            const widget = $('input[name="caseCriteria.CaseType"]').data('kendoComboBox');
+            if (widget) {{
+                widget.value("{SPECIAL_PROCEEDINGS}");
+                widget.trigger("change");
             }}
         ''')
         logger.info(f"    ✓ Selected type: {SPECIAL_PROCEEDINGS}")
     except Exception as e:
-        logger.warning(f"  Case type selection failed (non-critical): {e}")
+        logger.warning(f"  Case type selection failed: {e}")
+
+    # 5. Select Case Status using Kendo ComboBox
+    # Status values are codes: "PEND" for Pending
+    try:
+        logger.info(f"  Selecting status: {PENDING_STATUS}")
+        page.evaluate('''
+            const widget = $('input[name="caseCriteria.CaseStatus"]').data('kendoComboBox');
+            if (widget) {
+                widget.value("PEND");  // "PEND" is the value for "Pending"
+                widget.trigger("change");
+            }
+        ''')
+        logger.info(f"    ✓ Selected status: {PENDING_STATUS}")
+    except Exception as e:
+        logger.warning(f"  Status selection failed: {e}")
 
     logger.info("  ✓ Form filled")
 

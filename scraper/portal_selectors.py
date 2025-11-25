@@ -9,17 +9,27 @@ RECAPTCHA_ELEMENT = '.g-recaptcha'
 RECAPTCHA_RESPONSE_FIELD = '#g-recaptcha-response'
 
 # Advanced Filter
-ADVANCED_FILTER_LINK = 'a:has-text("Advanced")'
+ADVANCED_FILTER_LINK = 'a:has-text("Advanced Filtering Options")'
 
-# Form Fields
+# Form Fields - Main search input
 SEARCH_CRITERIA_INPUT = '#caseCriteria_SearchCriteria'
-FILE_DATE_START = '#caseCriteria\\.FileDateStart'
-FILE_DATE_END = '#caseCriteria\\.FileDateEnd'
-CASE_STATUS_DROPDOWN = '#caseCriteria_CaseStatus'
-COURT_LOCATION_DROPDOWN = '#caseCriteria_CourtLocation'
 
-# Submit Button
-SUBMIT_BUTTON = 'input[type="submit"][name="caseCriteria.SearchCases"]'
+# Date fields (in Case Search Criteria section)
+# Note: IDs have dots which need escaping in CSS, so use name selector instead
+FILE_DATE_START = 'input[name="caseCriteria.FileDateStart"]'
+FILE_DATE_END = 'input[name="caseCriteria.FileDateEnd"]'
+
+# Location selection - uses CHECKBOXES not dropdown
+# "All Locations" checkbox must be unchecked first, then check desired county
+ALL_LOCATIONS_CHECKBOX = 'input[type="checkbox"][aria-label="All Locations"]'
+
+# Case Type and Status - use Kendo ComboBox widgets (NOT DropDownList)
+# These need JavaScript to set values
+CASE_TYPE_INPUT = 'input[name="caseCriteria.CaseType"]'
+CASE_STATUS_INPUT = 'input[name="caseCriteria.CaseStatus"]'
+
+# Submit Button (there are two with same id - use first one)
+SUBMIT_BUTTON = '#btnSSSubmit'
 
 # Results Page
 RESULTS_TABLE = 'table.searchResults'

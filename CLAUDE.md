@@ -92,7 +92,29 @@ gh pr status
 3. Test full scraping flow with limit=5
 4. Begin Phase 2: PDF downloading and OCR
 
-### Recent Updates (Nov 24, 2025)
+### Recent Updates (Nov 25, 2025) - Session 2
+- **Playwright MCP Debugging:** Used Playwright MCP to examine actual page structures
+- **Case Detail Page:** Portal uses "Register of Actions" (ROA) Angular app, NOT simple HTML
+  - URL format: `/app/RegisterOfActions/?id={HASH}&isAuthenticated=False&mode=portalembed`
+  - Case Type is in `table.roa-caseinfo-info-rows` with "Case Type:" label
+  - Foreclosure cases have: `Case Type: Foreclosure (Special Proceeding)`
+- **Foreclosure Identification (per project requirements):**
+  1. Case Type = "Foreclosure (Special Proceeding)"
+  2. OR events contain: "Foreclosure Case Initiated", "Findings And Order Of Foreclosure", "Report Of Foreclosure Sale (Chapter 45)", "Notice Of Sale/Resale", "Upset Bid Filed"
+- **Search Results:** Case links have `data-url` attribute (not `href`)
+  - Example: `<a class="caseLink" href="#" data-url="/app/RegisterOfActions/?id=...">`
+- **Current Issue:** Scraper shows `Case Type: None, Events: 0` - page_parser not extracting data
+- **Files Updated:**
+  - `scraper/page_parser.py`: Updated `parse_case_detail()` to use ROA table selectors and text search
+  - `scraper/initial_scrape.py`: Added debug logging for HTML content and wait time for Angular
+
+### Next Steps (Resume Here)
+1. Debug why `parse_case_detail()` returns None for case_type
+2. Check if Angular app content is fully loaded before parsing (may need longer wait or JS execution)
+3. Run scraper with LOG_LEVEL=DEBUG to see HTML being parsed
+4. Test with known foreclosure URL: `https://portal-nc.tylertech.cloud/app/RegisterOfActions/#/CB7F93D047F5D8136929FC3D31CAF0CE485042EDECF8A4DF58E0F3FE9409E463374427EF66070493593DE9F43AAAA82EA883C942ACCA5E53BB7E26777702B16DF9CE499EA2FBBE5917C89A03E96A8585/anon/portalembed`
+
+### Previous Updates (Nov 24, 2025)
 - **VPN Setup:** OpenVPN configured with FrootVPN (Virginia server)
 - **Portal Discovery:** Portal uses Kendo UI Grid, not simple HTML tables
 - **Kendo Grid Support:** Updated selectors for grid, pagination, and pager info
