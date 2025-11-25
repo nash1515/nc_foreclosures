@@ -70,22 +70,33 @@ gh pr status
 
 ## Project Status
 
-**Phase 1 Foundation:** ✅ Complete
+**Phase 1 Foundation:** 🔧 In Progress (95%)
 **Current Branch:** `feature/phase1-foundation` (in worktree `.worktrees/phase1-foundation/`)
 
 ### Completed Components
-- PostgreSQL database with full schema (5 tables)
-- SQLAlchemy ORM models
-- VPN verification system
-- CapSolver reCAPTCHA integration
-- Playwright scraper framework
-- Integration tests (all passing)
+- ✅ PostgreSQL database with full schema (5 tables)
+- ✅ SQLAlchemy ORM models
+- ✅ VPN verification system (OpenVPN + FrootVPN)
+- ✅ CapSolver reCAPTCHA integration
+- ✅ Playwright scraper framework with stealth mode
+- ✅ Integration tests (all passing)
+- ✅ Kendo UI Grid parsing implementation
+
+### In Progress
+- 🔧 Kendo dropdown interaction (county works via JS, status/type timeout)
+- 🔧 End-to-end scraper testing
 
 ### Next Steps
-- Explore NC Courts Portal HTML structure
-- Implement portal-specific parsing in `scraper/page_parser.py`
-- Test scraper with small samples
-- Begin Phase 2: PDF downloading and OCR
+1. Fix Kendo dropdown timeouts for status and case type
+2. Verify CAPTCHA solving works reliably
+3. Test full scraping flow with limit=5
+4. Begin Phase 2: PDF downloading and OCR
+
+### Recent Updates (Nov 24, 2025)
+- **VPN Setup:** OpenVPN configured with FrootVPN (Virginia server)
+- **Portal Discovery:** Portal uses Kendo UI Grid, not simple HTML tables
+- **Kendo Grid Support:** Updated selectors for grid, pagination, and pager info
+- See `docs/KENDO_GRID_FIXES.md` for detailed implementation notes
 
 ## Setup and Development
 
@@ -128,18 +139,43 @@ PYTHONPATH=$(pwd) venv/bin/python -c "from scraper.vpn_manager import is_vpn_con
 PYTHONPATH=$(pwd) venv/bin/python scraper/captcha_solver.py
 ```
 
-### Running the Scraper
+### VPN Setup
 
-**Note:** Portal parsing not yet implemented. Framework is ready.
+**REQUIRED:** VPN must be running before scraping.
 
 ```bash
-# Example command (once parsing implemented)
+# Start VPN (from ~/frootvpn directory)
+cd ~/frootvpn
+sudo openvpn --config "United States - Virginia.ovpn" --auth-user-pass auth.txt --daemon --log /tmp/openvpn.log
+
+# Verify VPN is connected
+curl ifconfig.me  # Should show 74.115.214.142 (not baseline 136.61.20.173)
+
+# Stop VPN
+sudo killall openvpn
+```
+
+### Running the Scraper
+
+**Prerequisites:**
+1. VPN connected (see above)
+2. PostgreSQL running: `sudo service postgresql start`
+3. CapSolver API key in `.env`
+
+```bash
+# Test with small limit
 PYTHONPATH=$(pwd) venv/bin/python scraper/initial_scrape.py \
   --county wake \
   --start 2024-01-01 \
   --end 2024-01-31 \
   --test \
-  --limit 10
+  --limit 1
+
+# Full scrape (after testing)
+PYTHONPATH=$(pwd) venv/bin/python scraper/initial_scrape.py \
+  --county wake \
+  --start 2024-01-01 \
+  --end 2024-12-31
 ```
 
 ## Architecture Overview
@@ -165,8 +201,10 @@ PYTHONPATH=$(pwd) venv/bin/python scraper/initial_scrape.py \
 - `database/models.py` - SQLAlchemy ORM models
 - `scraper/initial_scrape.py` - Main scraper script
 - `scraper/vpn_manager.py` - VPN verification
-- `scraper/captcha_solver.py` - reCAPTCHA solving
-- `scraper/page_parser.py` - HTML parsing (needs implementation)
+- `scraper/captcha_solver.py` - reCAPTCHA solving (CapSolver API)
+- `scraper/page_parser.py` - Kendo UI Grid HTML parsing
+- `scraper/portal_interactions.py` - Form filling and navigation
+- `scraper/portal_selectors.py` - CSS selectors for portal elements
 
 ## Configuration
 
@@ -183,12 +221,21 @@ Target counties: Chatham (180), Durham (310), Harnett (420), Lee (520), Orange (
 ## Important Notes
 
 - **Always use PYTHONPATH:** Required for module imports
-- **VPN must be on:** Scraper will exit if VPN not detected
+- **VPN must be on:** Scraper will exit if VPN not detected (baseline IP: 136.61.20.173, VPN IP: 74.115.214.142)
 - **PostgreSQL must be running:** `sudo service postgresql start`
-- **Portal parsing incomplete:** Placeholders in `page_parser.py` need actual HTML selectors
+- **Portal uses Kendo UI:** Grid, dropdowns, and pagination all use Kendo components
+- **Headless mode issues:** Use `headless=False` for development due to aggressive CAPTCHA detection
+
+## Known Issues
+
+1. **Kendo dropdown timeouts:** Status and case type dropdowns timing out after 10s (county works via JS fallback)
+2. **CAPTCHA solving delays:** CapSolver API can be slow, adjust timeouts if needed
+3. **Browser detection:** Automated browsers trigger image CAPTCHAs instead of checkbox
 
 ## Documentation
 
+- `docs/KENDO_GRID_FIXES.md` - Kendo UI implementation details (Nov 24, 2025)
+- `docs/SESSION_SUMMARY.md` - Previous session summary
 - `docs/SETUP.md` - Detailed setup instructions
 - `docs/plans/2025-11-24-nc-foreclosures-architecture-design.md` - Full architecture
 - `docs/plans/2025-11-24-phase1-foundation-implementation.md` - Phase 1 plan
