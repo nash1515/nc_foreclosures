@@ -1,0 +1,11 @@
+NC Courts Portal - Element Analysis
+============================================================
+
+URL: https://portal-nc.tylertech.cloud/Portal/Home/Dashboard/29
+Page Title: Smart Search - Portal
+
+Found Elements:
+  Search input: input[type="text"]
+  Submit button: input[type="submit"]
+  Select/dropdown: .dropdown
+  Advanced filter: a:has-text("Advanced")
