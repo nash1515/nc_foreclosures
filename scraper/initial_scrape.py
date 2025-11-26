@@ -26,6 +26,20 @@ from common.logger import setup_logger
 logger = setup_logger(__name__)
 
 
+class TruncatedResultsError(Exception):
+    """Raised when search results are truncated by the portal.
+
+    This happens when the portal hits a result limit and shows a warning like:
+    "The search returned XXX cases, but could have returned more.
+     Please narrow the search by entering more precise criteria."
+
+    The solution is to narrow the date range:
+    - quarterly -> bi-monthly
+    - bi-monthly -> monthly
+    """
+    pass
+
+
 class InitialScraper:
     """Initial scraper for NC Courts Portal."""
 
@@ -78,7 +92,9 @@ class InitialScraper:
             # Step 3: Launch browser and scrape
             with sync_playwright() as p:
                 browser = p.chromium.launch(headless=False)  # headless=False for development
-                page = browser.new_page()
+                # Create a context so we can open new tabs for case details
+                context = browser.new_context()
+                page = context.new_page()
 
                 try:
                     result = self._scrape_cases(page)
@@ -94,6 +110,7 @@ class InitialScraper:
                     raise
 
                 finally:
+                    context.close()
                     browser.close()
 
         finally:
@@ -139,6 +156,9 @@ class InitialScraper:
         """
         Main scraping logic.
 
+        Uses a two-tab approach: search results in main tab, case details in new tab.
+        This preserves pagination state while processing cases.
+
         Args:
             page: Playwright page object
 
@@ -157,10 +177,12 @@ class InitialScraper:
         self._solve_captcha(page)
         # Note: _solve_captcha already clicks submit and waits for results
 
-        # Step 4: Check for errors
-        if self._check_for_too_many_results(page):
-            logger.error("Too many results error - need to reduce date range")
-            raise Exception("Too many results - implement date range splitting")
+        # Step 4: Check for truncated results (portal hit a limit)
+        if self._check_for_truncated_results(page):
+            raise TruncatedResultsError(
+                "Results were truncated - need to narrow date range "
+                "(quarterly -> bi-monthly -> monthly)"
+            )
 
         # Step 5: Extract total count for validation
         # Per startup doc: "Use this to validate that you scraped all of the cases for each search"
@@ -209,8 +231,9 @@ class InitialScraper:
                         'validation_message': f"Stopped early due to limit ({self.limit})"
                     }
 
-                # Process individual case
-                if self._process_case(page, case_info):
+                # Process individual case (opens in new tab, then closes it)
+                # This preserves search results page state for pagination
+                if self._process_case_in_new_tab(page, case_info):
                     cases_processed += 1
 
             # Check for next page
@@ -262,16 +285,110 @@ class InitialScraper:
         if not success:
             raise Exception("Failed to solve CAPTCHA and submit form")
 
-    def _check_for_too_many_results(self, page):
-        """Check if 'too many results' error is displayed."""
+    def _check_for_truncated_results(self, page):
+        """
+        Check if results were truncated (portal hit a limit).
+
+        The portal shows a red warning like:
+        "The search returned XXX cases, but could have returned more.
+         Please narrow the search by entering more precise criteria."
+
+        This means we need to narrow the date range (quarterly -> bi-monthly -> monthly).
+
+        Returns:
+            bool: True if results were truncated
+        """
         has_error, error_msg = check_for_error(page)
-        if has_error and error_msg and 'too many' in error_msg.lower():
-            return True
+        if has_error and error_msg:
+            # Check for truncation warning
+            if 'could have returned more' in error_msg.lower():
+                logger.warning(f"Results truncated: {error_msg}")
+                return True
+            # Also check legacy "too many" message
+            if 'too many' in error_msg.lower():
+                logger.warning(f"Too many results: {error_msg}")
+                return True
         return False
 
     def _go_to_next_page(self, page):
         """Navigate to next page of results."""
         return navigate_next_page(page)
+
+    def _process_case_in_new_tab(self, search_page, case_info):
+        """
+        Process a case in a new browser tab to preserve search results page state.
+
+        Args:
+            search_page: Playwright page object (search results - stays open)
+            case_info: Dict with case_number and case_url
+
+        Returns:
+            bool: True if case was processed and saved
+        """
+        case_number = case_info['case_number']
+        case_url = case_info.get('case_url')
+
+        logger.info(f"Processing case: {case_number}")
+        logger.debug(f"  Case URL: {case_url}")
+
+        if not case_url or case_url == '#':
+            logger.warning(f"  No valid URL for case {case_number}, skipping")
+            return False
+
+        # Open case detail in a new tab
+        context = search_page.context
+        detail_page = context.new_page()
+
+        try:
+            # Navigate to case detail
+            detail_page.goto(case_url, wait_until='networkidle')
+
+            # Wait for Angular ROA table to load (contains Case Type)
+            try:
+                detail_page.wait_for_selector('table.roa-caseinfo-info-rows', state='visible', timeout=30000)
+                logger.debug(f"  ROA table found, Angular loaded")
+            except Exception as e:
+                logger.warning(f"  ROA table not found after 30s: {e}")
+                # Try alternative wait
+                import time
+                time.sleep(3)
+
+            # Parse case detail
+            html_content = detail_page.content()
+            logger.debug(f"  Page title: {detail_page.title()}")
+            logger.debug(f"  HTML length: {len(html_content)}")
+
+            case_data = parse_case_detail(html_content)
+
+            # Check if foreclosure
+            if not is_foreclosure_case(case_data):
+                logger.info(f"  Not a foreclosure, skipping")
+                return False
+
+            logger.info(f"  ✓ Foreclosure case identified")
+
+            # Save to database
+            case_id = self._save_case(case_number, case_url, case_data)
+
+            # Download documents (if any)
+            if case_id:
+                try:
+                    doc_count = download_case_documents(
+                        page=detail_page,
+                        case_id=case_id,
+                        county=self.county,
+                        case_number=case_number
+                    )
+                    if doc_count > 0:
+                        logger.info(f"  ✓ Downloaded {doc_count} document(s)")
+                except Exception as e:
+                    logger.warning(f"  Document download failed: {e}")
+
+            return True
+
+        finally:
+            # Always close the detail tab to return to search results
+            detail_page.close()
 
     def _process_case(self, page, case_info):
         """

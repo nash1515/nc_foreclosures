@@ -15,7 +15,7 @@ import argparse
 import sys
 from datetime import datetime, date
 from dateutil.relativedelta import relativedelta
-from scraper.initial_scrape import InitialScraper
+from scraper.initial_scrape import InitialScraper, TruncatedResultsError
 from scraper.vpn_manager import verify_vpn_or_exit
 from common.logger import setup_logger
 from common.config import config
@@ -170,9 +170,22 @@ def run_scrape(county, start_date, end_date, dry_run=False):
             'too_many_results': False
         }
 
+    except TruncatedResultsError as e:
+        # Results were truncated - need to narrow date range
+        logger.warning(f"    Results truncated for {county} {start_str} to {end_str}: {e}")
+        return {
+            'success': False,
+            'cases_processed': 0,
+            'cases_found': 0,
+            'cases_reviewed': 0,
+            'validation_passed': False,
+            'too_many_results': True
+        }
+
     except Exception as e:
         error_msg = str(e).lower()
-        if 'too many results' in error_msg:
+        # Check for legacy "too many results" messages
+        if 'too many results' in error_msg or 'could have returned more' in error_msg:
             logger.warning(f"    Too many results for {county} {start_str} to {end_str}")
             return {
                 'success': False,
@@ -221,7 +234,8 @@ def scrape_county(county, year, dry_run=False):
         'total_cases_reviewed': 0,   # Cases we reviewed
         'total_cases_processed': 0,  # Foreclosure cases saved
         'fallbacks_used': 0,
-        'validation_failures': []    # Track any validation mismatches
+        'validation_failures': [],   # Track any validation mismatches
+        'failed_ranges': []          # Track ranges that failed (for retry)
     }
 
     for start_date, end_date in date_ranges:
@@ -263,6 +277,21 @@ def scrape_county(county, year, dry_run=False):
                             'expected': bi_result.get('cases_found', 0),
                             'reviewed': bi_result.get('cases_reviewed', 0)
                         })
+                else:
+                    # Bi-monthly fallback also failed
+                    results['failed_ranges'].append({
+                        'start_date': bi_start,
+                        'end_date': bi_end,
+                        'reason': 'bi-monthly fallback failed'
+                    })
+
+        else:
+            # Regular failure (CAPTCHA, network, etc.)
+            results['failed_ranges'].append({
+                'start_date': start_date,
+                'end_date': end_date,
+                'reason': 'scrape failed'
+            })
 
     return results
 
@@ -312,7 +341,7 @@ def main():
         result = scrape_county(county, args.year, args.dry_run)
         all_results.append(result)
 
-    # Print summary
+    # Print summary and collect failures for retry
     logger.info("\n" + "="*60)
     logger.info("BATCH SCRAPE SUMMARY")
     logger.info("="*60)
@@ -321,6 +350,7 @@ def main():
     total_reviewed = 0
     total_processed = 0
     all_validation_failures = []
+    all_failed_ranges = []  # Collect all failures for retry
 
     for result in all_results:
         logger.info(f"{result['county'].title()} County ({result['strategy']}):")
@@ -331,11 +361,22 @@ def main():
         logger.info(f"  Cases reviewed: {result['total_cases_reviewed']}")
         logger.info(f"  Foreclosures saved: {result['total_cases_processed']}")
 
+        # Failed ranges
+        if result['failed_ranges']:
+            logger.warning(f"  FAILED RANGES: {len(result['failed_ranges'])}")
+            for failed in result['failed_ranges']:
+                all_failed_ranges.append({
+                    'county': result['county'],
+                    'start_date': failed['start_date'],
+                    'end_date': failed['end_date'],
+                    'reason': failed['reason']
+                })
+
         # Validation status
         if result['validation_failures']:
             logger.warning(f"  VALIDATION FAILURES: {len(result['validation_failures'])}")
             all_validation_failures.extend(result['validation_failures'])
-        else:
+        elif not result['failed_ranges']:
             logger.info(f"  Validation: PASSED")
 
         total_found += result['total_cases_found']
@@ -349,8 +390,10 @@ def main():
     logger.info(f"  Foreclosure cases saved: {total_processed}")
 
     # Overall validation
-    if total_found == total_reviewed:
+    if total_found == total_reviewed and not all_failed_ranges:
         logger.info(f"  VALIDATION: PASSED (reviewed all {total_found} cases)")
+    elif all_failed_ranges:
+        logger.error(f"  VALIDATION: INCOMPLETE ({len(all_failed_ranges)} ranges failed)")
     else:
         logger.error(f"  VALIDATION: FAILED (expected {total_found}, reviewed {total_reviewed})")
 
@@ -360,7 +403,48 @@ def main():
         for failure in all_validation_failures:
             logger.warning(f"  {failure['range']}: expected {failure['expected']}, reviewed {failure['reviewed']}")
 
+    # Show failed ranges and retry
+    if all_failed_ranges and not args.dry_run:
+        logger.warning("-"*60)
+        logger.warning(f"FAILED RANGES ({len(all_failed_ranges)} total):")
+        for failed in all_failed_ranges:
+            logger.warning(f"  {failed['county'].title()}: {failed['start_date']} to {failed['end_date']} ({failed['reason']})")
+
+        # Retry failed ranges
+        logger.info("-"*60)
+        logger.info("RETRYING FAILED RANGES...")
+        retry_success = 0
+        retry_failed = []
+
+        for failed in all_failed_ranges:
+            logger.info(f"  Retrying {failed['county'].title()}: {failed['start_date']} to {failed['end_date']}")
+            retry_result = run_scrape(failed['county'], failed['start_date'], failed['end_date'], dry_run=False)
+
+            if retry_result['success']:
+                retry_success += 1
+                total_found += retry_result.get('cases_found', 0)
+                total_reviewed += retry_result.get('cases_reviewed', 0)
+                total_processed += retry_result.get('cases_processed', 0)
+                logger.info(f"    ✓ Retry succeeded: {retry_result.get('cases_processed', 0)} foreclosures saved")
+            else:
+                retry_failed.append(failed)
+                logger.error(f"    ✗ Retry failed")
+
+        logger.info("-"*60)
+        logger.info(f"RETRY SUMMARY: {retry_success}/{len(all_failed_ranges)} succeeded")
+
+        if retry_failed:
+            logger.error(f"STILL FAILING ({len(retry_failed)} ranges):")
+            for failed in retry_failed:
+                logger.error(f"  {failed['county'].title()}: {failed['start_date']} to {failed['end_date']}")
+
     logger.info("="*60)
+
+    # Final validation status
+    if not all_failed_ranges or (all_failed_ranges and retry_success == len(all_failed_ranges)):
+        logger.info("✓ SCRAPE COMPLETE - 100% VALIDATION")
+    else:
+        logger.warning(f"⚠ SCRAPE INCOMPLETE - {len(retry_failed) if 'retry_failed' in dir() else len(all_failed_ranges)} ranges still failing")
 
     # Run OCR if requested (and not a dry run)
     if args.run_ocr and not args.dry_run:

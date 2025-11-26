@@ -73,6 +73,7 @@ gh pr status
 **Phase 1 Foundation:** ✅ Complete (100%)
 **Phase 2 PDF & OCR:** ✅ Complete (100%)
 **Phase 2.5 Extraction:** ✅ Complete (100%)
+**Phase 3 Initial Scrape:** 🔄 In Progress (2020-2021 done, 2022-2025 pending)
 **Current Branch:** `feature/phase1-foundation`
 
 ### Completed Components
@@ -88,13 +89,47 @@ gh pr status
 - ✅ PDF downloading (Playwright-based)
 - ✅ OCR processing module (Tesseract + pdf2image)
 - ✅ Batch scrape script (quarterly/monthly strategy)
-- ✅ **NEW: Extraction module** (regex-based data parsing from OCR text)
-- ✅ **NEW: Classification module** (upcoming/upset_bid status)
+- ✅ Extraction module (regex-based data parsing from OCR text)
+- ✅ Classification module (upcoming/upset_bid status)
+- ✅ **NEW: Parallel batch scraper** (6 browsers simultaneously)
+- ✅ **NEW: Failure tracking system** (JSON-based retry capability)
+
+### Scrape Progress (as of Nov 25, 2025)
+
+| Year | Wake | Durham | Harnett | Lee | Orange | Chatham | Total |
+|------|------|--------|---------|-----|--------|---------|-------|
+| 2020 | 102 | 10 | 8 | 4 | 6 | SKIP | 130 |
+| 2021 | 61 | 8 | 7 | 6 | 1 | SKIP | 83 |
+| **Total** | **163** | **18** | **15** | **10** | **7** | **0** | **213** |
+
+**Note:** Chatham County temporarily skipped due to portal issues.
 
 ### Next Steps
-1. Run full initial scrape for all 6 counties
-2. Implement daily scrape functionality
-3. Implement enrichment module (Zillow, county records, tax values)
+1. ~~Run full initial scrape for all 6 counties~~ (2020-2021 done)
+2. Continue scraping 2022-2025
+3. Retry failed date ranges (see `data/scrape_failures/ALL_MISSING_TIMEFRAMES.md`)
+4. Investigate Chatham County portal issues
+5. Implement daily scrape functionality
+6. Implement enrichment module (Zillow, county records, tax values)
+
+### Recent Updates (Nov 25, 2025) - Session 6
+- **Parallel Batch Scraper:** New `scraper/parallel_batch_scrape.py`
+  - Runs all 6 counties simultaneously with ThreadPoolExecutor
+  - Each county gets its own browser instance
+  - Configurable worker count (default: 6)
+  - Automatic failure tracking to JSON files
+  - `--retry-failures` flag to retry only failed date ranges
+- **Failure Tracking System:**
+  - Failed ranges saved to `data/scrape_failures/failures_YYYY.json`
+  - Human-readable summary in `data/scrape_failures/ALL_MISSING_TIMEFRAMES.md`
+  - Retry commands documented for easy re-running
+- **Scrape Results:**
+  - 2020: 130 foreclosure cases (5 counties)
+  - 2021: 83 foreclosure cases (5 counties)
+  - Total: 213 foreclosures in database
+- **Chatham County Issue:** All searches fail - portal has issues with this county
+  - Temporarily excluded from scraping
+  - Will investigate and retry later
 
 ### Recent Updates (Nov 25, 2025) - Session 5
 - **Extraction Module:** New `extraction/` module for structured data extraction
@@ -281,9 +316,12 @@ Target counties: Chatham (180), Durham (310), Harnett (420), Lee (520), Orange (
 
 ## Known Issues
 
-1. **Kendo dropdown timeouts:** Status and case type dropdowns timing out after 10s (county works via JS fallback)
-2. **CAPTCHA solving delays:** CapSolver API can be slow, adjust timeouts if needed
-3. **Browser detection:** Automated browsers trigger image CAPTCHAs instead of checkbox
+1. **Chatham County Portal Issues:** All searches for Chatham County fail - even manual searches have problems. Temporarily excluded from scraping.
+2. **CAPTCHA failures with parallel scraping:** Running 6 browsers simultaneously increases CAPTCHA failure rate. Consider reducing to 3-4 workers.
+3. **Portal timeouts during peak hours:** Best to scrape during off-peak times (early morning or late night)
+4. **Kendo dropdown timeouts:** Status and case type dropdowns timing out after 10s (county works via JS fallback)
+5. **CAPTCHA solving delays:** CapSolver API can be slow, adjust timeouts if needed
+6. **Browser detection:** Automated browsers trigger image CAPTCHAs instead of checkbox
 
 ## Documentation
 

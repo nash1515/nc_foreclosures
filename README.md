@@ -100,17 +100,26 @@ nc_foreclosures/
 
 ## Development Status
 
-**Current Phase:** Phase 2.5 Data Extraction - ✅ Complete
+**Current Phase:** Initial Scrape - 🔄 In Progress
 
 **Completed:**
 - Phase 1: Foundation (database, VPN, CAPTCHA, scraper framework)
 - Phase 2: PDF downloading and OCR processing
 - Phase 2.5: Structured data extraction and case classification
+- Phase 3: Parallel batch scraper with failure tracking
+
+**Scrape Progress (as of Nov 25, 2025):**
+- 2020: 130 foreclosure cases scraped
+- 2021: 83 foreclosure cases scraped
+- Total: **213 foreclosures** in database across 5 counties
+- Note: Chatham County temporarily skipped due to portal issues
 
 **Next Steps:**
-1. Run full initial scrape for all 6 counties
-2. Implement daily scrape functionality
-3. Build enrichment module for external data (Zillow, county records)
+1. Continue scraping 2022-2025
+2. Retry failed date ranges
+3. Investigate Chatham County portal issues
+4. Implement daily scrape functionality
+5. Build enrichment module for external data (Zillow, county records)
 
 ## Technology Stack
 
