@@ -45,7 +45,9 @@ def test_capsolver_init():
 
     solver = CaptchaSolver()
     assert solver is not None, "Failed to initialize CapSolver"
-    assert solver.api_key is not None, "API key not set"
+    # API key is set globally on capsolver module, not on the instance
+    import capsolver
+    assert capsolver.api_key is not None, "API key not set"
 
     logger.info("✓ CapSolver initialized")
 
