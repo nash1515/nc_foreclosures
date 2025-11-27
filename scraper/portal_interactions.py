@@ -152,14 +152,51 @@ def solve_and_submit_captcha(page):
         page.click(SUBMIT_BUTTON, timeout=10000)
         logger.info("  Submit button clicked, waiting for results...")
 
-        # Wait for Kendo grid to initialize
-        logger.info("  Waiting for Kendo grid to load...")
-        page.wait_for_selector('#CasesGrid.k-grid', state='visible', timeout=60000)
-        logger.debug("    Grid container found")
+        # Wait for either: grid with results, grid with no-records message, or "no cases" text
+        # The portal shows "No cases match your search" when there are no results
+        logger.info("  Waiting for results or 'no cases' message...")
 
-        # Wait for actual data rows to appear
-        page.wait_for_selector('#CasesGrid tbody tr.k-master-row', state='visible', timeout=60000)
-        logger.debug("    Grid rows found")
+        # Poll for either condition - check every 2 seconds for up to 60 seconds
+        max_wait = 60
+        poll_interval = 2
+        waited = 0
+
+        while waited < max_wait:
+            page_text = page.content()
+
+            # Check for "no cases" message first
+            if "No cases match your search" in page_text:
+                logger.info("  ✓ Search completed - No cases match the search criteria")
+                return "no_results"
+
+            # Check if grid with data rows is present
+            try:
+                grid_row = page.locator('#CasesGrid tbody tr.k-master-row').first
+                if grid_row.is_visible(timeout=100):
+                    logger.debug("    Grid rows found")
+                    break
+            except:
+                pass
+
+            # Check for Kendo "no records" indicator
+            try:
+                no_records = page.locator('#CasesGrid .k-grid-norecords').first
+                if no_records.is_visible(timeout=100):
+                    logger.info("  ✓ Search completed - No cases match the search criteria (grid no-records)")
+                    return "no_results"
+            except:
+                pass
+
+            time.sleep(poll_interval)
+            waited += poll_interval
+
+        # Final check after loop
+        if waited >= max_wait:
+            page_text = page.content()
+            if "No cases match your search" in page_text:
+                logger.info("  ✓ Search completed - No cases match the search criteria")
+                return "no_results"
+            raise Exception(f"Timeout {max_wait}s waiting for search results")
 
         time.sleep(2)  # Give grid time to fully render
 

@@ -174,8 +174,18 @@ class InitialScraper:
 
         # Step 2: Solve CAPTCHA and submit (handled together in solve_and_submit_captcha)
         logger.info("Solving CAPTCHA...")
-        self._solve_captcha(page)
+        captcha_result = self._solve_captcha(page)
         # Note: _solve_captcha already clicks submit and waits for results
+
+        # Step 3: Handle "no results" case - not an error, just no cases for this search
+        if captcha_result == "no_results":
+            logger.info("No cases match the search criteria - this is not an error")
+            return {
+                'cases_processed': 0,
+                'cases_found': 0,
+                'pages_processed': 0,
+                'no_results': True
+            }
 
         # Step 4: Check for truncated results (portal hit a limit)
         if self._check_for_truncated_results(page):
@@ -280,10 +290,18 @@ class InitialScraper:
         )
 
     def _solve_captcha(self, page):
-        """Solve reCAPTCHA on the page."""
-        success = solve_and_submit_captcha(page)
-        if not success:
+        """
+        Solve reCAPTCHA on the page.
+
+        Returns:
+            str: "no_results" if search returned no cases, None otherwise
+        """
+        result = solve_and_submit_captcha(page)
+        if result == "no_results":
+            return "no_results"
+        if not result:
             raise Exception("Failed to solve CAPTCHA and submit form")
+        return None
 
     def _check_for_truncated_results(self, page):
         """
@@ -459,7 +477,14 @@ class InitialScraper:
         return True
 
     def _save_case(self, case_number, case_url, case_data):
-        """Save case and all related data to database."""
+        """Save case and all related data to database.
+
+        Uses upsert logic: if case already exists, update it and skip adding
+        duplicate parties/events. If case is new, insert everything.
+
+        Returns:
+            tuple: (case_id, is_new) - the case ID and whether it was newly created
+        """
         with get_session() as session:
             # Parse file_date string to date object
             file_date = None
@@ -469,78 +494,95 @@ class InitialScraper:
                 except ValueError:
                     logger.warning(f"  Could not parse file_date: {case_data.get('file_date')}")
 
-            # Create case
-            case = Case(
-                case_number=case_number,
-                county_code=self.county_code,
-                county_name=self.county.title(),
-                case_type=case_data.get('case_type'),
-                case_status=case_data.get('case_status'),
-                file_date=file_date,
-                case_url=case_url,
-                style=case_data.get('style'),
-                property_address=case_data.get('property_address'),
-                last_scraped_at=datetime.now()
-            )
-            session.add(case)
-            session.flush()
+            # Check if case already exists
+            existing_case = session.query(Case).filter_by(case_number=case_number).first()
 
-            # Add parties
-            for party_data in case_data.get('parties', []):
-                party = Party(
-                    case_id=case.id,
-                    party_type=party_data.get('party_type'),
-                    party_name=party_data.get('party_name')
+            if existing_case:
+                # Update existing case
+                existing_case.case_type = case_data.get('case_type') or existing_case.case_type
+                existing_case.case_status = case_data.get('case_status') or existing_case.case_status
+                existing_case.case_url = case_url or existing_case.case_url
+                existing_case.style = case_data.get('style') or existing_case.style
+                existing_case.last_scraped_at = datetime.now()
+                case = existing_case
+                is_new = False
+                logger.info(f"    ↻ Updated existing case (ID: {case.id})")
+            else:
+                # Create new case
+                case = Case(
+                    case_number=case_number,
+                    county_code=self.county_code,
+                    county_name=self.county.title(),
+                    case_type=case_data.get('case_type'),
+                    case_status=case_data.get('case_status'),
+                    file_date=file_date,
+                    case_url=case_url,
+                    style=case_data.get('style'),
+                    property_address=case_data.get('property_address'),
+                    last_scraped_at=datetime.now()
                 )
-                session.add(party)
+                session.add(case)
+                session.flush()
+                is_new = True
 
-            # Add events
-            for event_data in case_data.get('events', []):
-                # Parse event_date
-                event_date = None
-                if event_data.get('event_date'):
-                    try:
-                        event_date = datetime.strptime(event_data['event_date'], '%m/%d/%Y').date()
-                    except ValueError:
-                        pass
+            # Only add parties/events/hearings for NEW cases (avoid duplicates)
+            if is_new:
+                # Add parties
+                for party_data in case_data.get('parties', []):
+                    party = Party(
+                        case_id=case.id,
+                        party_type=party_data.get('party_type'),
+                        party_name=party_data.get('party_name')
+                    )
+                    session.add(party)
 
-                # Parse hearing_date if present
-                hearing_date = None
-                if event_data.get('hearing_date'):
-                    try:
-                        hearing_date = datetime.strptime(event_data['hearing_date'], '%m/%d/%Y %H:%M')
-                    except ValueError:
-                        pass
+                # Add events
+                for event_data in case_data.get('events', []):
+                    # Parse event_date
+                    event_date = None
+                    if event_data.get('event_date'):
+                        try:
+                            event_date = datetime.strptime(event_data['event_date'], '%m/%d/%Y').date()
+                        except ValueError:
+                            pass
 
-                event = CaseEvent(
-                    case_id=case.id,
-                    event_date=event_date,
-                    event_type=event_data.get('event_type'),
-                    event_description=event_data.get('event_description'),
-                    filed_by=event_data.get('filed_by'),
-                    filed_against=event_data.get('filed_against'),
-                    hearing_date=hearing_date,
-                    document_url=event_data.get('document_url')
-                )
-                session.add(event)
+                    # Parse hearing_date if present
+                    hearing_date = None
+                    if event_data.get('hearing_date'):
+                        try:
+                            hearing_date = datetime.strptime(event_data['hearing_date'], '%m/%d/%Y %H:%M')
+                        except ValueError:
+                            pass
 
-            # Add hearings
-            for hearing_data in case_data.get('hearings', []):
-                # Parse hearing_date
-                hearing_date = None
-                if hearing_data.get('hearing_date'):
-                    try:
-                        hearing_date = datetime.strptime(hearing_data['hearing_date'], '%m/%d/%Y').date()
-                    except ValueError:
-                        pass
+                    event = CaseEvent(
+                        case_id=case.id,
+                        event_date=event_date,
+                        event_type=event_data.get('event_type'),
+                        event_description=event_data.get('event_description'),
+                        filed_by=event_data.get('filed_by'),
+                        filed_against=event_data.get('filed_against'),
+                        hearing_date=hearing_date,
+                        document_url=event_data.get('document_url')
+                    )
+                    session.add(event)
 
-                hearing = Hearing(
-                    case_id=case.id,
-                    hearing_date=hearing_date,
-                    hearing_time=hearing_data.get('hearing_time'),
-                    hearing_type=hearing_data.get('hearing_type')
-                )
-                session.add(hearing)
+                # Add hearings
+                for hearing_data in case_data.get('hearings', []):
+                    # Parse hearing_date
+                    hearing_date = None
+                    if hearing_data.get('hearing_date'):
+                        try:
+                            hearing_date = datetime.strptime(hearing_data['hearing_date'], '%m/%d/%Y').date()
+                        except ValueError:
+                            pass
+
+                    hearing = Hearing(
+                        case_id=case.id,
+                        hearing_date=hearing_date,
+                        hearing_time=hearing_data.get('hearing_time'),
+                        hearing_type=hearing_data.get('hearing_type')
+                    )
+                    session.add(hearing)
 
             session.commit()
 
@@ -548,8 +590,11 @@ class InitialScraper:
             party_count = len(case_data.get('parties', []))
             event_count = len(case_data.get('events', []))
             hearing_count = len(case_data.get('hearings', []))
-            logger.info(f"  Saved to database (ID: {case.id}) - "
-                       f"{party_count} parties, {event_count} events, {hearing_count} hearings")
+            if is_new:
+                logger.info(f"  Saved to database (ID: {case.id}) - "
+                           f"{party_count} parties, {event_count} events, {hearing_count} hearings")
+            else:
+                logger.debug(f"  Case already in database (ID: {case.id}), updated metadata")
 
             return case.id
 

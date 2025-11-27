@@ -73,7 +73,7 @@ gh pr status
 **Phase 1 Foundation:** ✅ Complete (100%)
 **Phase 2 PDF & OCR:** ✅ Complete (100%)
 **Phase 2.5 Extraction:** ✅ Complete (100%)
-**Phase 3 Initial Scrape:** 🔄 In Progress (2020-2021 done, 2022-2025 pending)
+**Initial Scrape (2020-2025):** ✅ Complete + Retries Done
 **Current Branch:** `feature/phase1-foundation`
 
 ### Completed Components
@@ -94,25 +94,66 @@ gh pr status
 - ✅ **NEW: Parallel batch scraper** (6 browsers simultaneously)
 - ✅ **NEW: Failure tracking system** (JSON-based retry capability)
 
-### Scrape Progress (as of Nov 25, 2025)
+### Scrape Progress (as of Nov 27, 2025 - ALL COUNTIES COMPLETE)
 
-| Year | Wake | Durham | Harnett | Lee | Orange | Chatham | Total |
-|------|------|--------|---------|-----|--------|---------|-------|
-| 2020 | 102 | 10 | 8 | 4 | 6 | SKIP | 130 |
-| 2021 | 61 | 8 | 7 | 6 | 1 | SKIP | 83 |
-| **Total** | **163** | **18** | **15** | **10** | **7** | **0** | **213** |
+| Year | Wake (910) | Durham (310) | Harnett (420) | Lee (520) | Orange (670) | Chatham (180) | Total |
+|------|------------|--------------|---------------|-----------|--------------|---------------|-------|
+| 2020 | 102 | 10 | 8 | 4 | 6 | 0 | 130 |
+| 2021 | 61 | 8 | 7 | 6 | 1 | 0 | 83 |
+| 2022 | 92 | 27 | 12 | 19 | 4 | 1 | 155 |
+| 2023 | 113 | 34 | 29 | 22 | 16 | 1 | 215 |
+| 2024 | 173 | 76 | 20 | 13 | 17 | 11 | 310 |
+| 2025 | 489 | 142 | 105 | 34 | 30 | 23 | 823 |
+| **Total** | **1,030** | **297** | **181** | **98** | **74** | **36** | **1,716** |
 
-**Note:** Chatham County temporarily skipped due to portal issues.
+**Notes:**
+- All 6 counties fully scraped (2020-2025)
+- Chatham County issue resolved - was temporary portal bug
+- See `data/scrape_failures/ALL_MISSING_TIMEFRAMES.md` for full details
 
 ### Next Steps
-1. ~~Run full initial scrape for all 6 counties~~ (2020-2021 done)
-2. Continue scraping 2022-2025
-3. Retry failed date ranges (see `data/scrape_failures/ALL_MISSING_TIMEFRAMES.md`)
-4. Investigate Chatham County portal issues
-5. Implement daily scrape functionality
-6. Implement enrichment module (Zillow, county records, tax values)
+1. ~~Run full initial scrape for all 6 counties (2020-2025)~~ ✅ Complete
+2. ~~Retry failed date ranges~~ ✅ Complete
+3. ~~Investigate Chatham County portal issues~~ ✅ Resolved (was temporary portal bug)
+4. Implement daily scrape functionality
+5. Implement enrichment module (Zillow, county records, tax values)
 
-### Recent Updates (Nov 25, 2025) - Session 6
+### Recent Updates (Nov 27, 2025) - Session 8 (Chatham County Resolution)
+- **Chatham County Issue RESOLVED:** Was temporary portal bug, now fixed
+  - User reported: checking Chatham checkbox showed different county results
+  - Investigation: Used Playwright MCP to manually test portal
+  - Finding: Portal now returns correct Chatham County results
+- **Chatham County Scrape Completed:**
+  - 2020: 0 foreclosures (COVID moratorium)
+  - 2021: 0 foreclosures
+  - 2022: 1 foreclosure
+  - 2023: 1 foreclosure
+  - 2024: 11 foreclosures (re-scraped with full year)
+  - 2025: 23 foreclosures (previously scraped)
+  - **Total Chatham: 36 foreclosures**
+- **Final Database Total:** 1,716 foreclosures (+49 from Chatham session)
+- **All 6 counties fully scraped for 2020-2025**
+
+### Recent Updates (Nov 27, 2025) - Session 7 (Retry Session)
+- **Retry Session Completed:** All 7 failed date ranges retried successfully
+  - Orange Q4 2020: NO CASES (COVID moratorium period)
+  - Lee Q3 2020: NO CASES (COVID moratorium period)
+  - Orange Q3 2021: NO CASES
+  - Wake May 2021: 0 foreclosures (19 other SP cases)
+  - Orange Q3 2024: +7 foreclosures added
+  - Wake Nov 2025: +55 foreclosures added
+  - Wake Dec 2025: NO CASES (future month)
+- **Code Improvements Made:**
+  1. **"No cases match your search" detection** (`scraper/portal_interactions.py`)
+     - Added polling loop to detect empty results message
+     - Returns `"no_results"` instead of timing out
+  2. **Upsert logic for duplicate cases** (`scraper/initial_scrape.py`)
+     - Check for existing cases before INSERT
+     - Update existing cases instead of failing on duplicates
+     - Only add parties/events/hearings for NEW cases
+- **Final Database Total:** 1,667 foreclosures (+62 from retry session)
+
+### Previous Updates (Nov 25, 2025) - Session 6
 - **Parallel Batch Scraper:** New `scraper/parallel_batch_scrape.py`
   - Runs all 6 counties simultaneously with ThreadPoolExecutor
   - Each county gets its own browser instance
@@ -123,10 +164,6 @@ gh pr status
   - Failed ranges saved to `data/scrape_failures/failures_YYYY.json`
   - Human-readable summary in `data/scrape_failures/ALL_MISSING_TIMEFRAMES.md`
   - Retry commands documented for easy re-running
-- **Scrape Results:**
-  - 2020: 130 foreclosure cases (5 counties)
-  - 2021: 83 foreclosure cases (5 counties)
-  - Total: 213 foreclosures in database
 - **Chatham County Issue:** All searches fail - portal has issues with this county
   - Temporarily excluded from scraping
   - Will investigate and retry later
@@ -316,7 +353,7 @@ Target counties: Chatham (180), Durham (310), Harnett (420), Lee (520), Orange (
 
 ## Known Issues
 
-1. **Chatham County Portal Issues:** All searches for Chatham County fail - even manual searches have problems. Temporarily excluded from scraping.
+1. ~~**Chatham County Portal Issues:**~~ **RESOLVED** - Was temporary portal bug, now fixed. All 6 counties fully scraped.
 2. **CAPTCHA failures with parallel scraping:** Running 6 browsers simultaneously increases CAPTCHA failure rate. Consider reducing to 3-4 workers.
 3. **Portal timeouts during peak hours:** Best to scrape during off-peak times (early morning or late night)
 4. **Kendo dropdown timeouts:** Status and case type dropdowns timing out after 10s (county works via JS fallback)
