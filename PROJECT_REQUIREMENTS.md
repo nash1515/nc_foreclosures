@@ -123,20 +123,60 @@ Once foreclosure is identified:
 - Schema design for case data
 - Integration with other modules (analysis, web app)
 
-### 3. Analysis Module
-AI-powered analysis providing:
-- Current status
-- Case number
-- Property address
-- Current bid price
-- Next upset bid minimum
-- Next bid by date
+### 3. Enrichment Module
+**Purpose**: Fetch external data to enrich case records (no AI needed - pure web scraping/API calls)
+
+**Data Sources**:
+- **Zillow**: Property link, estimated value, property details
+- **County Property Records**: Tax assessment value, property info link, ownership history
+- **PropWire**: Additional property data and valuation
+
+**Output Fields**:
 - Zillow link
 - County property information link
 - Tax assessment value
-- Other important information
+- Estimated property value
+- Property details (beds, baths, sqft, etc.)
 
-### 4. Web Application Module
+### 4. AI Analysis Module
+**Purpose**: Deep analysis of case files using AI to understand complex foreclosure situations
+
+*Updated 11/27/2025*
+
+**Key Analysis Tasks**:
+
+a. **Upset Bid Date Verification**
+   - Confirm date of last upset bid against current data
+   - Cross-reference with case events and documents
+
+b. **Case Summary & Status**
+   - Provide summary overview of each case
+   - Current status with context and history
+
+c. **Financial Analysis**
+   - Find potential amount owed on property:
+     - Current mortgages (amount, interest rate, date)
+     - Outstanding taxes
+     - Other liens
+   - Extract from PDF documents in case files
+
+d. **Complex Status Detection**
+   - Identify cases with long/interrupted foreclosure processes
+   - Detect bankruptcy filings, motions, and other slowdowns
+   - Only classify as "upset_bid" if CURRENTLY in upset bid phase (not previously)
+   - Learn which document types indicate foreclosure delays:
+     - Bankruptcy filings
+     - Motion to Dismiss
+     - Stay orders
+     - Continuances
+
+e. **Extensible Framework**
+   - Design for adding new analysis types
+   - Flexible prompts and extraction patterns
+
+**AI Provider**: Claude API (or similar LLM)
+
+### 5. Web Application Module
 **Features**:
 - Multi-user access (user + business partner)
 - View foreclosure data
@@ -144,8 +184,9 @@ AI-powered analysis providing:
 - Add notes to cases
 - Apply custom logic
 
-### 5. Potential Additional Modules
-- **OCR Module**: Extract text from downloaded PDFs and send to database
+### 6. Potential Additional Modules
+- **OCR Module**: Extract text from downloaded PDFs and send to database *(Completed - now part of Phase 2)*
+- **Daily Scrape Automation**: Scheduled scraping for new cases and updates
 
 ## Development Notes
 
