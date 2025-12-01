@@ -306,10 +306,19 @@ PYTHONPATH=$(pwd) venv/bin/python scraper/captcha_solver.py
 
 **REQUIRED:** VPN must be running before scraping.
 
+**CLAUDE CODE NOTE:** Do NOT run `sudo openvpn` directly - it can hang waiting for password input. Use the helper scripts instead:
+
 ```bash
-# Start VPN (from ~/frootvpn directory)
-# Can use any US server (Virginia, California, Florida, Georgia, Illinois, New York)
-# or other nearby servers with good latency
+# Check VPN status (safe, no sudo)
+./scripts/vpn_status.sh
+
+# Start VPN (handles password and waits for connection)
+# NOTE: Requires sudo password - user may need to run manually if it hangs
+./scripts/vpn_start.sh [virginia|california|florida|georgia|illinois|newyork]
+```
+
+**Manual VPN start (if scripts don't work):**
+```bash
 cd ~/frootvpn
 sudo openvpn --config "United States - Virginia.ovpn" --auth-user-pass auth.txt --daemon --log /tmp/openvpn.log
 
