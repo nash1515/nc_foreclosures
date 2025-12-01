@@ -121,7 +121,15 @@ gh pr status
 7. Implement enrichment module (Zillow, county records, tax values)
 8. Analyze `closed_sold` cases (91) for bidding strategy patterns by county
 
-### Recent Updates (Dec 1, 2025) - Session 9 Continued (Classification Cleanup)
+### Recent Updates (Dec 1, 2025) - Session 10 (VPN Fix)
+- **WSL2 VPN Routing Issue FIXED:**
+  - **Problem**: VPN connection caused Claude Code to hang for 30+ minutes
+  - **Root Cause**: OpenVPN's `redirect-gateway` broke WSL2's virtual network bridge to Windows
+  - **Solution**: Modified all 6 US FrootVPN config files with routing directives
+  - **Result**: VPN and Claude API now work simultaneously
+  - See "WSL2 VPN Routing Fix" section for full details
+
+### Previous Updates (Dec 1, 2025) - Session 9 Continued (Classification Cleanup)
 - **New Classification States Added:**
   - `upcoming`: Foreclosure initiated, no sale yet (1,460 cases)
   - `upset_bid`: Sale occurred, within 10-day upset period (0 currently)
@@ -314,7 +322,7 @@ PYTHONPATH=$(pwd) venv/bin/python scraper/captcha_solver.py
 
 # Start VPN (handles password and waits for connection)
 # NOTE: Requires sudo password - user may need to run manually if it hangs
-./scripts/vpn_start.sh [virginia|california|florida|georgia|illinois|newyork]
+./scripts/vpn_start.sh [virginia|california|florida|georgia|illinois|newyork|random-east]
 ```
 
 **Manual VPN start (if scripts don't work):**
@@ -336,6 +344,36 @@ curl ifconfig.me  # Should NOT show baseline IP (136.61.20.173)
 # Stop VPN
 sudo killall openvpn
 ```
+
+### WSL2 VPN Routing Fix (Dec 1, 2025)
+
+**Problem:** When OpenVPN runs inside WSL2, connecting to VPN would cause Claude Code to hang for 30+ minutes. The Windows host worked fine - only WSL2 was affected.
+
+**Root Cause:** OpenVPN's `redirect-gateway` directive replaces the default route, breaking WSL2's virtual network bridge to Windows. All traffic tries to go through the VPN tunnel but the return path is broken, and DNS also fails because WSL2 uses Windows for DNS resolution.
+
+**Fix Applied:** Added routing directives to all 6 US FrootVPN config files (`~/frootvpn/United States - *.ovpn`):
+
+```
+# WSL2 routing fix - preserve local network connectivity
+# Route Anthropic API through original gateway (prevents Claude Code hanging)
+# This MUST come before redirect-gateway takes effect
+route 160.79.104.0 255.255.255.0 net_gateway
+# Keep WSL2 internal network using original gateway
+route 172.16.0.0 255.240.0.0 net_gateway
+```
+
+**What these directives do:**
+- `route 160.79.104.0 255.255.255.0 net_gateway` - Route Anthropic API (160.79.104.x) through original Windows NAT gateway
+- `route 172.16.0.0 255.240.0.0 net_gateway` - Keep WSL2 internal network using original gateway
+
+**How it works:** FrootVPN uses redirect-gateway which routes ALL traffic through VPN. Our fix adds explicit routes for Anthropic API and WSL2 internal networks BEFORE the redirect takes effect. These more-specific routes take priority over the VPN default route.
+
+**Result:**
+- NC Courts scraping traffic → VPN tunnel (shows VPN IP 74.115.214.x)
+- Claude Code API traffic → Original Windows NAT (no timeout!)
+- WSL2 internal traffic → Original Windows NAT
+
+**Rollback:** If the fix causes issues, remove the 4 lines above from the `.ovpn` files.
 
 ### Running the Scraper
 
@@ -416,6 +454,7 @@ Target counties: Chatham (180), Durham (310), Harnett (420), Lee (520), Orange (
 4. **Kendo dropdown timeouts:** Status and case type dropdowns timing out after 10s (county works via JS fallback)
 5. **CAPTCHA solving delays:** CapSolver API can be slow, adjust timeouts if needed
 6. **Browser detection:** Automated browsers trigger image CAPTCHAs instead of checkbox
+7. ~~**WSL2 VPN Routing Issue:**~~ **FIXED (Dec 1, 2025)** - VPN connection broke WSL2 network, causing 30+ minute hangs. Fixed by modifying OpenVPN configs. See "WSL2 VPN Routing Fix" section above.
 
 ## Documentation
 
