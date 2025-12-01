@@ -356,24 +356,27 @@ sudo killall openvpn
 ```
 # WSL2 routing fix - preserve local network connectivity
 # Route Anthropic API through original gateway (prevents Claude Code hanging)
-# This MUST come before redirect-gateway takes effect
 route 160.79.104.0 255.255.255.0 net_gateway
+# Route GitHub through original gateway (for git push)
+route 140.82.112.0 255.255.255.0 net_gateway
 # Keep WSL2 internal network using original gateway
 route 172.16.0.0 255.240.0.0 net_gateway
 ```
 
 **What these directives do:**
 - `route 160.79.104.0 255.255.255.0 net_gateway` - Route Anthropic API (160.79.104.x) through original Windows NAT gateway
+- `route 140.82.112.0 255.255.255.0 net_gateway` - Route GitHub (140.82.112.x) through original gateway
 - `route 172.16.0.0 255.240.0.0 net_gateway` - Keep WSL2 internal network using original gateway
 
-**How it works:** FrootVPN uses redirect-gateway which routes ALL traffic through VPN. Our fix adds explicit routes for Anthropic API and WSL2 internal networks BEFORE the redirect takes effect. These more-specific routes take priority over the VPN default route.
+**How it works:** FrootVPN uses redirect-gateway which routes ALL traffic through VPN. Our fix adds explicit routes for Anthropic API, GitHub, and WSL2 internal networks BEFORE the redirect takes effect. These more-specific routes take priority over the VPN default route.
 
 **Result:**
 - NC Courts scraping traffic → VPN tunnel (shows VPN IP 74.115.214.x)
 - Claude Code API traffic → Original Windows NAT (no timeout!)
+- GitHub push/pull → Original Windows NAT (no timeout!)
 - WSL2 internal traffic → Original Windows NAT
 
-**Rollback:** If the fix causes issues, remove the 4 lines above from the `.ovpn` files.
+**Rollback:** If the fix causes issues, remove the 5 lines above from the `.ovpn` files.
 
 ### Running the Scraper
 
