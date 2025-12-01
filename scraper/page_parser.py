@@ -126,15 +126,21 @@ def parse_search_results(page_content):
             if len(cells) >= 3:
                 status = cells[2].get_text(strip=True)
 
+            # Extract location from fourth column (County)
+            location = None
+            if len(cells) >= 4:
+                location = cells[3].get_text(strip=True)
+
             if case_number:
                 case_info = {
                     'case_number': case_number,
                     'case_url': case_url if case_url and case_url != '#' else None,
                     'style': style,
-                    'status': status
+                    'status': status,
+                    'location': location  # County name from search results
                 }
                 cases.append(case_info)
-                logger.debug(f"Found case: {case_number}, style: {style}")
+                logger.debug(f"Found case: {case_number}, style: {style}, location: {location}")
 
     logger.info(f"Parsed {len(cases)} cases from search results")
 

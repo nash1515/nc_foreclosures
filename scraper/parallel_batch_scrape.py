@@ -24,6 +24,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from scraper.initial_scrape import InitialScraper, TruncatedResultsError
+from scraper.date_range_scrape import run_date_range_scrape as run_single_search_scrape
 from scraper.vpn_manager import verify_vpn_or_exit
 from common.logger import setup_logger
 from common.config import config
@@ -559,16 +560,17 @@ def main():
 
     # Run appropriate mode
     if date_range_mode:
-        # Date range mode - same range for all counties
-        results, failures = run_date_range_scrape(
+        # Date range mode - single search for all counties (1 CAPTCHA)
+        logger.info("Using single-search mode for date range (1 CAPTCHA for all counties)")
+        result = run_single_search_scrape(
             start_date,
             end_date,
             counties,
-            args.dry_run,
-            max_workers=min(args.workers, len(counties))
+            dry_run=args.dry_run
         )
-        identifier = f"{start_date}_to_{end_date}"
-        success = print_summary(results, failures, identifier)
+        success = result['status'] in ('success', 'dry_run')
+        if not success:
+            logger.error(f"Date range scrape failed: {result.get('error')}")
     elif args.retry_failures:
         # Year mode - retry failures
         success = retry_failures(args.year, args.dry_run)

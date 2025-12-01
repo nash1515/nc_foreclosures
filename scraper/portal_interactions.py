@@ -16,7 +16,7 @@ def click_advanced_filter(page):
     logger.info("  ✓ Advanced filters opened")
 
 
-def fill_search_form(page, county_name, start_date, end_date, search_text):
+def fill_search_form(page, county_names, start_date, end_date, search_text):
     """
     Fill out the search form.
 
@@ -28,11 +28,15 @@ def fill_search_form(page, county_name, start_date, end_date, search_text):
 
     Args:
         page: Playwright page object
-        county_name: County name (e.g., 'Wake County')
+        county_names: County name (str) or list of county names (e.g., 'Wake County' or ['Wake County', 'Durham County'])
         start_date: Start date object
         end_date: End date object
         search_text: Search text (e.g., '24SP*')
     """
+    # Normalize county_names to a list
+    if isinstance(county_names, str):
+        county_names = [county_names]
+
     logger.info("Filling search form...")
 
     # 1. Fill search criteria (required field at top)
@@ -46,13 +50,10 @@ def fill_search_form(page, county_name, start_date, end_date, search_text):
     page.keyboard.press('Escape')
     logger.info(f"  Date range: {start_date.strftime('%m/%d/%Y')} to {end_date.strftime('%m/%d/%Y')}")
 
-    # 3. Select county using CHECKBOXES (not dropdown!)
-    logger.info(f"  Selecting county: {county_name}")
+    # 3. Select counties using CHECKBOXES (not dropdown!)
+    logger.info(f"  Selecting {len(county_names)} counties: {', '.join(county_names)}")
     try:
         # First, uncheck "All Locations" checkbox
-        all_locations = page.locator(f'input[type="checkbox"]').filter(has_text="").locator('xpath=..').filter(has_text="All Locations").locator('input')
-
-        # Use JavaScript to find and uncheck "All Locations"
         page.evaluate('''
             const checkboxes = document.querySelectorAll('input[type="checkbox"]');
             for (const cb of checkboxes) {
@@ -68,21 +69,22 @@ def fill_search_form(page, county_name, start_date, end_date, search_text):
         time.sleep(0.3)
         logger.info("    ✓ Unchecked 'All Locations'")
 
-        # Now check the specific county checkbox
-        page.evaluate(f'''
-            const checkboxes = document.querySelectorAll('input[type="checkbox"]');
-            for (const cb of checkboxes) {{
-                const label = cb.closest('label') || cb.parentElement;
-                if (label && label.textContent.includes('{county_name}')) {{
-                    if (!cb.checked) {{
-                        cb.click();
+        # Now check each county checkbox
+        for county_name in county_names:
+            page.evaluate(f'''
+                const checkboxes = document.querySelectorAll('input[type="checkbox"]');
+                for (const cb of checkboxes) {{
+                    const label = cb.closest('label') || cb.parentElement;
+                    if (label && label.textContent.includes('{county_name}')) {{
+                        if (!cb.checked) {{
+                            cb.click();
+                        }}
+                        break;
                     }}
-                    break;
                 }}
-            }}
-        ''')
-        time.sleep(0.3)
-        logger.info(f"    ✓ Selected {county_name}")
+            ''')
+            time.sleep(0.2)
+        logger.info(f"    ✓ Selected {len(county_names)} counties")
     except Exception as e:
         logger.error(f"  County selection failed: {e}")
 
