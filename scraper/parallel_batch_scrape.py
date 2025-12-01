@@ -4,9 +4,14 @@ Each county gets its own browser instance running in parallel.
 Failures are tracked to a JSON file for later retry.
 
 Usage:
+    # Year mode (uses monthly/quarterly splits per county)
     python scraper/parallel_batch_scrape.py --year 2024
     python scraper/parallel_batch_scrape.py --year 2024 --retry-failures
     python scraper/parallel_batch_scrape.py --year 2024 --dry-run
+
+    # Date range mode (same range for all counties - good for catch-up/daily scrapes)
+    python scraper/parallel_batch_scrape.py --start 2025-11-27 --end 2025-11-30
+    python scraper/parallel_batch_scrape.py --start 2025-11-27 --end 2025-11-30 --county wake
 """
 
 import argparse
@@ -255,7 +260,7 @@ def scrape_county_ranges(county, year, dry_run=False):
 
 
 def run_parallel_scrape(year, counties, dry_run=False, max_workers=6):
-    """Run scrapes for multiple counties in parallel."""
+    """Run scrapes for multiple counties in parallel (year mode with monthly/quarterly splits)."""
 
     logger.info("="*60)
     logger.info("PARALLEL BATCH SCRAPE")
@@ -296,8 +301,87 @@ def run_parallel_scrape(year, counties, dry_run=False, max_workers=6):
     return all_results, all_failures
 
 
-def print_summary(results, failures, year):
-    """Print summary and save failures."""
+def run_date_range_scrape(start_date, end_date, counties, dry_run=False, max_workers=6):
+    """Run scrapes for multiple counties in parallel (date range mode - same range for all)."""
+
+    logger.info("="*60)
+    logger.info("PARALLEL DATE RANGE SCRAPE")
+    logger.info("="*60)
+    logger.info(f"Date range: {start_date} to {end_date}")
+    logger.info(f"Counties: {', '.join(counties)}")
+    logger.info(f"Parallel workers: {max_workers}")
+    logger.info(f"Dry run: {dry_run}")
+    logger.info("="*60)
+
+    all_results = []
+    all_failures = []
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        # Submit all county scrapes with the same date range
+        future_to_county = {
+            executor.submit(run_single_scrape, county, start_date, end_date, dry_run): county
+            for county in counties
+        }
+
+        # Collect results as they complete
+        for future in as_completed(future_to_county):
+            county = future_to_county[future]
+            try:
+                result = future.result()
+                # Convert single scrape result to county result format
+                county_result = {
+                    'county': county,
+                    'strategy': 'date_range',
+                    'total_ranges': 1,
+                    'succeeded': 1 if result['success'] else 0,
+                    'cases_found': result['cases_found'],
+                    'cases_processed': result['cases_processed'],
+                    'failures': []
+                }
+                if not result['success']:
+                    county_result['failures'].append({
+                        'county': county,
+                        'start_date': str(start_date),
+                        'end_date': str(end_date),
+                        'error': result['error'],
+                        'timestamp': datetime.now().isoformat()
+                    })
+                    all_failures.append(county_result['failures'][0])
+                all_results.append(county_result)
+
+                status = "✓" if result['success'] else "✗"
+                logger.info(f"[{county.upper()}] {status} {result['cases_processed']} foreclosures")
+
+            except Exception as e:
+                logger.error(f"[{county.upper()}] Thread failed: {e}")
+                all_failures.append({
+                    'county': county,
+                    'start_date': str(start_date),
+                    'end_date': str(end_date),
+                    'error': f'Thread failed: {str(e)}',
+                    'timestamp': datetime.now().isoformat()
+                })
+                all_results.append({
+                    'county': county,
+                    'strategy': 'date_range',
+                    'total_ranges': 1,
+                    'succeeded': 0,
+                    'cases_found': 0,
+                    'cases_processed': 0,
+                    'failures': [all_failures[-1]]
+                })
+
+    return all_results, all_failures
+
+
+def print_summary(results, failures, identifier):
+    """Print summary and save failures.
+
+    Args:
+        results: List of county result dicts
+        failures: List of failure dicts
+        identifier: Year (int) or date range string for failure tracking
+    """
 
     logger.info("\n" + "="*60)
     logger.info("SCRAPE SUMMARY")
@@ -338,16 +422,20 @@ def print_summary(results, failures, year):
             logger.warning(f"  {f['county'].title()}: {f['start_date']} to {f['end_date']}")
             logger.warning(f"    Error: {f['error'][:80]}...")
 
-        # Save failures for retry
-        save_failures(year, failures)
-        logger.info(f"\nTo retry failures: python scraper/parallel_batch_scrape.py --year {year} --retry-failures")
+        # Save failures for retry (only for year mode)
+        if isinstance(identifier, int):
+            save_failures(identifier, failures)
+            logger.info(f"\nTo retry failures: python scraper/parallel_batch_scrape.py --year {identifier} --retry-failures")
+        else:
+            logger.info(f"\nTo retry: python scraper/parallel_batch_scrape.py --start {failures[0]['start_date']} --end {failures[0]['end_date']}")
     else:
         logger.info("-"*60)
         logger.info("✓ 100% VALIDATION - ALL RANGES COMPLETE")
-        # Clear any old failures file
-        failures_file = get_failures_file(year)
-        if failures_file.exists():
-            failures_file.unlink()
+        # Clear any old failures file (only for year mode)
+        if isinstance(identifier, int):
+            failures_file = get_failures_file(identifier)
+            if failures_file.exists():
+                failures_file.unlink()
 
     logger.info("="*60)
 
@@ -410,20 +498,48 @@ def retry_failures(year, dry_run=False):
 
 def main():
     parser = argparse.ArgumentParser(description='Parallel batch scrape for NC foreclosures')
-    parser.add_argument('--year', type=int, required=True, help='Year to scrape')
+
+    # Mode selection: either --year OR --start/--end
+    parser.add_argument('--year', type=int, help='Year to scrape (uses monthly/quarterly splits)')
+    parser.add_argument('--start', type=str, help='Start date YYYY-MM-DD (for date range mode)')
+    parser.add_argument('--end', type=str, help='End date YYYY-MM-DD (for date range mode)')
+
+    # Common options
     parser.add_argument('--county', type=str, help='Specific county (optional)')
     parser.add_argument('--dry-run', action='store_true', help='Show what would be done')
-    parser.add_argument('--retry-failures', action='store_true', help='Only retry failed ranges')
+    parser.add_argument('--retry-failures', action='store_true', help='Only retry failed ranges (year mode only)')
     parser.add_argument('--run-ocr', action='store_true', help='Run OCR after scrape')
     parser.add_argument('--workers', type=int, default=6, help='Number of parallel workers')
 
     args = parser.parse_args()
 
-    # Validate year
-    current_year = datetime.now().year
-    if args.year < 2020 or args.year > current_year:
-        logger.error(f"Invalid year: {args.year}")
-        sys.exit(1)
+    # Validate mode: either --year or --start/--end, not both, not neither
+    if args.year and (args.start or args.end):
+        parser.error('Cannot use --year with --start/--end. Choose one mode.')
+    if not args.year and not (args.start and args.end):
+        parser.error('Either --year or both --start and --end are required.')
+    if (args.start and not args.end) or (args.end and not args.start):
+        parser.error('Both --start and --end must be provided together.')
+
+    # Determine mode
+    date_range_mode = args.start and args.end
+
+    # Validate dates/year
+    if date_range_mode:
+        try:
+            start_date = datetime.strptime(args.start, '%Y-%m-%d').date()
+            end_date = datetime.strptime(args.end, '%Y-%m-%d').date()
+        except ValueError:
+            parser.error('Invalid date format. Use YYYY-MM-DD.')
+        if start_date > end_date:
+            parser.error('Start date must be before or equal to end date.')
+        if args.retry_failures:
+            parser.error('--retry-failures is only available in year mode.')
+    else:
+        current_year = datetime.now().year
+        if args.year < 2020 or args.year > current_year:
+            logger.error(f"Invalid year: {args.year}")
+            sys.exit(1)
 
     # Verify VPN
     if not args.dry_run:
@@ -442,9 +558,22 @@ def main():
         counties = list(COUNTIES.keys())
 
     # Run appropriate mode
-    if args.retry_failures:
+    if date_range_mode:
+        # Date range mode - same range for all counties
+        results, failures = run_date_range_scrape(
+            start_date,
+            end_date,
+            counties,
+            args.dry_run,
+            max_workers=min(args.workers, len(counties))
+        )
+        identifier = f"{start_date}_to_{end_date}"
+        success = print_summary(results, failures, identifier)
+    elif args.retry_failures:
+        # Year mode - retry failures
         success = retry_failures(args.year, args.dry_run)
     else:
+        # Year mode - full scrape with monthly/quarterly splits
         results, failures = run_parallel_scrape(
             args.year,
             counties,

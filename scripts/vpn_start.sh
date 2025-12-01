@@ -1,7 +1,7 @@
 #!/bin/bash
 # VPN Start Script - handles password input cleanly
 # Usage: ./scripts/vpn_start.sh [server]
-# Server options: virginia (default), california, florida, georgia, illinois, newyork
+# Server options: virginia (default), california, florida, georgia, illinois, newyork, random-east
 
 set -e
 
@@ -25,6 +25,14 @@ case "${1:-virginia}" in
     georgia)    CONFIG="United States - Georgia.ovpn" ;;
     illinois)   CONFIG="United States - Illinois.ovpn" ;;
     newyork)    CONFIG="United States - New York.ovpn" ;;
+    random-east)
+        # Randomly select from East Coast + Midwest servers
+        SERVERS=("United States - Virginia.ovpn" "United States - Florida.ovpn" \
+                 "United States - Georgia.ovpn" "United States - New York.ovpn" \
+                 "United States - Illinois.ovpn")
+        CONFIG="${SERVERS[$RANDOM % ${#SERVERS[@]}]}"
+        echo "Randomly selected: $CONFIG"
+        ;;
     *)          echo "Unknown server: $1"; exit 1 ;;
 esac
 
