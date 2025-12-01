@@ -115,10 +115,48 @@ gh pr status
 1. ~~Run full initial scrape for all 6 counties (2020-2025)~~ ✅ Complete
 2. ~~Retry failed date ranges~~ ✅ Complete
 3. ~~Investigate Chatham County portal issues~~ ✅ Resolved (was temporary portal bug)
-4. Implement daily scrape functionality
-5. Implement enrichment module (Zillow, county records, tax values)
+4. ~~Set up Claude API for AI analysis~~ ✅ Complete
+5. ~~Run classifier on unclassified cases~~ ✅ Complete (new states: blocked, closed_sold, closed_dismissed)
+6. Implement daily scrape functionality (include monitoring of `blocked` cases)
+7. Implement enrichment module (Zillow, county records, tax values)
+8. Analyze `closed_sold` cases (91) for bidding strategy patterns by county
 
-### Recent Updates (Nov 27, 2025) - Session 8 (Chatham County Resolution)
+### Recent Updates (Dec 1, 2025) - Session 9 Continued (Classification Cleanup)
+- **New Classification States Added:**
+  - `upcoming`: Foreclosure initiated, no sale yet (1,460 cases)
+  - `upset_bid`: Sale occurred, within 10-day upset period (0 currently)
+  - `blocked`: Bankruptcy/stay in effect - monitor for changes (107 cases)
+  - `closed_sold`: Sale completed, past upset period (91 cases) - valuable for bidding strategy analysis
+  - `closed_dismissed`: Case dismissed/terminated (49 cases)
+- **Classifier Improvements** (`extraction/classifier.py`):
+  - Added recognition for legacy event terminology (Petition, Cause of Action) for 2020-2022 cases
+  - Separate handling for bankruptcy (blocked) vs dismissal (closed_dismissed)
+  - Cases with Report of Sale past upset period now properly classified as `closed_sold`
+- **Data Cleanup Results:**
+  - Before: 248 NULL, 201 needs_review, confusing state
+  - After: Only 9 truly unclassified cases, clear categories
+- **Daily Scrape Reminder:** `blocked` cases (107) need monitoring for bankruptcy dismissal/stay lifted
+
+### Previous Updates (Nov 30, 2025) - Session 9 (AI Analysis Setup)
+- **Claude API Integration Complete:**
+  - Added `ANTHROPIC_API_KEY` to `.env` and `common/config.py`
+  - Fixed model IDs in `analysis/api_client.py` (haiku: `claude-3-5-haiku-20241022`)
+  - Tested successfully with haiku model (~$0.003 per small case, ~$0.02 for 18 docs)
+  - **Default model set to haiku** (cost-effective, good accuracy)
+- **AI Analysis Guardrails Added:**
+  - `run_analysis.py`: Refuses to analyze non-`upset_bid` cases with clear error message
+  - `case_analyzer.py`: Safety net prevents AI from overwriting `upcoming` or `closed` classifications
+  - AI can only refine `upset_bid` cases (confirm, change to pending, or flag for review)
+- **Classification Rules Added to AI Prompts** (`knowledge_base.py`):
+  - Clear rules: no Report of Sale = `upcoming`, within 10 days = `upset_bid`, etc.
+  - "Missing documents" does NOT mean "needs_review"
+- **Output Display Improved** (`run_analysis.py`):
+  - Now shows mortgage_info, tax_info, and estimated_total_liens
+- **Test Results:**
+  - Case 1098 (Lee County, upset_bid): 95% confidence, $121,209.85 bid, Nationstar Mortgage
+  - Case 1817 (Wake County, upcoming): Correctly rejected - "AI analysis only runs on upset_bid cases"
+
+### Previous Updates (Nov 27, 2025) - Session 8 (Chatham County Resolution)
 - **Chatham County Issue RESOLVED:** Was temporary portal bug, now fixed
   - User reported: checking Chatham checkbox showed different county results
   - Investigation: Used Playwright MCP to manually test portal
@@ -270,11 +308,21 @@ PYTHONPATH=$(pwd) venv/bin/python scraper/captcha_solver.py
 
 ```bash
 # Start VPN (from ~/frootvpn directory)
+# Can use any US server (Virginia, California, Florida, Georgia, Illinois, New York)
+# or other nearby servers with good latency
 cd ~/frootvpn
 sudo openvpn --config "United States - Virginia.ovpn" --auth-user-pass auth.txt --daemon --log /tmp/openvpn.log
 
+# Available US servers:
+# - United States - Virginia.ovpn
+# - United States - California.ovpn
+# - United States - Florida.ovpn
+# - United States - Georgia.ovpn
+# - United States - Illinois.ovpn
+# - United States - New York.ovpn
+
 # Verify VPN is connected
-curl ifconfig.me  # Should show 74.115.214.142 (not baseline 136.61.20.173)
+curl ifconfig.me  # Should NOT show baseline IP (136.61.20.173)
 
 # Stop VPN
 sudo killall openvpn
