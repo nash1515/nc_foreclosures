@@ -4,7 +4,7 @@
 
 BASELINE_IP="136.61.20.173"
 
-CURRENT_IP=$(curl -s --max-time 5 ifconfig.me 2>/dev/null)
+CURRENT_IP=$(timeout 5 curl -s --connect-timeout 3 --max-time 4 ifconfig.me 2>/dev/null)
 
 if [ -z "$CURRENT_IP" ]; then
     echo "ERROR: Could not get current IP"

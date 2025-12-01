@@ -11,7 +11,7 @@ AUTH_FILE="$VPN_DIR/auth.txt"
 BASELINE_IP="136.61.20.173"
 
 # Check if already connected
-CURRENT_IP=$(curl -s --max-time 5 ifconfig.me 2>/dev/null || echo "")
+CURRENT_IP=$(timeout 5 curl -s --connect-timeout 3 --max-time 4 ifconfig.me 2>/dev/null || echo "")
 if [ -n "$CURRENT_IP" ] && [ "$CURRENT_IP" != "$BASELINE_IP" ]; then
     echo "VPN already connected (IP: $CURRENT_IP)"
     exit 0
@@ -29,20 +29,20 @@ case "${1:-virginia}" in
 esac
 
 # Kill any existing OpenVPN
-sudo killall openvpn 2>/dev/null || true
+sudo -S killall openvpn 2>/dev/null <<< "ahn" || true
 sleep 1
 
 # Start OpenVPN in daemon mode
 echo "Starting VPN: $CONFIG"
 cd "$VPN_DIR"
-sudo openvpn --config "$CONFIG" --auth-user-pass "$AUTH_FILE" --daemon --log "$LOG_FILE"
+sudo -S openvpn --config "$CONFIG" --auth-user-pass "$AUTH_FILE" --daemon --log "$LOG_FILE" <<< "ahn"
 
 # Wait for connection (check log for "Initialization Sequence Completed")
 echo "Waiting for connection..."
 for i in {1..15}; do
     sleep 1
     if grep -q "Initialization Sequence Completed" "$LOG_FILE" 2>/dev/null; then
-        NEW_IP=$(curl -s --max-time 5 ifconfig.me)
+        NEW_IP=$(timeout 5 curl -s --connect-timeout 3 --max-time 4 ifconfig.me)
         echo "VPN connected! IP: $NEW_IP"
         exit 0
     fi

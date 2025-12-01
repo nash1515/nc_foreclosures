@@ -1,6 +1,5 @@
 """VPN verification and management before scraping."""
 
-import requests
 import sys
 import subprocess
 import time
@@ -14,16 +13,31 @@ def get_current_ip():
     """
     Get current public IP address.
 
+    Uses subprocess with hard timeout to prevent hanging when network is in flux.
+
     Returns:
         str: Current public IP address or None if failed
     """
     try:
-        response = requests.get('https://ifconfig.me', timeout=10)
-        response.raise_for_status()
-        ip = response.text.strip()
-        logger.debug(f"Current IP: {ip}")
-        return ip
-    except requests.RequestException as e:
+        # Use subprocess with timeout command for reliable termination
+        # The system 'timeout' command will SIGTERM curl if it hangs
+        result = subprocess.run(
+            ['timeout', '5', 'curl', '-s', '--connect-timeout', '3', '--max-time', '4', 'ifconfig.me'],
+            capture_output=True,
+            text=True,
+            timeout=10  # Python-level backup timeout
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            ip = result.stdout.strip()
+            logger.debug(f"Current IP: {ip}")
+            return ip
+        else:
+            logger.error(f"Failed to get current IP: curl returned {result.returncode}")
+            return None
+    except subprocess.TimeoutExpired:
+        logger.error("Failed to get current IP: subprocess timeout")
+        return None
+    except Exception as e:
         logger.error(f"Failed to get current IP: {e}")
         return None
 
