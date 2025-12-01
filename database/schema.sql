@@ -108,3 +108,57 @@ CREATE INDEX IF NOT EXISTS idx_user_notes_case_id ON user_notes(case_id);
 
 -- Full-text search index on OCR text
 CREATE INDEX IF NOT EXISTS idx_documents_ocr_text ON documents USING GIN(to_tsvector('english', COALESCE(ocr_text, '')));
+
+-- AI Analysis table - Stores Claude analysis results
+CREATE TABLE IF NOT EXISTS ai_analysis (
+    id SERIAL PRIMARY KEY,
+    case_id INTEGER NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
+    analyzed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    model_version VARCHAR(50),
+
+    -- Status verification
+    is_valid_upset_bid BOOLEAN,
+    status_blockers JSONB,
+    recommended_classification VARCHAR(50),
+
+    -- Deadline info
+    upset_deadline DATE,
+    deadline_extended BOOLEAN,
+    extension_count INTEGER DEFAULT 0,
+
+    -- Financial summary
+    current_bid_amount DECIMAL(12,2),
+    estimated_total_liens DECIMAL(12,2),
+    mortgage_info JSONB,
+    tax_info JSONB,
+
+    -- Research flags
+    research_flags JSONB,
+
+    -- Document usefulness tracking
+    document_evaluations JSONB,
+
+    -- Free-form
+    analysis_notes TEXT,
+    confidence_score DECIMAL(3,2),
+    discrepancies JSONB,
+
+    -- Audit
+    tokens_used INTEGER,
+    cost_estimate DECIMAL(8,4)
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_analysis_case_id ON ai_analysis(case_id);
+CREATE INDEX IF NOT EXISTS idx_ai_analysis_analyzed_at ON ai_analysis(analyzed_at);
+
+-- Document Skip Patterns table - Learned patterns for skipping useless documents
+CREATE TABLE IF NOT EXISTS document_skip_patterns (
+    id SERIAL PRIMARY KEY,
+    pattern VARCHAR(255) NOT NULL UNIQUE,
+    pattern_type VARCHAR(50) DEFAULT 'learned',
+    skip_count INTEGER DEFAULT 0,
+    added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    added_by VARCHAR(50)
+);
+
+CREATE INDEX IF NOT EXISTS idx_document_skip_patterns_pattern ON document_skip_patterns(pattern);
