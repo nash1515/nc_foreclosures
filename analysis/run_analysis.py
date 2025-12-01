@@ -163,8 +163,8 @@ def main():
     parser.add_argument(
         "--model",
         choices=["opus", "sonnet", "haiku"],
-        default="opus",
-        help="Claude model to use (default: opus)"
+        default="haiku",
+        help="Claude model to use (default: haiku)"
     )
     parser.add_argument(
         "--dry-run",
