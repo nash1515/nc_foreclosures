@@ -117,11 +117,81 @@ gh pr status
 3. ~~Investigate Chatham County portal issues~~ ✅ Resolved (was temporary portal bug)
 4. ~~Set up Claude API for AI analysis~~ ✅ Complete
 5. ~~Run classifier on unclassified cases~~ ✅ Complete (new states: blocked, closed_sold, closed_dismissed)
-6. Implement daily scrape functionality (include monitoring of `blocked` cases)
-7. Implement enrichment module (Zillow, county records, tax values)
-8. Analyze `closed_sold` cases (91) for bidding strategy patterns by county
+6. ~~Implement daily scrape functionality (include monitoring of `blocked` cases)~~ ✅ Complete
+7. ~~Re-scrape NULL event types~~ ✅ Complete (5,461 events added, 112 classifications updated)
+8. Implement enrichment module (Zillow, county records, tax values)
+9. Analyze `closed_sold` cases (183) for bidding strategy patterns by county
+10. Set up cron job for automated daily scraping (see "Running the Daily Scraper" section)
 
-### Recent Updates (Dec 1, 2025) - Session 10 (VPN Fix)
+### Recent Updates (Dec 2, 2025) - Session 12 (Database Completion & Retry Logic)
+- **Retry Logic Added to Case Monitor:**
+  - `scraper/case_monitor.py` now has exponential backoff retry (default: 3 retries)
+  - Clears Angular SPA state between page loads (`about:blank` navigation)
+  - Validates page content before accepting (checks for `roa-label` class)
+  - CLI options: `--max-retries`, `--retry-delay`, `--headless`
+  - Default: visible browser (`headless=False`) for reliability
+- **New Re-scrape Script:**
+  - `scraper/rescrape_null_events.py` - Re-scrapes cases with NULL event types
+  - Uses case_monitor with retry logic for 100% success rate
+- **Portal URL Format Migration:**
+  - Tyler Technologies changed URL format: `?id=...` → `#/.../anon/portalembed`
+  - All 1,716 case URLs migrated to new format
+- **Database Completion Results:**
+  - Re-scraped 845 cases with NULL event types
+  - Added 5,461 new events with proper types
+  - 112 classifications updated based on new event data
+  - **0 errors** after retry logic applied
+- **Classification Changes Detected:**
+  - 75 `upcoming` → `closed_sold` (sales completed)
+  - 17 `blocked` → `closed_sold` (bankruptcy resolved)
+  - 13 `upcoming` → `upset_bid` (new opportunities!)
+  - 5 `upcoming` → `closed_dismissed`
+  - 2 other changes
+- **Current Database Status (Dec 2, 2025):**
+  - **1,372** upcoming
+  - **183** closed_sold (up from 91)
+  - **77** blocked (down from 107)
+  - **53** closed_dismissed
+  - **22** upset_bid (up from 7 - 3x more opportunities!)
+  - **9** unclassified
+
+### Previous Updates (Dec 1, 2025) - Session 11 (Daily Scraping System)
+- **Daily Scraping System Implemented:**
+  - `scraper/daily_scrape.py` - Main orchestrator with 3 tasks:
+    1. **New Case Search**: Search portal for cases filed yesterday (uses CAPTCHA)
+    2. **Case Monitoring**: Check existing cases via direct URLs (NO CAPTCHA)
+    3. **Stale Reclassification**: Update time-based classifications
+  - `scraper/case_monitor.py` - Monitors `upcoming`, `blocked`, and `upset_bid` cases
+    - Detects new events (sale reports, upset bids, bankruptcies)
+    - Updates `current_bid_amount` and `minimum_next_bid` for new upset bids
+    - Triggers reclassification based on detected events
+  - `scripts/run_daily.sh` - Wrapper script for cron/manual execution
+- **Database Updates:**
+  - Added `minimum_next_bid` column (NC law: current_bid * 1.05)
+  - Extraction module now auto-calculates minimum_next_bid
+- **VPN Requirement Removed:**
+  - VPN verification removed from all scrapers
+  - Can be re-enabled if IP banning becomes an issue
+- **Classification Monitoring:**
+  - `upcoming` → Check for sale events → `upset_bid`
+  - `blocked` → Check for bankruptcy dismissal → `upcoming`
+  - `upset_bid` → Check for new bids (extend deadline) or blocking events → `blocked`
+  - `upset_bid` → Deadline passes with no new bids → `closed_sold`
+- **Critical Fixes During Testing:**
+  - Angular pages don't load in headless mode - set `headless=False` as default
+  - Added classification preservation logic - prevents losing existing classifications when classifier returns None
+  - Many database events have empty `event_type` fields from initial scrape
+- **First Daily Run Results (Dec 1, 2025):**
+  - New case search: 0 cases (Nov 30 was Saturday)
+  - Case monitoring (50 case sample): Working correctly, 0 new events detected
+  - Full monitoring run estimate: ~1.5 hours for 1,567 cases
+
+### TODO for Next Session
+1. **Set up cron job** for automated daily scraping
+2. **Enrichment module** - Add property data from Zillow, county tax records
+3. **Bidding strategy analysis** - Analyze 183 closed_sold cases for patterns
+
+### Previous Updates (Dec 1, 2025) - Session 10 (VPN Fix)
 - **WSL2 VPN Routing Issue FIXED:**
   - **Problem**: VPN connection caused Claude Code to hang for 30+ minutes
   - **Root Cause**: OpenVPN's `redirect-gateway` broke WSL2's virtual network bridge to Windows
@@ -381,9 +451,9 @@ route 172.16.0.0 255.240.0.0 net_gateway
 ### Running the Scraper
 
 **Prerequisites:**
-1. VPN connected (see above)
-2. PostgreSQL running: `sudo service postgresql start`
-3. CapSolver API key in `.env`
+1. PostgreSQL running: `sudo service postgresql start`
+2. CapSolver API key in `.env`
+3. VPN is **optional** (removed as of Dec 1, 2025) - re-enable if IP banning occurs
 
 ```bash
 # Test with small limit
@@ -399,6 +469,48 @@ PYTHONPATH=$(pwd) venv/bin/python scraper/initial_scrape.py \
   --county wake \
   --start 2024-01-01 \
   --end 2024-12-31
+```
+
+### Running the Daily Scraper
+
+The daily scraper has two main functions:
+1. **New Case Search**: Search portal for cases filed yesterday (requires CAPTCHA)
+2. **Case Monitoring**: Check existing cases via direct URLs (NO CAPTCHA needed)
+
+```bash
+# Run all daily tasks (search new + monitor existing)
+./scripts/run_daily.sh
+
+# Search for new cases only (skip monitoring)
+./scripts/run_daily.sh --search-only
+
+# Monitor existing cases only (skip new case search)
+./scripts/run_daily.sh --monitor-only
+
+# Dry run - see what would be done
+./scripts/run_daily.sh --dry-run
+
+# Search for specific date (default: yesterday)
+PYTHONPATH=$(pwd) venv/bin/python scraper/daily_scrape.py --date 2025-11-30
+```
+
+**Cron Setup (run at 6 AM daily):**
+```bash
+0 6 * * * /home/ahn/projects/nc_foreclosures/scripts/run_daily.sh >> /home/ahn/projects/nc_foreclosures/logs/cron.log 2>&1
+```
+
+**Monitoring Only (no CAPTCHA needed):**
+```bash
+# Monitor specific classification
+PYTHONPATH=$(pwd) venv/bin/python scraper/case_monitor.py --classification upcoming
+PYTHONPATH=$(pwd) venv/bin/python scraper/case_monitor.py --classification blocked
+PYTHONPATH=$(pwd) venv/bin/python scraper/case_monitor.py --classification upset_bid
+
+# Limit number of cases to check
+PYTHONPATH=$(pwd) venv/bin/python scraper/case_monitor.py --limit 10
+
+# Dry run
+PYTHONPATH=$(pwd) venv/bin/python scraper/case_monitor.py --dry-run
 ```
 
 ## Architecture Overview
@@ -423,11 +535,14 @@ PYTHONPATH=$(pwd) venv/bin/python scraper/initial_scrape.py \
 - `database/schema.sql` - PostgreSQL schema
 - `database/models.py` - SQLAlchemy ORM models
 - `scraper/initial_scrape.py` - Main scraper script
-- `scraper/vpn_manager.py` - VPN verification
+- `scraper/daily_scrape.py` - Daily scrape orchestrator
+- `scraper/case_monitor.py` - Case monitoring module (direct URL access)
+- `scraper/vpn_manager.py` - VPN verification (currently disabled)
 - `scraper/captcha_solver.py` - reCAPTCHA solving (CapSolver API)
 - `scraper/page_parser.py` - Kendo UI Grid HTML parsing
 - `scraper/portal_interactions.py` - Form filling and navigation
 - `scraper/portal_selectors.py` - CSS selectors for portal elements
+- `scripts/run_daily.sh` - Daily scrape wrapper for cron/manual execution
 
 ## Configuration
 

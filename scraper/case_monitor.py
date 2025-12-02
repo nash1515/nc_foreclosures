@@ -40,16 +40,26 @@ logger = setup_logger(__name__)
 class CaseMonitor:
     """Monitor existing cases for status updates."""
 
-    def __init__(self, max_workers: int = 8, headless: bool = True):
+    def __init__(
+        self,
+        max_workers: int = 8,
+        headless: bool = False,
+        max_retries: int = 3,
+        retry_delay: float = 2.0
+    ):
         """
         Initialize case monitor.
 
         Args:
             max_workers: Number of parallel browser instances
-            headless: Run browsers in headless mode (uses new headless mode for Angular compatibility)
+            headless: Run browsers in headless mode (default: False for reliability)
+            max_retries: Maximum retry attempts per case for transient failures
+            retry_delay: Initial delay between retries (doubles with each retry)
         """
         self.max_workers = max_workers
         self.headless = headless
+        self.max_retries = max_retries
+        self.retry_delay = retry_delay
         self.results = {
             'cases_checked': 0,
             'events_added': 0,
@@ -95,35 +105,75 @@ class CaseMonitor:
                 for e in events
             ]
 
-    def fetch_case_page(self, page: Page, case_url: str) -> Optional[str]:
+    def fetch_case_page(
+        self,
+        page: Page,
+        case_url: str,
+        max_retries: int = 3,
+        retry_delay: float = 2.0
+    ) -> Optional[str]:
         """
-        Fetch a case detail page.
+        Fetch a case detail page with retry logic for transient failures.
 
         Args:
             page: Playwright page object
             case_url: URL to fetch
+            max_retries: Maximum number of retry attempts (default: 3)
+            retry_delay: Initial delay between retries in seconds (doubles each retry)
 
         Returns:
             HTML content or None on error
         """
-        try:
-            page.goto(case_url, wait_until='networkidle', timeout=30000)
+        import time
 
-            # Wait for Angular app to fully load - the ROA app takes time to render
-            # First wait for any content indicator
+        last_error = None
+        delay = retry_delay
+
+        for attempt in range(max_retries + 1):
             try:
-                # Wait for the Case Information heading which appears after Angular loads
-                page.wait_for_selector('h1:has-text("Case Information")', state='visible', timeout=10000)
-            except:
-                # Fallback: wait a fixed time for Angular to render
-                import time
-                time.sleep(5)
+                if attempt > 0:
+                    logger.info(f"  Retry attempt {attempt}/{max_retries} after {delay:.1f}s delay...")
+                    time.sleep(delay)
+                    delay *= 2  # Exponential backoff
 
-            return page.content()
+                # Clear Angular SPA state by navigating to about:blank first
+                # This ensures we get fresh content, not cached from previous case
+                page.goto('about:blank', wait_until='domcontentloaded', timeout=5000)
 
-        except Exception as e:
-            logger.error(f"Error fetching {case_url}: {e}")
-            return None
+                # Navigate to the case page
+                page.goto(case_url, wait_until='networkidle', timeout=30000)
+
+                # Wait for Angular app to fully load - the ROA app takes time to render
+                # The roa-caseinfo-info-rows table contains case type/status and appears when data loads
+                try:
+                    page.wait_for_selector('table.roa-caseinfo-info-rows', state='visible', timeout=15000)
+                except:
+                    # Fallback: wait a fixed time for Angular to render
+                    time.sleep(5)
+
+                content = page.content()
+
+                # Verify we got valid content with actual case data
+                # Must have the ROA table which indicates Angular has rendered the case data
+                # Note: HTML uses &nbsp; so we check for "roa-label" class which appears in rendered data
+                if (content and
+                    len(content) > 1000 and
+                    'roa-caseinfo-info-rows' in content and
+                    'roa-label' in content):
+                    if attempt > 0:
+                        logger.info(f"  Successfully fetched on retry {attempt}")
+                    return content
+                else:
+                    raise Exception("Page loaded but case data table not found (Angular not fully rendered)")
+
+            except Exception as e:
+                last_error = e
+                if attempt < max_retries:
+                    logger.warning(f"  Attempt {attempt + 1} failed: {e}")
+                else:
+                    logger.error(f"  All {max_retries + 1} attempts failed for {case_url}: {e}")
+
+        return None
 
     def detect_new_events(
         self,
@@ -302,10 +352,15 @@ class CaseMonitor:
         try:
             logger.info(f"Checking case {case.case_number} ({case.classification})")
 
-            # Fetch the case page
-            html = self.fetch_case_page(page, case.case_url)
+            # Fetch the case page with retry logic
+            html = self.fetch_case_page(
+                page,
+                case.case_url,
+                max_retries=self.max_retries,
+                retry_delay=self.retry_delay
+            )
             if not html:
-                result['error'] = "Failed to fetch page"
+                result['error'] = f"Failed to fetch page after {self.max_retries + 1} attempts"
                 return result
 
             # Parse the page
@@ -495,7 +550,10 @@ def monitor_cases(
     classification: str = None,
     limit: int = None,
     dry_run: bool = False,
-    max_workers: int = 8
+    max_workers: int = 8,
+    headless: bool = False,
+    max_retries: int = 3,
+    retry_delay: float = 2.0
 ) -> Dict:
     """
     Convenience function to monitor cases.
@@ -504,12 +562,20 @@ def monitor_cases(
         classification: Filter by classification (upcoming, blocked, upset_bid)
         limit: Maximum number of cases to check
         dry_run: If True, just count cases
-        max_workers: Number of parallel browsers (default: 4)
+        max_workers: Number of parallel browsers (default: 8)
+        headless: Run in headless mode (default: False for reliability)
+        max_retries: Max retry attempts per case (default: 3)
+        retry_delay: Initial delay between retries in seconds (default: 2.0)
 
     Returns:
         Dict with monitoring results
     """
-    monitor = CaseMonitor(max_workers=max_workers)
+    monitor = CaseMonitor(
+        max_workers=max_workers,
+        headless=headless,
+        max_retries=max_retries,
+        retry_delay=retry_delay
+    )
 
     with get_session() as session:
         query = session.query(Case).filter(
@@ -543,6 +609,12 @@ if __name__ == '__main__':
                        help='Maximum number of cases to check')
     parser.add_argument('--workers', '-w', type=int, default=8,
                        help='Number of parallel browsers (default: 8)')
+    parser.add_argument('--headless', action='store_true',
+                       help='Run in headless mode (default: visible browser)')
+    parser.add_argument('--max-retries', type=int, default=3,
+                       help='Max retry attempts per case (default: 3)')
+    parser.add_argument('--retry-delay', type=float, default=2.0,
+                       help='Initial delay between retries in seconds (default: 2.0)')
     parser.add_argument('--dry-run', action='store_true',
                        help='Show what would be done without processing')
 
@@ -552,7 +624,10 @@ if __name__ == '__main__':
         classification=args.classification,
         limit=args.limit,
         dry_run=args.dry_run,
-        max_workers=args.workers
+        max_workers=args.workers,
+        headless=args.headless,
+        max_retries=args.max_retries,
+        retry_delay=args.retry_delay
     )
 
     print(f"\nResults: {results}")

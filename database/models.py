@@ -24,8 +24,9 @@ class Case(Base):
     style = Column(Text)  # Full case title (e.g., "FORECLOSURE (HOA) - Mark Dwayne Ellis")
     property_address = Column(Text)
     current_bid_amount = Column(DECIMAL(12, 2))
+    minimum_next_bid = Column(DECIMAL(12, 2))  # NC law: current_bid * 1.05
     next_bid_deadline = Column(TIMESTAMP)
-    classification = Column(String(20))  # null, 'upcoming', 'upset_bid'
+    classification = Column(String(20))  # 'upcoming', 'upset_bid', 'blocked', 'closed_sold', 'closed_dismissed'
     sale_date = Column(Date)
     legal_description = Column(Text)
     trustee_name = Column(String(255))

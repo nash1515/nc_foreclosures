@@ -379,7 +379,10 @@ def update_case_with_extracted_data(case_id: int) -> bool:
 
             if extracted['current_bid_amount'] and not case.current_bid_amount:
                 case.current_bid_amount = extracted['current_bid_amount']
+                # NC law: minimum next bid is 5% higher than current bid
+                case.minimum_next_bid = round(extracted['current_bid_amount'] * Decimal('1.05'), 2)
                 updated_fields.append('current_bid_amount')
+                updated_fields.append('minimum_next_bid')
 
             if extracted['next_bid_deadline'] and not case.next_bid_deadline:
                 case.next_bid_deadline = extracted['next_bid_deadline']

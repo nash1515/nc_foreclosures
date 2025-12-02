@@ -14,8 +14,9 @@ CREATE TABLE IF NOT EXISTS cases (
     style TEXT,  -- Full case title (e.g., "FORECLOSURE (HOA) - Mark Dwayne Ellis")
     property_address TEXT,
     current_bid_amount DECIMAL(12, 2),
+    minimum_next_bid DECIMAL(12, 2),  -- NC law: current_bid * 1.05
     next_bid_deadline TIMESTAMP,
-    classification VARCHAR(20), -- null, 'upcoming', 'upset_bid'
+    classification VARCHAR(20), -- 'upcoming', 'upset_bid', 'blocked', 'closed_sold', 'closed_dismissed'
     sale_date DATE,
     legal_description TEXT,
     trustee_name VARCHAR(255),

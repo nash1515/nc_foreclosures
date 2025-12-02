@@ -16,7 +16,8 @@ import sys
 from datetime import datetime, date
 from dateutil.relativedelta import relativedelta
 from scraper.initial_scrape import InitialScraper, TruncatedResultsError
-from scraper.vpn_manager import verify_vpn_or_exit
+# VPN requirement removed - uncomment if IP banning becomes an issue
+# from scraper.vpn_manager import verify_vpn_or_exit
 from common.logger import setup_logger
 from common.config import config
 
@@ -328,12 +329,12 @@ def main():
     logger.info(f"Dry run: {args.dry_run}")
     logger.info("="*60)
 
-    # Verify VPN before starting (unless dry run)
-    if not args.dry_run:
-        verify_vpn_or_exit(
-            auto_start=config.VPN_AUTO_START,
-            sudo_password=config.SUDO_PASSWORD
-        )
+    # VPN verification removed - uncomment if IP banning becomes an issue
+    # if not args.dry_run:
+    #     verify_vpn_or_exit(
+    #         auto_start=config.VPN_AUTO_START,
+    #         sudo_password=config.SUDO_PASSWORD
+    #     )
 
     # Scrape each county
     all_results = []

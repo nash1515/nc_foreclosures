@@ -6,7 +6,8 @@ from datetime import datetime, timedelta
 from playwright.sync_api import sync_playwright
 from database.connection import get_session
 from database.models import Case, CaseEvent, Party, Hearing, ScrapeLog
-from scraper.vpn_manager import verify_vpn_or_exit
+# VPN requirement removed - uncomment if IP banning becomes an issue
+# from scraper.vpn_manager import verify_vpn_or_exit
 from scraper.captcha_solver import solve_recaptcha
 from scraper.page_parser import is_foreclosure_case, parse_search_results, parse_case_detail, extract_total_count
 from scraper.portal_interactions import (
@@ -75,13 +76,13 @@ class InitialScraper:
         logger.info("STARTING INITIAL SCRAPE")
         logger.info("=" * 60)
 
-        # Step 1: Verify VPN (with auto-start if configured)
-        verify_vpn_or_exit(
-            auto_start=config.VPN_AUTO_START,
-            sudo_password=config.SUDO_PASSWORD
-        )
+        # VPN verification removed - uncomment if IP banning becomes an issue
+        # verify_vpn_or_exit(
+        #     auto_start=config.VPN_AUTO_START,
+        #     sudo_password=config.SUDO_PASSWORD
+        # )
 
-        # Step 2: Create scrape log
+        # Step 1: Create scrape log
         scrape_log_id = self._create_scrape_log()
         cases_processed = 0
         status = 'failed'
@@ -89,7 +90,7 @@ class InitialScraper:
         cases_found = 0
 
         try:
-            # Step 3: Launch browser and scrape
+            # Step 2: Launch browser and scrape
             with sync_playwright() as p:
                 browser = p.chromium.launch(headless=False)  # headless=False for development
                 # Create a context so we can open new tabs for case details

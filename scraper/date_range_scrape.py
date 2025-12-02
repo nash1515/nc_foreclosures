@@ -118,9 +118,10 @@ class DateRangeScraper:
         """Create a scrape log entry."""
         with get_session() as session:
             log = ScrapeLog(
+                scrape_type='daily',
                 county_code='MULTI',  # Special code for multi-county searches
-                search_start_date=self.start_date,
-                search_end_date=self.end_date,
+                start_date=self.start_date,
+                end_date=self.end_date,
                 status='in_progress'
             )
             session.add(log)

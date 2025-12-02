@@ -151,7 +151,7 @@ def solve_and_submit_captcha(page):
 
         # Submit the form
         logger.info("Submitting search...")
-        page.click(SUBMIT_BUTTON, timeout=10000)
+        page.click(SUBMIT_BUTTON, timeout=30000)
         logger.info("  Submit button clicked, waiting for results...")
 
         # Wait for either: grid with results, grid with no-records message, or "no cases" text
