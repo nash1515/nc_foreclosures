@@ -66,9 +66,9 @@ DISMISSAL_EXCLUSIONS = [
 ]
 
 # Events indicating upset bid activity
+# Note: Pattern must NOT match "Upset Bidder" (party type, not an event)
 UPSET_BID_EVENTS = [
     'upset bid filed',
-    'upset bid',
     'notice of upset bid',
 ]
 
@@ -261,30 +261,45 @@ def classify_case(case_id: int) -> Optional[str]:
 
     if sale_event:
         # Has sale report - check if within upset period
-        # Get next_bid_deadline from database (populated by extractor)
+        # IMPORTANT: Each upset bid resets the 10-day period!
+        # So we need to check the LATEST of: sale date, last upset bid date
+
+        # First check if there's a deadline stored in the database
         with get_session() as session:
             case = session.query(Case).filter_by(id=case_id).first()
             if case and case.next_bid_deadline:
                 deadline = case.next_bid_deadline
                 if datetime.now() <= deadline:
-                    logger.debug(f"  Case {case_id}: Within upset period -> 'upset_bid'")
+                    logger.debug(f"  Case {case_id}: Within upset period (DB deadline) -> 'upset_bid'")
                     return 'upset_bid'
-                else:
-                    logger.debug(f"  Case {case_id}: Past upset deadline -> 'closed_sold'")
-                    return 'closed_sold'
+                # Don't return closed_sold yet - check for recent upset bids first
 
-        # If no deadline in database, estimate from sale event date
-        if sale_event.event_date:
-            # NC upset bid period is 10 days from sale
+        # Check for upset bid events - each one resets the 10-day period
+        latest_upset_bid = get_latest_event_of_type(events, UPSET_BID_EVENTS)
+
+        # Determine the reference date for deadline calculation
+        # Use the LATEST of: sale date, last upset bid date
+        reference_date = None
+        reference_source = None
+
+        if latest_upset_bid and latest_upset_bid.event_date:
+            reference_date = latest_upset_bid.event_date
+            reference_source = "upset bid"
+        elif sale_event.event_date:
+            reference_date = sale_event.event_date
+            reference_source = "sale"
+
+        if reference_date:
+            # NC upset bid period is 10 days from the reference event
             estimated_deadline = datetime.combine(
-                sale_event.event_date + timedelta(days=10),
+                reference_date + timedelta(days=10),
                 datetime.min.time()
             )
             if datetime.now() <= estimated_deadline:
-                logger.debug(f"  Case {case_id}: Estimated upset period -> 'upset_bid'")
+                logger.debug(f"  Case {case_id}: Within upset period (from {reference_source} on {reference_date}) -> 'upset_bid'")
                 return 'upset_bid'
             else:
-                logger.debug(f"  Case {case_id}: Past estimated deadline -> 'closed_sold'")
+                logger.debug(f"  Case {case_id}: Past deadline (from {reference_source} on {reference_date}) -> 'closed_sold'")
                 return 'closed_sold'
 
         # Has sale but can't determine deadline - assume closed
