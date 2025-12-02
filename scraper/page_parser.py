@@ -260,7 +260,8 @@ def parse_case_detail(page_content):
         lines = [l.strip() for l in event_text.split('\n') if l.strip()]
         for line in lines:
             # Event types are usually capitalized phrases
-            if (re.match(r'^[A-Z][a-zA-Z\s()]+$', line) and
+            # Allow letters, spaces, parens, numbers, slashes, hyphens (for types like "Chapter 45", "Sale/Resale")
+            if (re.match(r'^[A-Z][a-zA-Z\s()/\-0-9]+$', line) and
                 5 < len(line) < 100 and
                 not any(skip in line for skip in ['Index', 'Created', 'Filed By', 'Against'])):
                 event_type = line

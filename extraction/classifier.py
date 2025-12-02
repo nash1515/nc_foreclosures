@@ -41,13 +41,22 @@ BANKRUPTCY_EVENTS = [
     'motion for stay',
 ]
 
-# Exclusions for bankruptcy - these mean bankruptcy is OVER, case should resume
+# Exclusions for bankruptcy - when found IN SAME EVENT, means bankruptcy is over
 BANKRUPTCY_EXCLUSIONS = [
     'resolved',
     'relief from',
     'relief of',
     'dismissal of bankruptcy',
     'reinstatement',
+]
+
+# Events that indicate bankruptcy/block has ENDED (separate events)
+# If these appear AFTER a bankruptcy event, case is no longer blocked
+BANKRUPTCY_LIFTED_EVENTS = [
+    'order to reopen',
+    'reopen',
+    'reinstated',
+    'case reopened',
 ]
 
 # Events that DISMISS/TERMINATE the case (case is closed)
@@ -63,6 +72,15 @@ DISMISSAL_EVENTS = [
 DISMISSAL_EXCLUSIONS = [
     'denying motion to dismiss',
     'denied motion to dismiss',
+]
+
+# Events that indicate dismissal was REVERSED (case reopened after dismissal)
+DISMISSAL_REVERSED_EVENTS = [
+    'order to reopen',
+    'reopen',
+    'reinstated',
+    'case reopened',
+    'vacated',  # "Order Vacated" means previous order (like dismissal) was undone
 ]
 
 # Events indicating upset bid activity
@@ -227,14 +245,21 @@ def classify_case(case_id: int) -> Optional[str]:
     """
     Classify a case into one of the defined states.
 
-    Classification logic:
-    1. If has dismissal event -> 'closed_dismissed'
-    2. If has bankruptcy/stay event -> 'blocked'
-    3. If has sale report AND within upset period -> 'upset_bid'
-    4. If has sale report AND past upset period -> 'closed_sold'
-    5. If foreclosure initiated (no sale yet) -> 'upcoming'
-    6. If foreclosure case type + legacy events -> 'upcoming'
-    7. Otherwise -> None
+    Classification logic (chronology-aware):
+    1. If has dismissal event (and NOT later reversed/reopened) -> 'closed_dismissed'
+    2. If has sale report:
+       - If within upset period (sale date + 10 days, or latest upset bid + 10 days) -> 'upset_bid'
+       - If past upset period -> 'closed_sold'
+    3. If has bankruptcy/stay event (and NOT later lifted/reopened) -> 'blocked'
+    4. If foreclosure initiated (no sale yet) -> 'upcoming'
+    5. If foreclosure case type + legacy events -> 'upcoming'
+    6. Otherwise -> None
+
+    IMPORTANT: Chronology matters! Later events can supersede earlier ones:
+    - Dismissal can be reversed by "Order to Reopen"
+    - Bankruptcy can be lifted by "Order to Reopen"
+    - Sale report takes priority over bankruptcy (case proceeded past bankruptcy)
+    - Upset bids AFTER sale reset the 10-day deadline
 
     Args:
         case_id: Database ID of the case
@@ -247,16 +272,27 @@ def classify_case(case_id: int) -> Optional[str]:
     # Step 1: Check for dismissal (case terminated)
     # Excludes "denying motion to dismiss" which means case continues
     if has_event_type(events, DISMISSAL_EVENTS, exclusions=DISMISSAL_EXCLUSIONS):
-        logger.debug(f"  Case {case_id}: Has dismissal event -> 'closed_dismissed'")
-        return 'closed_dismissed'
+        # Has dismissal - but check if it was later reversed/reopened
+        dismissal_event = get_latest_event_of_type(events, DISMISSAL_EVENTS, exclusions=DISMISSAL_EXCLUSIONS)
+        reversed_event = get_latest_event_of_type(events, DISMISSAL_REVERSED_EVENTS)
 
-    # Step 2: Check for bankruptcy/stay (case blocked, may resume)
-    # Excludes "resolved", "relief from" which means bankruptcy is over
-    if has_event_type(events, BANKRUPTCY_EVENTS, exclusions=BANKRUPTCY_EXCLUSIONS):
-        logger.debug(f"  Case {case_id}: Has bankruptcy/stay -> 'blocked'")
-        return 'blocked'
+        # If there's a "reversed" event AFTER the dismissal, case is not closed
+        if reversed_event and reversed_event.event_date and dismissal_event and dismissal_event.event_date:
+            if reversed_event.event_date > dismissal_event.event_date:
+                logger.debug(f"  Case {case_id}: Dismissal reversed on {reversed_event.event_date} (after {dismissal_event.event_date}) -> NOT dismissed")
+            else:
+                logger.debug(f"  Case {case_id}: Has dismissal event -> 'closed_dismissed'")
+                return 'closed_dismissed'
+        elif reversed_event:
+            # Has reversed event but can't compare dates - assume not dismissed
+            logger.debug(f"  Case {case_id}: Has dismissal but also reversed event -> NOT dismissed")
+        else:
+            # No reversed event - still dismissed
+            logger.debug(f"  Case {case_id}: Has dismissal event -> 'closed_dismissed'")
+            return 'closed_dismissed'
 
-    # Step 3: Check for sale report
+    # Step 2: Check for sale report FIRST (takes priority over bankruptcy)
+    # A sale after bankruptcy means the case resumed and proceeded to sale
     sale_event = get_latest_event_of_type(events, SALE_REPORT_EVENTS)
 
     if sale_event:
@@ -279,15 +315,19 @@ def classify_case(case_id: int) -> Optional[str]:
 
         # Determine the reference date for deadline calculation
         # Use the LATEST of: sale date, last upset bid date
+        # Only use upset bid if it's AFTER the sale (upset bids before sale are from previous sale cycle)
         reference_date = None
         reference_source = None
 
-        if latest_upset_bid and latest_upset_bid.event_date:
-            reference_date = latest_upset_bid.event_date
-            reference_source = "upset bid"
-        elif sale_event.event_date:
+        if sale_event.event_date:
             reference_date = sale_event.event_date
             reference_source = "sale"
+
+            # Check if there's an upset bid AFTER the sale - that resets the 10-day period
+            if latest_upset_bid and latest_upset_bid.event_date:
+                if latest_upset_bid.event_date > sale_event.event_date:
+                    reference_date = latest_upset_bid.event_date
+                    reference_source = "upset bid"
 
         if reference_date:
             # NC upset bid period is 10 days from the reference event
@@ -305,6 +345,28 @@ def classify_case(case_id: int) -> Optional[str]:
         # Has sale but can't determine deadline - assume closed
         logger.debug(f"  Case {case_id}: Has sale, unknown deadline -> 'closed_sold'")
         return 'closed_sold'
+
+    # Step 3: No sale yet - check for bankruptcy/stay (case blocked, may resume)
+    # Only check bankruptcy if there's no sale - a sale means case proceeded past bankruptcy
+    if has_event_type(events, BANKRUPTCY_EVENTS, exclusions=BANKRUPTCY_EXCLUSIONS):
+        # Has bankruptcy - but check if it was later lifted (e.g., "Order to Reopen")
+        bankruptcy_event = get_latest_event_of_type(events, BANKRUPTCY_EVENTS, exclusions=BANKRUPTCY_EXCLUSIONS)
+        lifted_event = get_latest_event_of_type(events, BANKRUPTCY_LIFTED_EVENTS)
+
+        # If there's a "lifted" event AFTER the bankruptcy event, case is not blocked
+        if lifted_event and lifted_event.event_date and bankruptcy_event and bankruptcy_event.event_date:
+            if lifted_event.event_date > bankruptcy_event.event_date:
+                logger.debug(f"  Case {case_id}: Bankruptcy lifted on {lifted_event.event_date} (after {bankruptcy_event.event_date}) -> NOT blocked")
+            else:
+                logger.debug(f"  Case {case_id}: Has bankruptcy/stay (no sale) -> 'blocked'")
+                return 'blocked'
+        elif lifted_event:
+            # Has lifted event but can't compare dates - assume not blocked
+            logger.debug(f"  Case {case_id}: Has bankruptcy but also lifted event -> NOT blocked")
+        else:
+            # No lifted event - still blocked
+            logger.debug(f"  Case {case_id}: Has bankruptcy/stay (no sale) -> 'blocked'")
+            return 'blocked'
 
     # Step 4: No sale yet - check if foreclosure has been initiated
     # Excludes "cancellation", "withdrawal" which don't indicate initiation
