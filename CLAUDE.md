@@ -123,7 +123,23 @@ gh pr status
 9. Analyze `closed_sold` cases (183) for bidding strategy patterns by county
 10. Set up cron job for automated daily scraping (see "Running the Daily Scraper" section)
 
-### Recent Updates (Dec 2, 2025) - Session 12 (Database Completion & Retry Logic)
+### Recent Updates (Dec 2, 2025) - Session 13 (Bot Detection Fix)
+- **Bot Detection Issue Fixed:**
+  - **Problem**: Daily scrape new case search failing with CAPTCHA timeout (portal returned 403 Forbidden)
+  - **Root Cause**: NC Courts Portal started blocking requests without proper User-Agent header
+  - **Solution**: Added Chrome user-agent to all Playwright browser contexts
+  - **Files Updated:**
+    - `scraper/date_range_scrape.py` - Added user-agent to browser context
+    - `scraper/initial_scrape.py` - Added user-agent to browser context
+    - `scraper/case_monitor.py` - Added user-agent to browser context
+    - `scraper/capture_portal_structure.py` - Added user-agent to browser context
+    - `scraper/explore_portal.py` - Added user-agent to browser context
+- **County Detection Bug Fixed:**
+  - **Problem**: Search results page column order changed, location field showing date instead of county
+  - **Solution**: Now extracts county from case number suffix (e.g., `25SP001116-310` → 310 = Durham)
+  - Case number format: `YYSPNNNNNN-CCC` where `CCC` is the county code
+
+### Previous Updates (Dec 2, 2025) - Session 12 (Database Completion & Retry Logic)
 - **Retry Logic Added to Case Monitor:**
   - `scraper/case_monitor.py` now has exponential backoff retry (default: 3 retries)
   - Clears Angular SPA state between page loads (`about:blank` navigation)

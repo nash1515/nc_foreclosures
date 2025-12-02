@@ -27,7 +27,7 @@ from scraper.portal_interactions import (
 )
 from scraper.portal_selectors import PORTAL_URL
 from scraper.pdf_downloader import download_case_documents
-from common.county_codes import get_county_code, COUNTY_CODES
+from common.county_codes import get_county_code, get_county_name, COUNTY_CODES
 from common.config import config
 from common.logger import setup_logger
 
@@ -84,7 +84,10 @@ class DateRangeScraper:
         try:
             with sync_playwright() as p:
                 browser = p.chromium.launch(headless=False)
-                context = browser.new_context()
+                # Use a real Chrome user-agent to avoid bot detection
+                context = browser.new_context(
+                    user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                )
                 page = context.new_page()
 
                 try:
@@ -226,17 +229,30 @@ class DateRangeScraper:
             logger.warning(f"  No URL for case {case_number}, skipping")
             return False
 
-        # Determine county from location
+        # Determine county from case number suffix (e.g., 25SP001116-310 -> 310 = Durham)
+        # The case number format is YYSPNNNNNN-CCC where CCC is the county code
         county_code = None
         county_name = None
-        for county in self.counties:
-            if county.lower() in location.lower():
-                county_code = get_county_code(county)
-                county_name = county
-                break
+
+        # Try to extract county code from case number suffix
+        if '-' in case_number:
+            suffix = case_number.split('-')[-1]
+            county_name_from_code = get_county_name(suffix)
+            if county_name_from_code:
+                county_code = suffix
+                county_name = county_name_from_code.lower()
+                logger.debug(f"  Extracted county from case number: {county_name} ({county_code})")
+
+        # Fallback: try to match county from location field (if available)
+        if not county_code and location:
+            for county in self.counties:
+                if county.lower() in location.lower():
+                    county_code = get_county_code(county)
+                    county_name = county
+                    break
 
         if not county_code:
-            logger.warning(f"  Could not determine county from location '{location}', skipping")
+            logger.warning(f"  Could not determine county from case number '{case_number}' or location '{location}', skipping")
             return False
 
         # Open case in new tab
