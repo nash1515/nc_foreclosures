@@ -126,7 +126,23 @@ gh pr status
 10. Implement enrichment module (Zillow, county records, tax values)
 11. Analyze `closed_sold` cases (183) for bidding strategy patterns by county
 
-### Recent Updates (Dec 3, 2025) - Session 15 (Scheduler Service)
+### Recent Updates (Dec 3, 2025) - Session 16 (Frontend Phase 1)
+- **Frontend Phase 1 Complete:**
+  - **React frontend** with Vite 7, React 19, Ant Design 6, React Router 7
+  - **Flask API** with CORS and Google OAuth (Flask-Dance)
+  - **Pages**: Dashboard, All Cases, Case Detail, Settings, Login (all placeholder shells)
+  - **Protected routes**: Redirect to login when unauthenticated
+  - **User model**: Database table for OAuth users
+  - **Run scripts**: `scripts/run_frontend.sh`, `scripts/run_api.sh`, `scripts/run_dev.sh`
+- **Google OAuth Setup:**
+  - Project: NC Foreclosures (Google Cloud Console)
+  - Credentials stored in `.env` file (gitignored)
+  - Redirect URI: `http://localhost:5000/api/auth/google/authorized`
+  - To recreate credentials: https://console.cloud.google.com/apis/credentials
+- **PR Created:** https://github.com/nash1515/nc_foreclosures/pull/1
+- **Branch:** `feature/frontend` (worktree at `.worktrees/frontend`)
+
+### Previous Updates (Dec 3, 2025) - Session 15 (Scheduler Service)
 - **Automated Daily Scrape Scheduler:**
   - **New `scheduler/` module** with database-driven configuration
   - **Default schedule**: 5:00 AM Mon-Fri, scrapes previous day's cases

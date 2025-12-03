@@ -21,6 +21,8 @@ def create_app():
 
     # For development without HTTPS
     os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
+    # Ignore scope changes from Google (they return full URLs instead of short names)
+    os.environ['OAUTHLIB_RELAX_TOKEN_SCOPE'] = '1'
 
     # Register Google OAuth blueprint
     from web_app.auth.google import create_google_blueprint
