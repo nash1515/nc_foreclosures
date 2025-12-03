@@ -140,9 +140,16 @@ function CaseDetail() {
                   </Descriptions.Item>
                 </Descriptions>
 
-                {/* Enrichment Links Placeholder */}
+                {/* Enrichment Links */}
                 <Divider style={{ margin: '12px 0' }} />
                 <Space wrap>
+                  {c.case_url && (
+                    <a href={c.case_url} target="_blank" rel="noopener noreferrer">
+                      <Button size="small" icon={<LinkOutlined />}>
+                        NC Courts Portal
+                      </Button>
+                    </a>
+                  )}
                   <Button size="small" icon={<LinkOutlined />} disabled>
                     Zillow
                   </Button>
@@ -158,7 +165,7 @@ function CaseDetail() {
                 </Space>
                 <div style={{ marginTop: 8 }}>
                   <Text type="secondary" style={{ fontSize: 12 }}>
-                    Enrichment links coming in Phase 5
+                    Additional enrichment links coming in Phase 5
                   </Text>
                 </div>
               </Col>
@@ -299,15 +306,6 @@ function CaseDetail() {
           </Card>
         </Col>
       </Row>
-
-      {/* Case Link */}
-      {c.case_url && (
-        <Card size="small">
-          <a href={c.case_url} target="_blank" rel="noopener noreferrer">
-            <Button icon={<LinkOutlined />}>View on NC Courts Portal</Button>
-          </a>
-        </Card>
-      )}
     </div>
   );
 }
