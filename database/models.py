@@ -24,6 +24,24 @@ class User(Base):
         return f"<User(email='{self.email}', display_name='{self.display_name}')>"
 
 
+class Watchlist(Base):
+    """User's starred/watchlisted cases."""
+
+    __tablename__ = 'watchlist'
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    case_id = Column(Integer, ForeignKey('cases.id', ondelete='CASCADE'), nullable=False)
+    created_at = Column(TIMESTAMP, server_default=func.current_timestamp())
+
+    # Relationships
+    user = relationship("User")
+    case = relationship("Case")
+
+    def __repr__(self):
+        return f"<Watchlist(user_id={self.user_id}, case_id={self.case_id})>"
+
+
 class Case(Base):
     """Main case information."""
 
