@@ -1,5 +1,6 @@
 """Flask application factory."""
 
+import os
 from flask import Flask
 from flask_cors import CORS
 
@@ -11,7 +12,7 @@ def create_app():
     CORS(app, supports_credentials=True, origins=['http://localhost:5173'])
 
     # Load configuration
-    app.config['SECRET_KEY'] = 'dev-secret-key-change-in-production'
+    app.config['SECRET_KEY'] = os.environ.get('FLASK_SECRET_KEY', 'dev-secret-key-change-in-production')
 
     # Register blueprints
     from web_app.api.routes import api_bp
