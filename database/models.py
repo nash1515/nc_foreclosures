@@ -1,6 +1,6 @@
 """SQLAlchemy ORM models for NC Foreclosures database."""
 
-from sqlalchemy import Column, Integer, String, Text, Date, TIMESTAMP, DECIMAL, ForeignKey
+from sqlalchemy import Column, Integer, String, Text, Date, TIMESTAMP, DECIMAL, ForeignKey, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -165,3 +165,24 @@ class UserNote(Base):
 
     def __repr__(self):
         return f"<UserNote(case_id={self.case_id}, user='{self.user_name}')>"
+
+
+class SchedulerConfig(Base):
+    """Configuration for scheduled jobs (editable via frontend)."""
+
+    __tablename__ = 'scheduler_config'
+
+    id = Column(Integer, primary_key=True)
+    job_name = Column(String(50), unique=True, nullable=False)
+    schedule_hour = Column(Integer, nullable=False, default=5)
+    schedule_minute = Column(Integer, nullable=False, default=0)
+    days_of_week = Column(String(20), nullable=False, default='mon,tue,wed,thu,fri')
+    enabled = Column(Boolean, nullable=False, default=True)
+    last_run_at = Column(TIMESTAMP)
+    last_run_status = Column(String(20))
+    last_run_message = Column(Text)
+    created_at = Column(TIMESTAMP, server_default=func.current_timestamp())
+    updated_at = Column(TIMESTAMP, server_default=func.current_timestamp(), onupdate=func.current_timestamp())
+
+    def __repr__(self):
+        return f"<SchedulerConfig(job='{self.job_name}', hour={self.schedule_hour}, enabled={self.enabled})>"

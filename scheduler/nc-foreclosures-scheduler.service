@@ -1,0 +1,17 @@
+[Unit]
+Description=NC Foreclosures Scheduler Service
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=ahn
+WorkingDirectory=/home/ahn/projects/nc_foreclosures
+Environment=PYTHONPATH=/home/ahn/projects/nc_foreclosures
+ExecStart=/home/ahn/projects/nc_foreclosures/venv/bin/python /home/ahn/projects/nc_foreclosures/scheduler/scheduler_service.py
+Restart=on-failure
+RestartSec=30
+StandardOutput=append:/var/log/nc-foreclosures-scheduler.log
+StandardError=append:/var/log/nc-foreclosures-scheduler.log
+
+[Install]
+WantedBy=multi-user.target
