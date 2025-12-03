@@ -262,3 +262,57 @@ def get_case(case_id):
             'is_watchlisted': is_watchlisted,
             'photo_url': None  # Placeholder for future enrichment
         })
+
+
+@cases_bp.route('/<int:case_id>/watchlist', methods=['POST'])
+def add_to_watchlist(case_id):
+    """Add a case to user's watchlist."""
+    if not google.authorized:
+        return jsonify({'error': 'Not authenticated'}), 401
+
+    user_id = get_current_user_id()
+    if not user_id:
+        return jsonify({'error': 'User not found'}), 401
+
+    with get_session() as db_session:
+        # Check if case exists
+        case = db_session.query(Case).filter_by(id=case_id).first()
+        if not case:
+            return jsonify({'error': 'Case not found'}), 404
+
+        # Check if already watchlisted
+        existing = db_session.query(Watchlist).filter_by(
+            user_id=user_id, case_id=case_id
+        ).first()
+
+        if existing:
+            return jsonify({'message': 'Already in watchlist', 'is_watchlisted': True})
+
+        # Add to watchlist
+        watchlist = Watchlist(user_id=user_id, case_id=case_id)
+        db_session.add(watchlist)
+        db_session.commit()
+
+        return jsonify({'message': 'Added to watchlist', 'is_watchlisted': True})
+
+
+@cases_bp.route('/<int:case_id>/watchlist', methods=['DELETE'])
+def remove_from_watchlist(case_id):
+    """Remove a case from user's watchlist."""
+    if not google.authorized:
+        return jsonify({'error': 'Not authenticated'}), 401
+
+    user_id = get_current_user_id()
+    if not user_id:
+        return jsonify({'error': 'User not found'}), 401
+
+    with get_session() as db_session:
+        watchlist = db_session.query(Watchlist).filter_by(
+            user_id=user_id, case_id=case_id
+        ).first()
+
+        if watchlist:
+            db_session.delete(watchlist)
+            db_session.commit()
+
+        return jsonify({'message': 'Removed from watchlist', 'is_watchlisted': False})
