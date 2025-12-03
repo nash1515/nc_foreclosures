@@ -95,6 +95,7 @@ gh pr status
 - ✅ **NEW: Parallel batch scraper** (6 browsers simultaneously)
 - ✅ **NEW: Failure tracking system** (JSON-based retry capability)
 - ✅ **NEW: Scheduler service** (5 AM Mon-Fri, configurable via API)
+- ✅ **NEW: PDF bid extraction for upset_bid cases** (AOC-SP-403 form parsing)
 
 ### Scrape Progress (as of Nov 27, 2025 - ALL COUNTIES COMPLETE)
 
@@ -126,7 +127,28 @@ gh pr status
 10. Implement enrichment module (Zillow, county records, tax values)
 11. Analyze `closed_sold` cases (183) for bidding strategy patterns by county
 
-### Recent Updates (Dec 3, 2025) - Session 15 (Scheduler Service)
+### Recent Updates (Dec 3, 2025) - Session 16 (PDF Bid Extraction)
+- **PDF Document Download for Upset Bid Cases:**
+  - New `download_all_case_documents()` function downloads ALL documents for upset_bid cases
+  - Documents stored in `data/pdfs/{county}/{case_number}/`
+  - Skips existing documents to avoid re-downloading
+  - Enables complete AI analysis context (mortgage info, deed details, attorney info)
+- **AOC-SP-403 (Notice of Upset Bid) Extraction:**
+  - New patterns in `extraction/extractor.py` for NC standard upset bid form
+  - Handles OCR artifacts (extra spaces, typos like "UpsetBd", "M nimum")
+  - Position-based extraction for columnar form layouts
+  - Extracts: current_bid, previous_bid, minimum_next_bid, deadline, deposit
+  - Smart fallback: calculates current_bid from minimum_next_bid/1.05 when handwritten amounts are garbled
+- **Case Monitor Integration:**
+  - Only downloads/extracts for `upset_bid` cases (not `upcoming`)
+  - OCR processes upset bid and sale documents for bid data
+  - Verifies PDF data against HTML-extracted bids when available
+- **Test Results:**
+  - Case 24SP001280-670: $47,256 bid, $49,612.50 min next, deadline 12/4/2025
+  - Case 25SP000122-670: $55,983.62 bid (calculated), deadline 12/11/2025
+  - 22 of 24 upset_bid cases now have complete bid data
+
+### Previous Updates (Dec 3, 2025) - Session 15 (Scheduler Service)
 - **Automated Daily Scrape Scheduler:**
   - **New `scheduler/` module** with database-driven configuration
   - **Default schedule**: 5:00 AM Mon-Fri, scrapes previous day's cases
