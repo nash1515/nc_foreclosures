@@ -37,6 +37,10 @@ def create_app():
     from scheduler.api import scheduler_api
     app.register_blueprint(scheduler_api)
 
+    # Register cases API
+    from web_app.api.cases import cases_bp
+    app.register_blueprint(cases_bp, url_prefix='/api/cases')
+
     return app
 
 
