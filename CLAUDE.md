@@ -74,7 +74,8 @@ gh pr status
 **Phase 2 PDF & OCR:** ✅ Complete (100%)
 **Phase 2.5 Extraction:** ✅ Complete (100%)
 **Initial Scrape (2020-2025):** ✅ Complete + Retries Done
-**Current Branch:** `feature/phase1-foundation`
+**Daily Scrape Scheduler:** ✅ Complete (5 AM Mon-Fri)
+**Current Branch:** `main`
 
 ### Completed Components
 - ✅ PostgreSQL database with full schema (7 tables + new extraction fields)
@@ -93,6 +94,7 @@ gh pr status
 - ✅ Classification module (upcoming/upset_bid status)
 - ✅ **NEW: Parallel batch scraper** (6 browsers simultaneously)
 - ✅ **NEW: Failure tracking system** (JSON-based retry capability)
+- ✅ **NEW: Scheduler service** (5 AM Mon-Fri, configurable via API)
 
 ### Scrape Progress (as of Nov 27, 2025 - ALL COUNTIES COMPLETE)
 
@@ -119,11 +121,34 @@ gh pr status
 5. ~~Run classifier on unclassified cases~~ ✅ Complete (new states: blocked, closed_sold, closed_dismissed)
 6. ~~Implement daily scrape functionality (include monitoring of `blocked` cases)~~ ✅ Complete
 7. ~~Re-scrape NULL event types~~ ✅ Complete (5,461 events added, 112 classifications updated)
-8. Implement enrichment module (Zillow, county records, tax values)
-9. Analyze `closed_sold` cases (183) for bidding strategy patterns by county
-10. Set up cron job for automated daily scraping (see "Running the Daily Scraper" section)
+8. ~~Set up automated daily scraping~~ ✅ Complete (scheduler service + API)
+9. Build frontend web application (scheduler config UI included)
+10. Implement enrichment module (Zillow, county records, tax values)
+11. Analyze `closed_sold` cases (183) for bidding strategy patterns by county
 
-### Recent Updates (Dec 3, 2025) - Session 14 (Partition Sales Support)
+### Recent Updates (Dec 3, 2025) - Session 15 (Scheduler Service)
+- **Automated Daily Scrape Scheduler:**
+  - **New `scheduler/` module** with database-driven configuration
+  - **Default schedule**: 5:00 AM Mon-Fri, scrapes previous day's cases
+  - **Frontend-configurable** via REST API endpoints
+  - **Components created:**
+    - `scheduler/scheduler_service.py` - Daemon that runs scheduled jobs
+    - `scheduler/api.py` - Flask API for frontend configuration
+    - `scheduler/nc-foreclosures-scheduler.service` - systemd service file
+    - `scripts/scheduler_control.sh` - Helper for install/start/stop/logs
+  - **Database**: New `scheduler_config` table stores schedule settings
+  - **API Endpoints:**
+    - `GET /api/scheduler/config` - View all job configs
+    - `PUT /api/scheduler/config/daily_scrape` - Update schedule (hour, minute, days)
+    - `POST /api/scheduler/config/daily_scrape/toggle` - Enable/disable
+    - `POST /api/scheduler/run/daily_scrape` - Trigger manual run
+    - `GET /api/scheduler/history` - View scrape history
+- **Bug Fixes:**
+  - Fixed `date_range_scrape.py` field mapping bugs (scrape_log_id, party_name, event_date, hearing fields)
+  - 7 new foreclosures added from Dec 2-3 daily scrape
+- **Database Total:** 1,724 cases (was 1,717)
+
+### Previous Updates (Dec 3, 2025) - Session 14 (Partition Sales Support)
 - **Expanded Case Detection to Include Partition Sales:**
   - **Problem**: Partition sales (co-owner forced sales) have upset bid opportunities but weren't being captured
   - **Example**: Case 24SP000044-910 - Partition sale with $304,500 upset bid, Case Type = "Special Proceeding" (not Foreclosure)
@@ -538,6 +563,58 @@ PYTHONPATH=$(pwd) venv/bin/python scraper/case_monitor.py --limit 10
 PYTHONPATH=$(pwd) venv/bin/python scraper/case_monitor.py --dry-run
 ```
 
+### Scheduler Service (Automated Daily Scraping)
+
+The scheduler runs as a background service and executes the daily scrape at the configured time.
+
+**Setup:**
+```bash
+# Install as systemd service (one-time)
+./scripts/scheduler_control.sh install
+
+# Start the scheduler
+./scripts/scheduler_control.sh start
+
+# Check status and logs
+./scripts/scheduler_control.sh status
+./scripts/scheduler_control.sh logs  # Follow logs in real-time
+
+# Stop the scheduler
+./scripts/scheduler_control.sh stop
+```
+
+**Default Schedule:** 5:00 AM Mon-Fri, scrapes previous day's cases.
+
+**API Configuration (for frontend):**
+```bash
+# View current schedule
+curl http://localhost:5000/api/scheduler/config/daily_scrape
+
+# Update schedule to 6:30 AM
+curl -X PUT http://localhost:5000/api/scheduler/config/daily_scrape \
+  -H "Content-Type: application/json" \
+  -d '{"schedule_hour": 6, "schedule_minute": 30}'
+
+# Change days (weekends only)
+curl -X PUT http://localhost:5000/api/scheduler/config/daily_scrape \
+  -H "Content-Type: application/json" \
+  -d '{"days_of_week": "sat,sun"}'
+
+# Enable/disable scheduler
+curl -X POST http://localhost:5000/api/scheduler/config/daily_scrape/toggle
+
+# Trigger manual run (scrapes yesterday by default)
+curl -X POST http://localhost:5000/api/scheduler/run/daily_scrape
+
+# Trigger run for specific date
+curl -X POST http://localhost:5000/api/scheduler/run/daily_scrape \
+  -H "Content-Type: application/json" \
+  -d '{"target_date": "2025-12-02"}'
+
+# View scrape history
+curl http://localhost:5000/api/scheduler/history?limit=10
+```
+
 ## Architecture Overview
 
 ### Database Schema
@@ -546,11 +623,13 @@ PYTHONPATH=$(pwd) venv/bin/python scraper/case_monitor.py --dry-run
 - `documents` - PDF files and OCR text
 - `scrape_logs` - Audit trail of scraping activity
 - `user_notes` - User annotations (for web app)
+- `scheduler_config` - Scheduled job configuration (editable via API)
 
 ### Module Structure
 - `common/` - Shared utilities (config, logging, county codes)
 - `database/` - ORM models and connection management
 - `scraper/` - Web scraping (VPN, CAPTCHA, Playwright)
+- `scheduler/` - Automated job scheduling (database-driven, API-configurable)
 - `ocr/` - PDF processing (Phase 2)
 - `analysis/` - AI analysis (Phase 3)
 - `web_app/` - Flask app (Phase 4)
@@ -568,6 +647,9 @@ PYTHONPATH=$(pwd) venv/bin/python scraper/case_monitor.py --dry-run
 - `scraper/portal_interactions.py` - Form filling and navigation
 - `scraper/portal_selectors.py` - CSS selectors for portal elements
 - `scripts/run_daily.sh` - Daily scrape wrapper for cron/manual execution
+- `scripts/scheduler_control.sh` - Scheduler service control (install/start/stop/logs)
+- `scheduler/scheduler_service.py` - Scheduler daemon
+- `scheduler/api.py` - REST API for scheduler configuration
 
 ## Configuration
 
