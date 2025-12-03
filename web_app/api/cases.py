@@ -2,12 +2,18 @@
 
 from flask import Blueprint, jsonify, request
 from flask_dance.contrib.google import google
-from sqlalchemy import or_, and_
+from sqlalchemy import or_
 from database.connection import get_session
 from database.models import Case, Party, Watchlist, User
 from datetime import datetime
 
 cases_bp = Blueprint('cases', __name__)
+
+# Whitelist of allowed sort columns to prevent SQL injection
+ALLOWED_SORT_COLUMNS = {
+    'file_date', 'case_number', 'county_name', 'classification',
+    'current_bid_amount', 'next_bid_deadline'
+}
 
 
 def get_current_user_id():
@@ -105,7 +111,9 @@ def list_cases():
             )
 
         # Watchlist filter
-        if watchlist_only and user_id:
+        if watchlist_only:
+            if not user_id:
+                return jsonify({'error': 'User not found'}), 401
             watchlist_case_ids = db_session.query(Watchlist.case_id).filter(
                 Watchlist.user_id == user_id
             )
@@ -114,8 +122,10 @@ def list_cases():
         # Get total count before pagination
         total = query.count()
 
-        # Sorting
-        sort_column = getattr(Case, sort_by, Case.file_date)
+        # Sorting - validate sort_by against whitelist
+        if sort_by not in ALLOWED_SORT_COLUMNS:
+            sort_by = 'file_date'
+        sort_column = getattr(Case, sort_by)
         if sort_order == 'asc':
             query = query.order_by(sort_column.asc())
         else:
