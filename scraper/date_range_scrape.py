@@ -323,8 +323,7 @@ class DateRangeScraper:
                 case_status=case_data.get('case_status'),
                 file_date=case_data.get('file_date'),
                 style=case_data.get('style'),
-                case_url=case_url,
-                scrape_log_id=self.scrape_log_id
+                case_url=case_url
             )
             session.add(case)
             session.flush()
@@ -334,7 +333,7 @@ class DateRangeScraper:
                 party = Party(
                     case_id=case.id,
                     party_type=party_data.get('party_type'),
-                    party_name=party_data.get('name')
+                    party_name=party_data.get('party_name')
                 )
                 session.add(party)
 
@@ -342,7 +341,7 @@ class DateRangeScraper:
             for event_data in case_data.get('events', []):
                 event = CaseEvent(
                     case_id=case.id,
-                    event_date=event_data.get('date'),
+                    event_date=event_data.get('event_date'),
                     event_type=event_data.get('event_type'),
                     filed_by=event_data.get('filed_by'),
                     filed_against=event_data.get('filed_against'),
@@ -355,9 +354,9 @@ class DateRangeScraper:
             for hearing_data in case_data.get('hearings', []):
                 hearing = Hearing(
                     case_id=case.id,
-                    hearing_date=hearing_data.get('date'),
-                    hearing_time=hearing_data.get('time'),
-                    hearing_type=hearing_data.get('type')
+                    hearing_date=hearing_data.get('hearing_date'),
+                    hearing_time=hearing_data.get('hearing_time'),
+                    hearing_type=hearing_data.get('hearing_type')
                 )
                 session.add(hearing)
 
