@@ -123,7 +123,16 @@ gh pr status
 9. Analyze `closed_sold` cases (183) for bidding strategy patterns by county
 10. Set up cron job for automated daily scraping (see "Running the Daily Scraper" section)
 
-### Recent Updates (Dec 2, 2025) - Session 13 (Bot Detection Fix)
+### Recent Updates (Dec 3, 2025) - Session 14 (Partition Sales Support)
+- **Expanded Case Detection to Include Partition Sales:**
+  - **Problem**: Partition sales (co-owner forced sales) have upset bid opportunities but weren't being captured
+  - **Example**: Case 24SP000044-910 - Partition sale with $304,500 upset bid, Case Type = "Special Proceeding" (not Foreclosure)
+  - **Solution**: Added `UPSET_BID_OPPORTUNITY_INDICATORS` to `is_foreclosure_case()` in `scraper/page_parser.py`
+  - **New Indicators**: `report of sale`, `order allowing partition by`, `partition by sale`
+  - **Effect**: Daily scrape will now capture partition sales and other non-foreclosure upset bid opportunities
+  - **Note**: Not retroactive - only applies to new daily scrapes going forward
+
+### Previous Updates (Dec 2, 2025) - Session 13 (Bot Detection Fix)
 - **Bot Detection Issue Fixed:**
   - **Problem**: Daily scrape new case search failing with CAPTCHA timeout (portal returned 403 Forbidden)
   - **Root Cause**: NC Courts Portal started blocking requests without proper User-Agent header

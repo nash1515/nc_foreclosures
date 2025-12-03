@@ -18,26 +18,31 @@ FORECLOSURE_EVENT_INDICATORS = [
     'upset bid filed'
 ]
 
+# Event types that indicate an upset bid opportunity (includes non-foreclosure sales like partitions)
+# These catch cases where Case Type is "Special Proceeding" but there's a sale with upset bid rights
+UPSET_BID_OPPORTUNITY_INDICATORS = [
+    'upset bid filed',
+    'report of sale',  # Generic report of sale (partition sales, etc.)
+    'order allowing partition by',  # Partition by sale orders
+    'partition by sale',
+]
+
 
 def is_foreclosure_case(case_data):
     """
-    Determine if a case is a foreclosure case.
+    Determine if a case is a foreclosure OR upset bid opportunity.
 
-    Per project requirements, foreclosure cases are identified from the case detail page by:
-    1. Case Type in Case Information section reads "Foreclosure (Special Proceeding)"
-    2. Case Events contain foreclosure-related events like:
-       - "Foreclosure (Special Proceeding) Notice of Hearing"
-       - "Findings And Order Of Foreclosure"
-       - "Foreclosure Case Initiated"
-       - "Report Of Foreclosure Sale (Chapter 45)"
-       - "Notice Of Sale/Resale"
-       - "Upset Bid Filed"
+    This function identifies cases we want to track, including:
+    1. Traditional foreclosures (Case Type contains "Foreclosure")
+    2. Cases with foreclosure-related events
+    3. Non-foreclosure sales with upset bid opportunities (e.g., partition sales)
+       - These have Case Type "Special Proceeding" but contain "Report of Sale" or "Upset Bid Filed"
 
     Args:
         case_data: Dictionary containing case information from case detail page
 
     Returns:
-        bool: True if case is a foreclosure
+        bool: True if case is a foreclosure or upset bid opportunity
     """
     # Check case type - must contain "foreclosure"
     case_type = (case_data.get('case_type') or '').lower()
@@ -52,6 +57,14 @@ def is_foreclosure_case(case_data):
         for indicator in FORECLOSURE_EVENT_INDICATORS:
             if indicator in event_type:
                 logger.debug(f"Foreclosure identified by event: {event_type}")
+                return True
+
+    # Check for non-foreclosure upset bid opportunities (partition sales, etc.)
+    for event in events:
+        event_type = (event.get('event_type') or '').lower()
+        for indicator in UPSET_BID_OPPORTUNITY_INDICATORS:
+            if indicator in event_type:
+                logger.debug(f"Upset bid opportunity identified by event: {event_type}")
                 return True
 
     return False
