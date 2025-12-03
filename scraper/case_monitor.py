@@ -401,6 +401,22 @@ class CaseMonitor:
                     if self.is_blocking_event(event_type):
                         logger.info(f"  Blocking event detected")
 
+            # For upset_bid cases missing bid amount, try to extract from page
+            # This handles cases that were already classified but never had bid extracted
+            if case.classification == 'upset_bid' and not case.current_bid_amount:
+                bid_amount = self.extract_bid_amount(html)
+                if bid_amount:
+                    # Find the most recent upset bid or sale event date for deadline calculation
+                    event_date = None
+                    for event in parsed_events:
+                        evt_type = (event.get('event_type') or '').lower()
+                        if 'upset' in evt_type or 'sale' in evt_type:
+                            event_date = event.get('event_date')
+                            break
+                    self.update_case_bid_info(case.id, bid_amount, event_date)
+                    result['bid_updated'] = True
+                    logger.info(f"  Extracted missing bid amount: ${bid_amount}")
+
             # Reclassify the case based on current events
             # Only change classification if the new one is valid (not None)
             # This prevents losing existing classifications due to parsing issues
