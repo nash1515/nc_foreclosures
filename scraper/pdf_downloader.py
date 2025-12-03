@@ -345,3 +345,386 @@ def download_documents_for_event(page: Page, case_id: int, county: str, case_num
     except Exception as e:
         logger.debug(f"    No document download for event {event_index}: {e}")
         return None
+
+
+def download_upset_bid_documents(page: Page, case_id: int, county: str, case_number: str):
+    """
+    Download documents specifically for upset bid and sale events.
+
+    This is a targeted download function for bid extraction. It:
+    1. Finds events with "upset bid" or "report of sale" in the name
+    2. Downloads only those documents (not all docs)
+    3. Returns info about downloaded files for OCR processing
+
+    Args:
+        page: Playwright page object (on case detail page)
+        case_id: Database ID of the case
+        county: County name (e.g., 'wake')
+        case_number: Case number (e.g., '24SP000437-910')
+
+    Returns:
+        list: List of dicts with downloaded document info:
+            - file_path: Path to downloaded PDF
+            - event_type: Type of event (e.g., "Upset Bid Filed")
+            - event_date: Date string (MM/DD/YYYY)
+    """
+    logger.info(f"Checking for upset bid/sale documents...")
+
+    download_path = config.get_pdf_path(county, case_number)
+    downloaded = []
+
+    try:
+        # Find all events with their document button status
+        # Use JavaScript to get event details with document availability
+        events_with_docs = page.evaluate(r'''
+            () => {
+                const results = [];
+
+                // Find all event containers (Angular ng-repeat)
+                const eventDivs = document.querySelectorAll('[ng-repeat*="event"]');
+
+                eventDivs.forEach((eventDiv, idx) => {
+                    const text = eventDiv.textContent || '';
+                    const textLower = text.toLowerCase();
+
+                    // Check if this is an upset bid or sale event
+                    const isUpsetBid = textLower.includes('upset bid');
+                    const isSaleReport = textLower.includes('report of') && textLower.includes('sale');
+                    const isNoticeOfSale = textLower.includes('notice of sale');
+
+                    if (isUpsetBid || isSaleReport || isNoticeOfSale) {
+                        // Check for document button/icon
+                        const docBtn = eventDiv.querySelector('button[aria-label*="document" i]');
+                        const docImg = eventDiv.querySelector('img[title*="document" i]');
+
+                        if (docBtn || docImg) {
+                            // Extract event date
+                            const dateMatch = text.match(/(\d{2}\/\d{2}\/\d{4})/);
+                            const eventDate = dateMatch ? dateMatch[1] : '';
+
+                            // Extract event type - find capitalized text
+                            let eventType = '';
+                            const lines = text.split('\n').map(l => l.trim()).filter(l => l);
+                            for (const line of lines) {
+                                if (line.match(/^[A-Z][a-zA-Z\s()/\-0-9]+$/) &&
+                                    line.length > 5 && line.length < 80) {
+                                    eventType = line;
+                                    break;
+                                }
+                            }
+
+                            results.push({
+                                index: idx,
+                                eventType: eventType,
+                                eventDate: eventDate,
+                                hasButton: !!docBtn,
+                                hasImage: !!docImg,
+                                isUpsetBid: isUpsetBid,
+                                isSale: isSaleReport || isNoticeOfSale
+                            });
+                        }
+                    }
+                });
+
+                return results;
+            }
+        ''')
+
+        if not events_with_docs:
+            logger.info(f"  No upset bid/sale documents found")
+            return []
+
+        logger.info(f"  Found {len(events_with_docs)} upset bid/sale document(s)")
+
+        for event_info in events_with_docs:
+            event_index = event_info['index']
+            event_type = event_info.get('eventType', 'Unknown')
+            event_date = event_info.get('eventDate', '')
+
+            logger.info(f"    Downloading: {event_date} - {event_type}")
+
+            try:
+                # Set up download handler
+                with page.expect_download(timeout=30000) as download_info:
+                    # Click the document button/image for this specific event
+                    page.evaluate(f'''
+                        () => {{
+                            const eventDivs = document.querySelectorAll('[ng-repeat*="event"]');
+                            const eventDiv = eventDivs[{event_index}];
+                            if (eventDiv) {{
+                                // Try button first, then image
+                                const docBtn = eventDiv.querySelector('button[aria-label*="document" i]');
+                                const docImg = eventDiv.querySelector('img[title*="document" i]');
+                                if (docBtn) docBtn.click();
+                                else if (docImg) docImg.click();
+                            }}
+                        }}
+                    ''')
+
+                download = download_info.value
+
+                # Generate meaningful filename
+                clean_type = re.sub(r'[^\w\s-]', '', event_type)[:40]
+                clean_date = event_date.replace('/', '-') if event_date else 'unknown'
+                filename = f"{clean_date}_{clean_type}.pdf"
+
+                file_path = download_path / filename
+                download.save_as(str(file_path))
+
+                # Create database record
+                doc_date = None
+                if event_date:
+                    try:
+                        doc_date = datetime.strptime(event_date, '%m/%d/%Y').date()
+                    except ValueError:
+                        pass
+
+                with get_session() as session:
+                    document = Document(
+                        case_id=case_id,
+                        document_name=filename,
+                        file_path=str(file_path),
+                        document_date=doc_date
+                    )
+                    session.add(document)
+                    session.commit()
+                    doc_id = document.id
+
+                downloaded.append({
+                    'file_path': str(file_path),
+                    'document_id': doc_id,
+                    'event_type': event_type,
+                    'event_date': event_date,
+                    'is_upset_bid': event_info.get('isUpsetBid', False),
+                    'is_sale': event_info.get('isSale', False)
+                })
+
+                logger.info(f"      Saved: {filename}")
+
+            except Exception as e:
+                logger.warning(f"      Download failed: {e}")
+
+            # Small delay between downloads
+            time.sleep(0.5)
+
+    except Exception as e:
+        logger.error(f"Error downloading upset bid documents: {e}")
+
+    return downloaded
+
+
+def download_all_case_documents(page: Page, case_id: int, county: str, case_number: str,
+                                 skip_existing: bool = True):
+    """
+    Download ALL documents for a case with detailed event association.
+
+    Unlike download_upset_bid_documents which is targeted, this downloads every
+    document attached to every event. This is important for AI analysis which
+    needs full context including:
+    - Original mortgage/deed of trust info
+    - Foreclosure filings
+    - Sale reports
+    - Upset bid notices
+    - All other court filings
+
+    Args:
+        page: Playwright page object (on case detail page)
+        case_id: Database ID of the case
+        county: County name (e.g., 'wake')
+        case_number: Case number (e.g., '24SP000437-910')
+        skip_existing: If True, skip documents already in database
+
+    Returns:
+        list: List of dicts with downloaded document info:
+            - file_path: Path to downloaded PDF
+            - document_id: Database ID of the document record
+            - event_type: Type of event this document is attached to
+            - event_date: Date string (MM/DD/YYYY)
+            - is_new: True if this was a new download, False if existing
+    """
+    logger.info(f"Downloading ALL documents for case...")
+
+    download_path = config.get_pdf_path(county, case_number)
+    downloaded = []
+
+    # Get existing documents to avoid duplicates
+    existing_docs = set()
+    if skip_existing:
+        with get_session() as session:
+            docs = session.query(Document).filter_by(case_id=case_id).all()
+            for doc in docs:
+                # Use filename as identifier
+                if doc.document_name:
+                    existing_docs.add(doc.document_name)
+                if doc.file_path:
+                    existing_docs.add(Path(doc.file_path).name)
+
+    try:
+        # Find all events with their document button status
+        # Use JavaScript to get ALL event details with document availability
+        all_events_with_docs = page.evaluate(r'''
+            () => {
+                const results = [];
+
+                // Find all event containers (Angular ng-repeat)
+                const eventDivs = document.querySelectorAll('[ng-repeat*="event"]');
+
+                eventDivs.forEach((eventDiv, idx) => {
+                    const text = eventDiv.textContent || '';
+
+                    // Check for document button/icon
+                    const docBtn = eventDiv.querySelector('button[aria-label*="document" i]');
+                    const docImg = eventDiv.querySelector('img[title*="document" i]');
+
+                    if (docBtn || docImg) {
+                        // Extract event date
+                        const dateMatch = text.match(/(\d{2}\/\d{2}\/\d{4})/);
+                        const eventDate = dateMatch ? dateMatch[1] : '';
+
+                        // Extract event type - find capitalized text
+                        let eventType = '';
+                        const lines = text.split('\n').map(l => l.trim()).filter(l => l);
+                        for (const line of lines) {
+                            if (line.match(/^[A-Z][a-zA-Z\s()/\-0-9]+$/) &&
+                                line.length > 5 && line.length < 80) {
+                                eventType = line;
+                                break;
+                            }
+                        }
+
+                        // Categorize document type
+                        const textLower = text.toLowerCase();
+                        const isUpsetBid = textLower.includes('upset bid');
+                        const isSaleReport = textLower.includes('report of') && textLower.includes('sale');
+                        const isNoticeOfSale = textLower.includes('notice of sale');
+                        const isForeclosureFiling = textLower.includes('foreclosure') ||
+                                                     textLower.includes('deed of trust');
+                        const isOrder = textLower.includes('order') || textLower.includes('findings');
+
+                        results.push({
+                            index: idx,
+                            eventType: eventType,
+                            eventDate: eventDate,
+                            hasButton: !!docBtn,
+                            hasImage: !!docImg,
+                            isUpsetBid: isUpsetBid,
+                            isSale: isSaleReport || isNoticeOfSale,
+                            isForeclosureFiling: isForeclosureFiling,
+                            isOrder: isOrder
+                        });
+                    }
+                });
+
+                return results;
+            }
+        ''')
+
+        if not all_events_with_docs:
+            logger.info(f"  No documents found on case page")
+            return []
+
+        logger.info(f"  Found {len(all_events_with_docs)} event(s) with documents")
+
+        for event_info in all_events_with_docs:
+            event_index = event_info['index']
+            event_type = event_info.get('eventType', 'Unknown')
+            event_date = event_info.get('eventDate', '')
+
+            # Generate filename to check for duplicates
+            clean_type = re.sub(r'[^\w\s-]', '', event_type)[:40]
+            clean_date = event_date.replace('/', '-') if event_date else 'unknown'
+            expected_filename = f"{clean_date}_{clean_type}.pdf"
+
+            # Skip if we already have this document
+            if skip_existing and expected_filename in existing_docs:
+                logger.debug(f"    Skipping existing: {expected_filename}")
+                downloaded.append({
+                    'file_path': str(download_path / expected_filename),
+                    'document_id': None,
+                    'event_type': event_type,
+                    'event_date': event_date,
+                    'is_new': False,
+                    'is_upset_bid': event_info.get('isUpsetBid', False),
+                    'is_sale': event_info.get('isSale', False)
+                })
+                continue
+
+            logger.info(f"    Downloading: {event_date} - {event_type}")
+
+            try:
+                # Set up download handler
+                with page.expect_download(timeout=30000) as download_info:
+                    # Click the document button/image for this specific event
+                    page.evaluate(f'''
+                        () => {{
+                            const eventDivs = document.querySelectorAll('[ng-repeat*="event"]');
+                            const eventDiv = eventDivs[{event_index}];
+                            if (eventDiv) {{
+                                // Try button first, then image
+                                const docBtn = eventDiv.querySelector('button[aria-label*="document" i]');
+                                const docImg = eventDiv.querySelector('img[title*="document" i]');
+                                if (docBtn) docBtn.click();
+                                else if (docImg) docImg.click();
+                            }}
+                        }}
+                    ''')
+
+                download = download_info.value
+
+                # Generate meaningful filename
+                filename = expected_filename
+                file_path = download_path / filename
+
+                # Handle duplicate filenames
+                counter = 1
+                while file_path.exists():
+                    filename = f"{clean_date}_{clean_type}_{counter}.pdf"
+                    file_path = download_path / filename
+                    counter += 1
+
+                download.save_as(str(file_path))
+
+                # Create database record
+                doc_date = None
+                if event_date:
+                    try:
+                        doc_date = datetime.strptime(event_date, '%m/%d/%Y').date()
+                    except ValueError:
+                        pass
+
+                with get_session() as session:
+                    document = Document(
+                        case_id=case_id,
+                        document_name=filename,
+                        file_path=str(file_path),
+                        document_date=doc_date
+                    )
+                    session.add(document)
+                    session.commit()
+                    doc_id = document.id
+
+                downloaded.append({
+                    'file_path': str(file_path),
+                    'document_id': doc_id,
+                    'event_type': event_type,
+                    'event_date': event_date,
+                    'is_new': True,
+                    'is_upset_bid': event_info.get('isUpsetBid', False),
+                    'is_sale': event_info.get('isSale', False)
+                })
+
+                logger.info(f"      Saved: {filename}")
+
+            except Exception as e:
+                logger.warning(f"      Download failed: {e}")
+
+            # Small delay between downloads
+            time.sleep(0.5)
+
+        new_count = sum(1 for d in downloaded if d.get('is_new'))
+        logger.info(f"  Downloaded {new_count} new documents, {len(downloaded) - new_count} existing")
+
+    except Exception as e:
+        logger.error(f"Error downloading all case documents: {e}")
+
+    return downloaded
