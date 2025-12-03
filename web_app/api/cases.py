@@ -168,3 +168,97 @@ def list_cases():
             'page_size': page_size,
             'total_pages': (total + page_size - 1) // page_size
         })
+
+
+@cases_bp.route('/<int:case_id>', methods=['GET'])
+def get_case(case_id):
+    """Get full case detail including parties, events, and upset bidders."""
+    if not google.authorized:
+        return jsonify({'error': 'Not authenticated'}), 401
+
+    user_id = get_current_user_id()
+
+    with get_session() as db_session:
+        case = db_session.query(Case).filter_by(id=case_id).first()
+
+        if not case:
+            return jsonify({'error': 'Case not found'}), 404
+
+        # Check if watchlisted
+        is_watchlisted = False
+        if user_id:
+            watchlist = db_session.query(Watchlist).filter_by(
+                user_id=user_id, case_id=case_id
+            ).first()
+            is_watchlisted = watchlist is not None
+
+        # Get parties grouped by type
+        parties = {}
+        for party in case.parties:
+            party_type = party.party_type
+            if party_type not in parties:
+                parties[party_type] = []
+            parties[party_type].append(party.party_name)
+
+        # Get events sorted by date (newest first)
+        events = []
+        for event in sorted(case.events, key=lambda e: e.event_date or datetime.min.date(), reverse=True):
+            events.append({
+                'id': event.id,
+                'date': event.event_date.isoformat() if event.event_date else None,
+                'type': event.event_type,
+                'description': event.event_description,
+                'filed_by': event.filed_by,
+                'filed_against': event.filed_against,
+                'document_url': event.document_url
+            })
+
+        # Get hearings
+        hearings = []
+        for hearing in case.hearings:
+            hearings.append({
+                'id': hearing.id,
+                'date': hearing.hearing_date.isoformat() if hearing.hearing_date else None,
+                'time': hearing.hearing_time,
+                'type': hearing.hearing_type
+            })
+
+        # Extract upset bidders from events (events with "Upset Bid" type)
+        upset_bidders = []
+        for event in case.events:
+            if event.event_type and 'upset' in event.event_type.lower():
+                # Try to parse bidder info from description or filed_by
+                upset_bidders.append({
+                    'date': event.event_date.isoformat() if event.event_date else None,
+                    'bidder': event.filed_by or 'Unknown',
+                    'amount': None  # Amount would need to be parsed from description
+                })
+
+        return jsonify({
+            'id': case.id,
+            'case_number': case.case_number,
+            'county_code': case.county_code,
+            'county_name': case.county_name,
+            'case_type': case.case_type,
+            'case_status': case.case_status,
+            'style': case.style,
+            'classification': case.classification,
+            'file_date': case.file_date.isoformat() if case.file_date else None,
+            'case_url': case.case_url,
+            'property_address': case.property_address,
+            'current_bid_amount': float(case.current_bid_amount) if case.current_bid_amount else None,
+            'minimum_next_bid': float(case.minimum_next_bid) if case.minimum_next_bid else None,
+            'next_bid_deadline': case.next_bid_deadline.isoformat() if case.next_bid_deadline else None,
+            'sale_date': case.sale_date.isoformat() if case.sale_date else None,
+            'legal_description': case.legal_description,
+            'trustee_name': case.trustee_name,
+            'attorney_name': case.attorney_name,
+            'attorney_phone': case.attorney_phone,
+            'attorney_email': case.attorney_email,
+            'parties': parties,
+            'events': events,
+            'hearings': hearings,
+            'upset_bidders': upset_bidders,
+            'is_watchlisted': is_watchlisted,
+            'photo_url': None  # Placeholder for future enrichment
+        })
