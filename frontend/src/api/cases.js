@@ -33,7 +33,9 @@ export async function fetchCases({
   if (endDate) params.append('end_date', endDate);
   if (watchlistOnly) params.append('watchlist_only', 'true');
 
-  const response = await fetch(`${API_BASE}/cases?${params}`);
+  const response = await fetch(`${API_BASE}/cases?${params}`, {
+    credentials: 'include'
+  });
   if (!response.ok) {
     throw new Error('Failed to fetch cases');
   }
@@ -44,7 +46,9 @@ export async function fetchCases({
  * Fetch single case detail
  */
 export async function fetchCase(caseId) {
-  const response = await fetch(`${API_BASE}/cases/${caseId}`);
+  const response = await fetch(`${API_BASE}/cases/${caseId}`, {
+    credentials: 'include'
+  });
   if (!response.ok) {
     if (response.status === 404) {
       throw new Error('Case not found');
@@ -59,7 +63,8 @@ export async function fetchCase(caseId) {
  */
 export async function addToWatchlist(caseId) {
   const response = await fetch(`${API_BASE}/cases/${caseId}/watchlist`, {
-    method: 'POST'
+    method: 'POST',
+    credentials: 'include'
   });
   if (!response.ok) {
     throw new Error('Failed to add to watchlist');
@@ -72,7 +77,8 @@ export async function addToWatchlist(caseId) {
  */
 export async function removeFromWatchlist(caseId) {
   const response = await fetch(`${API_BASE}/cases/${caseId}/watchlist`, {
-    method: 'DELETE'
+    method: 'DELETE',
+    credentials: 'include'
   });
   if (!response.ok) {
     throw new Error('Failed to remove from watchlist');
