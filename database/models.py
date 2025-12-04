@@ -8,6 +8,40 @@ from sqlalchemy.sql import func
 Base = declarative_base()
 
 
+class User(Base):
+    """Users authenticated via Google OAuth."""
+
+    __tablename__ = 'users'
+
+    id = Column(Integer, primary_key=True)
+    email = Column(String(255), unique=True, nullable=False)
+    display_name = Column(String(255))
+    avatar_url = Column(Text)
+    created_at = Column(TIMESTAMP, server_default=func.current_timestamp())
+    last_login_at = Column(TIMESTAMP)
+
+    def __repr__(self):
+        return f"<User(email='{self.email}', display_name='{self.display_name}')>"
+
+
+class Watchlist(Base):
+    """User's starred/watchlisted cases."""
+
+    __tablename__ = 'watchlist'
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    case_id = Column(Integer, ForeignKey('cases.id', ondelete='CASCADE'), nullable=False)
+    created_at = Column(TIMESTAMP, server_default=func.current_timestamp())
+
+    # Relationships
+    user = relationship("User")
+    case = relationship("Case")
+
+    def __repr__(self):
+        return f"<Watchlist(user_id={self.user_id}, case_id={self.case_id})>"
+
+
 class Case(Base):
     """Main case information."""
 

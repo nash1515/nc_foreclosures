@@ -180,6 +180,22 @@ gh pr status
   - **23** upset_bid cases (all with complete bid data)
   - **183+** closed_sold (includes 1 reclassified from upset_bid)
 
+### Previous Updates (Dec 3, 2025) - Session 16 (Frontend Phase 1)
+- **Frontend Phase 1 Complete:**
+  - **React frontend** with Vite 7, React 19, Ant Design 6, React Router 7
+  - **Flask API** with CORS and Google OAuth (Flask-Dance)
+  - **Pages**: Dashboard, All Cases, Case Detail, Settings, Login (all placeholder shells)
+  - **Protected routes**: Redirect to login when unauthenticated
+  - **User model**: Database table for OAuth users
+  - **Run scripts**: `scripts/run_frontend.sh`, `scripts/run_api.sh`, `scripts/run_dev.sh`
+- **Google OAuth Setup:**
+  - Project: NC Foreclosures (Google Cloud Console)
+  - Credentials stored in `.env` file (gitignored)
+  - Redirect URI: `http://localhost:5000/api/auth/google/authorized`
+  - To recreate credentials: https://console.cloud.google.com/apis/credentials
+- **PR Created:** https://github.com/nash1515/nc_foreclosures/pull/1
+- **Branch:** `feature/frontend` (worktree at `.worktrees/frontend`)
+
 ### Previous Updates (Dec 3, 2025) - Session 16 (PDF Bid Extraction)
 - **PDF Document Download for Upset Bid Cases:**
   - New `download_all_case_documents()` function downloads ALL documents for upset_bid cases
