@@ -9,12 +9,13 @@ Usage:
     results = scraper.run()
 """
 
+import json
 import sys
 from datetime import datetime
 from playwright.sync_api import sync_playwright
 
 from database.connection import get_session
-from database.models import Case, CaseEvent, Party, Hearing, ScrapeLog
+from database.models import Case, CaseEvent, Party, Hearing, ScrapeLog, SkippedCase
 from scraper.captcha_solver import solve_recaptcha
 from scraper.page_parser import is_foreclosure_case, parse_search_results, parse_case_detail, extract_total_count
 from scraper.portal_interactions import (
@@ -274,7 +275,11 @@ class DateRangeScraper:
 
             # Check if this is a foreclosure case
             if not is_foreclosure_case(case_data):
-                logger.debug(f"  {case_number} is not a foreclosure case, skipping")
+                # Log skipped case for review
+                self._save_skipped_case(
+                    case_number, case_url, county_code, county_name,
+                    case_data, "No foreclosure or sale indicators detected"
+                )
                 return False
 
             logger.info(f"  ✓ {case_number} is a foreclosure case")
@@ -363,6 +368,45 @@ class DateRangeScraper:
             session.commit()
             logger.info(f"  ✓ Saved new case {case_number}")
             return True
+
+    def _save_skipped_case(self, case_number, case_url, county_code, county_name, case_data, skip_reason):
+        """Save a skipped case for later review."""
+        with get_session() as session:
+            # Check if already saved (avoid duplicates)
+            existing = session.query(SkippedCase).filter_by(
+                case_number=case_number,
+                scrape_date=self.start_date
+            ).first()
+
+            if existing:
+                logger.debug(f"  Skipped case {case_number} already logged for {self.start_date}")
+                return
+
+            # Serialize events with document titles for review
+            events_for_review = []
+            for event in case_data.get('events', []):
+                events_for_review.append({
+                    'event_date': event.get('event_date'),
+                    'event_type': event.get('event_type'),
+                    'document_title': event.get('document_title'),
+                    'has_document': event.get('has_document', False)
+                })
+
+            skipped = SkippedCase(
+                case_number=case_number,
+                county_code=county_code,
+                county_name=county_name.title(),
+                case_url=case_url,
+                case_type=case_data.get('case_type'),
+                style=case_data.get('style'),
+                file_date=case_data.get('file_date'),
+                events_json=json.dumps(events_for_review),
+                skip_reason=skip_reason,
+                scrape_date=self.start_date
+            )
+            session.add(skipped)
+            session.commit()
+            logger.info(f"  📋 Logged skipped case {case_number} for review")
 
 
 def run_date_range_scrape(start_date, end_date, counties=None, dry_run=False):
