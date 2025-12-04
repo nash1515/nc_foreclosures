@@ -25,6 +25,7 @@ from playwright.sync_api import sync_playwright, Browser, Page
 from database.connection import get_session
 from database.models import Case, CaseEvent
 from scraper.page_parser import parse_case_detail
+from scraper.pdf_downloader import download_upset_bid_documents, download_all_case_documents
 from extraction.classifier import (
     SALE_REPORT_EVENTS,
     BLOCKING_EVENTS,
@@ -32,7 +33,13 @@ from extraction.classifier import (
     classify_case,
     update_case_classification
 )
+from extraction.extractor import (
+    extract_upset_bid_data, is_upset_bid_document,
+    extract_report_of_sale_data, is_report_of_sale_document
+)
+from ocr.processor import extract_text_from_pdf
 from common.logger import setup_logger
+from common.county_codes import get_county_name
 
 logger = setup_logger(__name__)
 
@@ -300,6 +307,227 @@ class CaseMonitor:
                 logger.info(f"  Updated bid: ${old_bid} -> ${new_bid_amount}, "
                            f"min next: ${case.minimum_next_bid}, deadline: {case.next_bid_deadline}")
 
+    def extract_bid_from_documents(
+        self,
+        page: Page,
+        case: Case,
+        html_bid: Optional[Decimal] = None
+    ) -> Optional[Dict]:
+        """
+        Download ALL case documents, OCR them, and extract bid data from upset bid forms.
+
+        This function:
+        1. Downloads ALL documents for the case (for complete AI analysis context)
+        2. Runs OCR on downloaded PDFs
+        3. For upset bid documents (AOC-SP-403), extracts structured bid data
+        4. Optionally verifies against HTML-extracted bid amount
+
+        By downloading ALL documents, we ensure the AI analysis has full context
+        including mortgage amounts, deed info, attorney details, etc.
+
+        Args:
+            page: Playwright page object (on case detail page)
+            case: Case object
+            html_bid: Optional bid amount extracted from HTML (for verification)
+
+        Returns:
+            Dict with extracted bid data, or None if extraction failed:
+                - current_bid: Decimal bid amount
+                - previous_bid: Decimal previous bid amount
+                - minimum_next_bid: Decimal minimum for next bid
+                - next_deadline: datetime deadline
+                - deposit_required: Decimal deposit amount
+                - source: 'pdf' or 'html'
+                - verified: True if HTML and PDF match
+                - total_docs_downloaded: Count of all documents downloaded
+        """
+        # Get county name from case number (format: YYSPXXXXXX-CCC)
+        county_code = case.case_number.split('-')[-1] if '-' in case.case_number else None
+        county_name = get_county_name(county_code) if county_code else 'unknown'
+
+        # Download ALL documents for the case (for complete AI analysis)
+        # This ensures we have mortgage info, deed details, etc.
+        downloaded = download_all_case_documents(
+            page, case.id, county_name, case.case_number,
+            skip_existing=True  # Don't re-download documents we already have
+        )
+
+        if not downloaded:
+            logger.debug(f"  No documents to download")
+            return None
+
+        # Count new downloads for reporting
+        new_docs = sum(1 for d in downloaded if d.get('is_new'))
+        logger.info(f"  Downloaded {new_docs} new documents, {len(downloaded) - new_docs} already existed")
+
+        best_bid_data = None
+        report_of_sale_data = None  # Track Report of Sale data separately
+
+        # Process documents for bid extraction (focus on upset bid/sale docs)
+        for doc_info in downloaded:
+            # Skip if not a new download and we don't need to re-OCR
+            if not doc_info.get('is_new') and not doc_info.get('is_upset_bid') and not doc_info.get('is_sale'):
+                continue
+
+            file_path = doc_info.get('file_path')
+            if not file_path:
+                continue
+
+            # Only OCR upset bid and sale documents for bid extraction
+            if not (doc_info.get('is_upset_bid') or doc_info.get('is_sale')):
+                continue
+
+            # Run OCR on the document
+            logger.info(f"  OCR processing: {doc_info.get('event_type', 'document')}")
+            ocr_text, method = extract_text_from_pdf(file_path)
+
+            if not ocr_text:
+                logger.warning(f"    No text extracted from {file_path}")
+                continue
+
+            # Check if this is a Report of Sale document (AOC-SP-301)
+            # This contains the INITIAL bid from the auction
+            if is_report_of_sale_document(ocr_text):
+                logger.info(f"    Detected AOC-SP-301 (Report of Foreclosure Sale) form")
+
+                # Extract Report of Sale data
+                ros_data = extract_report_of_sale_data(ocr_text)
+
+                if ros_data.get('initial_bid'):
+                    logger.info(f"    Extracted initial bid from auction: ${ros_data['initial_bid']}")
+
+                    # Convert to standard bid_data format
+                    report_of_sale_data = {
+                        'current_bid': ros_data['initial_bid'],
+                        'previous_bid': None,  # No previous bid - this is the first
+                        'minimum_next_bid': round(ros_data['initial_bid'] * Decimal('1.05'), 2),
+                        'next_deadline': ros_data.get('next_deadline'),
+                        'deposit_required': None,
+                        'source': 'pdf_report_of_sale',
+                        'document_path': file_path,
+                        'event_type': doc_info.get('event_type'),
+                        'event_date': doc_info.get('event_date'),
+                        'sale_date': ros_data.get('sale_date'),
+                        'verified': False,
+                    }
+
+                    if ros_data.get('next_deadline'):
+                        logger.info(f"    Upset bid deadline: {ros_data['next_deadline']}")
+
+            # Check if this is an upset bid document (AOC-SP-403)
+            # This contains subsequent upset bids (higher than Report of Sale bid)
+            elif is_upset_bid_document(ocr_text):
+                logger.info(f"    Detected AOC-SP-403 (Notice of Upset Bid) form")
+
+                # Extract structured bid data
+                bid_data = extract_upset_bid_data(ocr_text)
+
+                if bid_data.get('current_bid'):
+                    logger.info(f"    Extracted upset bid: ${bid_data['current_bid']}")
+
+                    # Add metadata
+                    bid_data['source'] = 'pdf_upset_bid'
+                    bid_data['document_path'] = file_path
+                    bid_data['event_type'] = doc_info.get('event_type')
+                    bid_data['event_date'] = doc_info.get('event_date')
+                    bid_data['total_docs_downloaded'] = len(downloaded)
+
+                    # Verify against HTML bid if available
+                    if html_bid:
+                        if html_bid == bid_data['current_bid']:
+                            bid_data['verified'] = True
+                            logger.info(f"    Bid VERIFIED: HTML and PDF match (${html_bid})")
+                        else:
+                            bid_data['verified'] = False
+                            logger.warning(f"    Bid MISMATCH: HTML=${html_bid}, PDF=${bid_data['current_bid']}")
+                    else:
+                        bid_data['verified'] = False
+
+                    # Keep the highest bid data (upset bids are filed in order, each higher than last)
+                    if not best_bid_data or (bid_data.get('current_bid') and
+                                              bid_data['current_bid'] > (best_bid_data.get('current_bid') or 0)):
+                        best_bid_data = bid_data
+
+        # Decide which data to return:
+        # 1. If we have upset bid data, use that (it's the most recent/highest bid)
+        # 2. If we only have Report of Sale data, use that (initial bid from auction)
+        # 3. If neither, return None
+        if best_bid_data:
+            best_bid_data['total_docs_downloaded'] = len(downloaded)
+            # If we also found report of sale, note the initial bid for reference
+            if report_of_sale_data:
+                best_bid_data['initial_auction_bid'] = report_of_sale_data.get('current_bid')
+            return best_bid_data
+        elif report_of_sale_data:
+            report_of_sale_data['total_docs_downloaded'] = len(downloaded)
+            logger.info(f"    Using Report of Sale as bid source (no upset bids filed yet)")
+            return report_of_sale_data
+
+        return None
+
+    def update_case_with_pdf_bid_data(self, case_id: int, bid_data: Dict) -> bool:
+        """
+        Update case with bid data extracted from PDF documents.
+
+        This updates the case with accurate bid information from:
+        - AOC-SP-301 (Report of Foreclosure Sale): Initial bid from auction
+        - AOC-SP-403 (Notice of Upset Bid): Subsequent upset bids
+
+        Fields updated:
+        - current_bid_amount: The current highest bid
+        - minimum_next_bid: Calculated 5% above current (from PDF or calculated)
+        - next_bid_deadline: The deadline for the next upset bid
+        - sale_date: Date of the auction sale (from Report of Sale)
+
+        Args:
+            case_id: Database ID of the case
+            bid_data: Dict with extracted bid data from extract_bid_from_documents()
+
+        Returns:
+            True if update was successful
+        """
+        if not bid_data or not bid_data.get('current_bid'):
+            return False
+
+        with get_session() as session:
+            case = session.query(Case).filter_by(id=case_id).first()
+            if not case:
+                return False
+
+            old_bid = case.current_bid_amount
+
+            # Update bid amount
+            case.current_bid_amount = bid_data['current_bid']
+
+            # Use PDF minimum if available, otherwise calculate
+            if bid_data.get('minimum_next_bid'):
+                case.minimum_next_bid = bid_data['minimum_next_bid']
+            else:
+                case.minimum_next_bid = round(bid_data['current_bid'] * Decimal('1.05'), 2)
+
+            # Use PDF deadline if available, otherwise calculate from event date
+            if bid_data.get('next_deadline'):
+                case.next_bid_deadline = bid_data['next_deadline']
+            elif bid_data.get('event_date'):
+                try:
+                    bid_date = datetime.strptime(bid_data['event_date'], '%m/%d/%Y')
+                    case.next_bid_deadline = bid_date + timedelta(days=10)
+                except:
+                    pass
+
+            # Update sale_date if available (from Report of Sale)
+            if bid_data.get('sale_date') and not case.sale_date:
+                case.sale_date = bid_data['sale_date']
+
+            case.updated_at = datetime.now(timezone.utc)
+            session.commit()
+
+            source_type = bid_data.get('source', 'pdf')
+            logger.info(f"  Updated bid from {source_type}: ${old_bid} -> ${bid_data['current_bid']}, "
+                       f"min next: ${case.minimum_next_bid}, deadline: {case.next_bid_deadline}")
+
+            return True
+
     def add_new_events(self, case_id: int, new_events: List[Dict]):
         """
         Add new events to the database.
@@ -346,6 +574,7 @@ class CaseMonitor:
             'events_added': 0,
             'classification_changed': False,
             'bid_updated': False,
+            'pdf_bid_extracted': False,
             'error': None
         }
 
@@ -400,6 +629,40 @@ class CaseMonitor:
                     # Check for blocking event
                     if self.is_blocking_event(event_type):
                         logger.info(f"  Blocking event detected")
+
+            # For upset_bid cases missing bid amount, try to extract from page
+            # This handles cases that were already classified but never had bid extracted
+            if case.classification == 'upset_bid' and not case.current_bid_amount:
+                bid_amount = self.extract_bid_amount(html)
+                if bid_amount:
+                    # Find the most recent upset bid or sale event date for deadline calculation
+                    event_date = None
+                    for event in parsed_events:
+                        evt_type = (event.get('event_type') or '').lower()
+                        if 'upset' in evt_type or 'sale' in evt_type:
+                            event_date = event.get('event_date')
+                            break
+                    self.update_case_bid_info(case.id, bid_amount, event_date)
+                    result['bid_updated'] = True
+                    logger.info(f"  Extracted missing bid amount: ${bid_amount}")
+
+            # For upset_bid cases, try to extract bid data from PDF documents
+            # PDFs (AOC-SP-403 forms) contain more accurate/complete bid information
+            if case.classification == 'upset_bid':
+                # Get HTML bid for verification
+                html_bid = self.extract_bid_amount(html) if not case.current_bid_amount else case.current_bid_amount
+
+                try:
+                    pdf_bid_data = self.extract_bid_from_documents(page, case, html_bid)
+                    if pdf_bid_data and pdf_bid_data.get('current_bid'):
+                        # Update case with PDF data (more accurate than HTML)
+                        if self.update_case_with_pdf_bid_data(case.id, pdf_bid_data):
+                            result['bid_updated'] = True
+                            result['pdf_bid_extracted'] = True
+                            if pdf_bid_data.get('verified'):
+                                logger.info(f"  Bid verified: HTML and PDF match")
+                except Exception as e:
+                    logger.warning(f"  PDF bid extraction failed (non-blocking): {e}")
 
             # Reclassify the case based on current events
             # Only change classification if the new one is valid (not None)

@@ -80,7 +80,7 @@ gh pr status
 ### Completed Components
 - ✅ PostgreSQL database with full schema (7 tables + new extraction fields)
 - ✅ SQLAlchemy ORM models
-- ✅ VPN verification system (OpenVPN + FrootVPN)
+- ✅ ~~VPN verification system~~ (removed - not needed)
 - ✅ CapSolver reCAPTCHA integration
 - ✅ Playwright scraper framework with stealth mode
 - ✅ Kendo UI Grid parsing implementation
@@ -95,6 +95,7 @@ gh pr status
 - ✅ **NEW: Parallel batch scraper** (6 browsers simultaneously)
 - ✅ **NEW: Failure tracking system** (JSON-based retry capability)
 - ✅ **NEW: Scheduler service** (5 AM Mon-Fri, configurable via API)
+- ✅ **NEW: PDF bid extraction for upset_bid cases** (AOC-SP-403 form parsing)
 
 ### Scrape Progress (as of Nov 27, 2025 - ALL COUNTIES COMPLETE)
 
@@ -126,7 +127,60 @@ gh pr status
 10. Implement enrichment module (Zillow, county records, tax values)
 11. Analyze `closed_sold` cases (183) for bidding strategy patterns by county
 
-### Recent Updates (Dec 3, 2025) - Session 16 (Frontend Phase 1)
+### Recent Updates (Dec 4, 2025) - Session 18 (Multi-Document Popup Fix)
+- **Multi-Document Popup Handling Fixed:**
+  - **Problem**: Events with 2+ documents show a "Document Selector" dialog instead of direct download
+  - **Root Cause**: Portal uses native HTML `<dialog>` elements, not `div[role="dialog"]`
+  - **Solution**: Updated `handle_document_selector_popup()` in `scraper/pdf_downloader.py`:
+    - Added `dialog:has-text("Document Selector")` as primary selector
+    - Added `page.get_by_role('dialog', name='Document Selector')` as fallback
+    - Improved row detection using `dialog.get_by_role('row')`
+    - Extracts document info from row text via regex
+    - Downloads each document sequentially with proper error handling
+  - **Affected Functions** (all in `scraper/pdf_downloader.py`):
+    - `download_all_case_documents()` - downloads ALL case documents
+    - `download_upset_bid_documents()` - downloads upset bid/sale docs only
+  - **Automatically Propagates To**:
+    - `scraper/case_monitor.py` - imports functions from pdf_downloader.py
+    - Daily scrape workflow - uses case_monitor for document extraction
+- **Test Script Added**: `scripts/test_multi_doc_popup.py` for verifying popup handling
+- **Verified**: Case 25SP000352-420 (Harnett County) downloads working correctly
+
+### Previous Updates (Dec 4, 2025) - Session 17 (Report of Sale + Complete Bid Data)
+- **All 23 upset_bid Cases Now Have Complete Bid Data:**
+  - Fixed 4 problem cases that had NULL bid amounts or deadlines
+  - Case 1288 (25SP001000-910): Reclassified to `closed_sold` (deadline passed)
+  - Case 1311 (25SP000352-420): $121,275 bid, deadline 2025-12-05 (updated Session 18)
+  - Case 1035 (25SP000281-310): $291,946.65 bid, deadline 2025-12-11
+  - Case 1545 (25SP001924-910): $239,020 bid, deadline 2025-12-04
+- **AOC-SP-301 (Report of Foreclosure Sale) Extraction Added:**
+  - **NC Form Numbers:**
+    - AOC-SP-301 = Report of Foreclosure Sale (initial auction results)
+    - AOC-SP-403 = Notice of Upset Bid (subsequent bids)
+  - New patterns in `extraction/extractor.py`:
+    - `REPORT_OF_SALE_BID_PATTERNS` - extracts initial bid from sale report
+    - `REPORT_OF_SALE_DATE_PATTERNS` - extracts sale date
+    - `extract_report_of_sale_data()` function returns initial_bid, sale_date, next_deadline
+    - `is_report_of_sale_document()` detects form via AOC-SP-301 marker or "Report of Foreclosure Sale"
+  - Updated `scraper/case_monitor.py`:
+    - `extract_bid_from_documents()` now checks BOTH form types
+    - Priority: Use upset bid if available (higher/more recent), otherwise use Report of Sale
+    - Saves sale_date when processing Report of Sale documents
+- **Daily Validation Added:**
+  - New `validate_upset_bid_data()` function in `scraper/daily_scrape.py`
+  - Runs as Task 3 in daily workflow
+  - Reports upset_bid cases missing current_bid_amount or next_bid_deadline
+  - Returns problem case IDs for remediation
+- ~~**Known Issue - Multi-Document Popup:**~~ **RESOLVED** (Dec 4, 2025)
+  - Events with 2+ documents now properly handled
+  - `handle_document_selector_popup()` function detects native HTML `<dialog>` elements
+  - Downloads all documents from popup table sequentially
+  - Used by both `download_all_case_documents()` and `download_upset_bid_documents()`
+- **Current Database Status:**
+  - **23** upset_bid cases (all with complete bid data)
+  - **183+** closed_sold (includes 1 reclassified from upset_bid)
+
+### Previous Updates (Dec 3, 2025) - Session 16 (Frontend Phase 1)
 - **Frontend Phase 1 Complete:**
   - **React frontend** with Vite 7, React 19, Ant Design 6, React Router 7
   - **Flask API** with CORS and Google OAuth (Flask-Dance)
@@ -141,6 +195,23 @@ gh pr status
   - To recreate credentials: https://console.cloud.google.com/apis/credentials
 - **PR Created:** https://github.com/nash1515/nc_foreclosures/pull/1
 - **Branch:** `feature/frontend` (worktree at `.worktrees/frontend`)
+
+### Previous Updates (Dec 3, 2025) - Session 16 (PDF Bid Extraction)
+- **PDF Document Download for Upset Bid Cases:**
+  - New `download_all_case_documents()` function downloads ALL documents for upset_bid cases
+  - Documents stored in `data/pdfs/{county}/{case_number}/`
+  - Skips existing documents to avoid re-downloading
+  - Enables complete AI analysis context (mortgage info, deed details, attorney info)
+- **AOC-SP-403 (Notice of Upset Bid) Extraction:**
+  - New patterns in `extraction/extractor.py` for NC standard upset bid form
+  - Handles OCR artifacts (extra spaces, typos like "UpsetBd", "M nimum")
+  - Position-based extraction for columnar form layouts
+  - Extracts: current_bid, previous_bid, minimum_next_bid, deadline, deposit
+  - Smart fallback: calculates current_bid from minimum_next_bid/1.05 when handwritten amounts are garbled
+- **Case Monitor Integration:**
+  - Only downloads/extracts for `upset_bid` cases (not `upcoming`)
+  - OCR processes upset bid and sale documents for bid data
+  - Verifies PDF data against HTML-extracted bids when available
 
 ### Previous Updates (Dec 3, 2025) - Session 15 (Scheduler Service)
 - **Automated Daily Scrape Scheduler:**
@@ -235,8 +306,9 @@ gh pr status
 - **Database Updates:**
   - Added `minimum_next_bid` column (NC law: current_bid * 1.05)
   - Extraction module now auto-calculates minimum_next_bid
-- **VPN Requirement Removed:**
-  - VPN verification removed from all scrapers
+- **VPN Not Required:**
+  - VPN verification was removed from all scrapers (Dec 1, 2025)
+  - No IP banning issues observed - scraper runs fine without VPN
   - Can be re-enabled if IP banning becomes an issue
 - **Classification Monitoring:**
   - `upcoming` → Check for sale events → `upset_bid`
@@ -257,13 +329,8 @@ gh pr status
 2. **Enrichment module** - Add property data from Zillow, county tax records
 3. **Bidding strategy analysis** - Analyze 183 closed_sold cases for patterns
 
-### Previous Updates (Dec 1, 2025) - Session 10 (VPN Fix)
-- **WSL2 VPN Routing Issue FIXED:**
-  - **Problem**: VPN connection caused Claude Code to hang for 30+ minutes
-  - **Root Cause**: OpenVPN's `redirect-gateway` broke WSL2's virtual network bridge to Windows
-  - **Solution**: Modified all 6 US FrootVPN config files with routing directives
-  - **Result**: VPN and Claude API now work simultaneously
-  - See "WSL2 VPN Routing Fix" section for full details
+### Previous Updates (Dec 1, 2025) - Session 10
+- **VPN requirement removed** - scraper works without VPN, no IP banning issues observed
 
 ### Previous Updates (Dec 1, 2025) - Session 9 Continued (Classification Cleanup)
 - **New Classification States Added:**
@@ -400,7 +467,7 @@ gh pr status
   2. OR events contain: "Foreclosure Case Initiated", "Findings And Order Of Foreclosure", etc.
 
 ### Previous Updates (Nov 24, 2025)
-- **VPN Setup:** OpenVPN configured with FrootVPN (Virginia server)
+- **VPN:** Not required (removed Dec 1, 2025) - no IP banning issues
 - **Portal Discovery:** Portal uses Kendo UI Grid, not simple HTML tables
 - **Kendo Grid Support:** Updated selectors for grid, pagination, and pager info
 - See `docs/KENDO_GRID_FIXES.md` for detailed implementation notes
@@ -439,87 +506,15 @@ PGPASSWORD=nc_password psql -U nc_user -d nc_foreclosures -h localhost -c "\dt"
 # Integration tests
 PYTHONPATH=$(pwd) venv/bin/python tests/test_phase1_integration.py
 
-# Test VPN manager
-PYTHONPATH=$(pwd) venv/bin/python -c "from scraper.vpn_manager import is_vpn_connected; print(is_vpn_connected())"
-
 # Test CapSolver
 PYTHONPATH=$(pwd) venv/bin/python scraper/captcha_solver.py
 ```
-
-### VPN Setup
-
-**REQUIRED:** VPN must be running before scraping.
-
-**CLAUDE CODE NOTE:** Do NOT run `sudo openvpn` directly - it can hang waiting for password input. Use the helper scripts instead:
-
-```bash
-# Check VPN status (safe, no sudo)
-./scripts/vpn_status.sh
-
-# Start VPN (handles password and waits for connection)
-# NOTE: Requires sudo password - user may need to run manually if it hangs
-./scripts/vpn_start.sh [virginia|california|florida|georgia|illinois|newyork|random-east]
-```
-
-**Manual VPN start (if scripts don't work):**
-```bash
-cd ~/frootvpn
-sudo openvpn --config "United States - Virginia.ovpn" --auth-user-pass auth.txt --daemon --log /tmp/openvpn.log
-
-# Available US servers:
-# - United States - Virginia.ovpn
-# - United States - California.ovpn
-# - United States - Florida.ovpn
-# - United States - Georgia.ovpn
-# - United States - Illinois.ovpn
-# - United States - New York.ovpn
-
-# Verify VPN is connected
-curl ifconfig.me  # Should NOT show baseline IP (136.61.20.173)
-
-# Stop VPN
-sudo killall openvpn
-```
-
-### WSL2 VPN Routing Fix (Dec 1, 2025)
-
-**Problem:** When OpenVPN runs inside WSL2, connecting to VPN would cause Claude Code to hang for 30+ minutes. The Windows host worked fine - only WSL2 was affected.
-
-**Root Cause:** OpenVPN's `redirect-gateway` directive replaces the default route, breaking WSL2's virtual network bridge to Windows. All traffic tries to go through the VPN tunnel but the return path is broken, and DNS also fails because WSL2 uses Windows for DNS resolution.
-
-**Fix Applied:** Added routing directives to all 6 US FrootVPN config files (`~/frootvpn/United States - *.ovpn`):
-
-```
-# WSL2 routing fix - preserve local network connectivity
-# Route Anthropic API through original gateway (prevents Claude Code hanging)
-route 160.79.104.0 255.255.255.0 net_gateway
-# Route GitHub through original gateway (for git push)
-route 140.82.112.0 255.255.255.0 net_gateway
-# Keep WSL2 internal network using original gateway
-route 172.16.0.0 255.240.0.0 net_gateway
-```
-
-**What these directives do:**
-- `route 160.79.104.0 255.255.255.0 net_gateway` - Route Anthropic API (160.79.104.x) through original Windows NAT gateway
-- `route 140.82.112.0 255.255.255.0 net_gateway` - Route GitHub (140.82.112.x) through original gateway
-- `route 172.16.0.0 255.240.0.0 net_gateway` - Keep WSL2 internal network using original gateway
-
-**How it works:** FrootVPN uses redirect-gateway which routes ALL traffic through VPN. Our fix adds explicit routes for Anthropic API, GitHub, and WSL2 internal networks BEFORE the redirect takes effect. These more-specific routes take priority over the VPN default route.
-
-**Result:**
-- NC Courts scraping traffic → VPN tunnel (shows VPN IP 74.115.214.x)
-- Claude Code API traffic → Original Windows NAT (no timeout!)
-- GitHub push/pull → Original Windows NAT (no timeout!)
-- WSL2 internal traffic → Original Windows NAT
-
-**Rollback:** If the fix causes issues, remove the 5 lines above from the `.ovpn` files.
 
 ### Running the Scraper
 
 **Prerequisites:**
 1. PostgreSQL running: `sudo service postgresql start`
 2. CapSolver API key in `.env`
-3. VPN is **optional** (removed as of Dec 1, 2025) - re-enable if IP banning occurs
 
 ```bash
 # Test with small limit
@@ -644,7 +639,7 @@ curl http://localhost:5000/api/scheduler/history?limit=10
 ### Module Structure
 - `common/` - Shared utilities (config, logging, county codes)
 - `database/` - ORM models and connection management
-- `scraper/` - Web scraping (VPN, CAPTCHA, Playwright)
+- `scraper/` - Web scraping (CAPTCHA, Playwright)
 - `scheduler/` - Automated job scheduling (database-driven, API-configurable)
 - `ocr/` - PDF processing (Phase 2)
 - `analysis/` - AI analysis (Phase 3)
@@ -657,7 +652,7 @@ curl http://localhost:5000/api/scheduler/history?limit=10
 - `scraper/initial_scrape.py` - Main scraper script
 - `scraper/daily_scrape.py` - Daily scrape orchestrator
 - `scraper/case_monitor.py` - Case monitoring module (direct URL access)
-- `scraper/vpn_manager.py` - VPN verification (currently disabled)
+- `scraper/vpn_manager.py` - VPN verification (disabled, not needed)
 - `scraper/captcha_solver.py` - reCAPTCHA solving (CapSolver API)
 - `scraper/page_parser.py` - Kendo UI Grid HTML parsing
 - `scraper/portal_interactions.py` - Form filling and navigation
@@ -672,7 +667,6 @@ curl http://localhost:5000/api/scheduler/history?limit=10
 ### Environment Variables (.env)
 - `DATABASE_URL` - PostgreSQL connection string
 - `CAPSOLVER_API_KEY` - CapSolver API key
-- `VPN_BASELINE_IP` - Your IP without VPN (for verification)
 - `PDF_STORAGE_PATH` - Where to store downloaded PDFs
 - `LOG_LEVEL` - Logging verbosity (INFO, DEBUG, etc.)
 
@@ -682,7 +676,6 @@ Target counties: Chatham (180), Durham (310), Harnett (420), Lee (520), Orange (
 ## Important Notes
 
 - **Always use PYTHONPATH:** Required for module imports
-- **VPN must be on:** Scraper will exit if VPN not detected (baseline IP: 136.61.20.173, VPN IP: 74.115.214.142)
 - **PostgreSQL must be running:** `sudo service postgresql start`
 - **Portal uses Kendo UI:** Grid, dropdowns, and pagination all use Kendo components
 - **Headless mode issues:** Use `headless=False` for development due to aggressive CAPTCHA detection
@@ -695,7 +688,6 @@ Target counties: Chatham (180), Durham (310), Harnett (420), Lee (520), Orange (
 4. **Kendo dropdown timeouts:** Status and case type dropdowns timing out after 10s (county works via JS fallback)
 5. **CAPTCHA solving delays:** CapSolver API can be slow, adjust timeouts if needed
 6. **Browser detection:** Automated browsers trigger image CAPTCHAs instead of checkbox
-7. ~~**WSL2 VPN Routing Issue:**~~ **FIXED (Dec 1, 2025)** - VPN connection broke WSL2 network, causing 30+ minute hangs. Fixed by modifying OpenVPN configs. See "WSL2 VPN Routing Fix" section above.
 
 ## Documentation
 

@@ -142,6 +142,105 @@ def run_case_monitoring(dry_run: bool = False) -> Dict:
         return {'error': str(e)}
 
 
+def validate_upset_bid_data(dry_run: bool = False) -> Dict:
+    """
+    Validate that all upset_bid cases have required bid data.
+
+    This catches cases that were classified as upset_bid but are missing:
+    - current_bid_amount
+    - next_bid_deadline
+
+    These cases need their documents re-downloaded and re-processed.
+
+    Args:
+        dry_run: If True, only report issues without taking action
+
+    Returns:
+        Dict with validation results
+    """
+    logger.info("=" * 60)
+    logger.info("TASK: Validate upset_bid data completeness")
+    logger.info("=" * 60)
+
+    results = {
+        'missing_bid_amount': [],
+        'missing_deadline': [],
+        'missing_both': [],
+        'total_issues': 0,
+    }
+
+    with get_session() as session:
+        # Find upset_bid cases missing bid amount
+        missing_bid = session.query(Case).filter(
+            Case.classification == 'upset_bid',
+            Case.current_bid_amount.is_(None)
+        ).all()
+
+        # Find upset_bid cases missing deadline
+        missing_deadline = session.query(Case).filter(
+            Case.classification == 'upset_bid',
+            Case.next_bid_deadline.is_(None)
+        ).all()
+
+        # Categorize
+        missing_bid_ids = {c.id for c in missing_bid}
+        missing_deadline_ids = {c.id for c in missing_deadline}
+
+        both = missing_bid_ids & missing_deadline_ids
+        only_bid = missing_bid_ids - both
+        only_deadline = missing_deadline_ids - both
+
+        for case in missing_bid:
+            case_info = {
+                'id': case.id,
+                'case_number': case.case_number,
+                'county': case.case_number.split('-')[-1] if '-' in case.case_number else 'unknown'
+            }
+
+            if case.id in both:
+                results['missing_both'].append(case_info)
+                logger.warning(f"  Case {case.case_number}: missing BOTH bid amount AND deadline")
+            elif case.id in only_bid:
+                results['missing_bid_amount'].append(case_info)
+                logger.warning(f"  Case {case.case_number}: missing bid amount (has deadline: {case.next_bid_deadline})")
+
+        for case in missing_deadline:
+            if case.id in only_deadline:
+                case_info = {
+                    'id': case.id,
+                    'case_number': case.case_number,
+                    'county': case.case_number.split('-')[-1] if '-' in case.case_number else 'unknown'
+                }
+                results['missing_deadline'].append(case_info)
+                logger.warning(f"  Case {case.case_number}: missing deadline (has bid: ${case.current_bid_amount})")
+
+    results['total_issues'] = (
+        len(results['missing_both']) +
+        len(results['missing_bid_amount']) +
+        len(results['missing_deadline'])
+    )
+
+    if results['total_issues'] == 0:
+        logger.info("All upset_bid cases have complete bid data")
+    else:
+        logger.warning(f"Found {results['total_issues']} upset_bid cases with incomplete data:")
+        logger.warning(f"  - Missing both: {len(results['missing_both'])}")
+        logger.warning(f"  - Missing bid only: {len(results['missing_bid_amount'])}")
+        logger.warning(f"  - Missing deadline only: {len(results['missing_deadline'])}")
+
+        if not dry_run:
+            # Return the case IDs for remediation
+            all_problem_ids = (
+                [c['id'] for c in results['missing_both']] +
+                [c['id'] for c in results['missing_bid_amount']] +
+                [c['id'] for c in results['missing_deadline']]
+            )
+            results['problem_case_ids'] = all_problem_ids
+            logger.info(f"Problem case IDs: {all_problem_ids}")
+
+    return results
+
+
 def run_stale_reclassification(dry_run: bool = False) -> Dict:
     """
     Reclassify cases that have become stale due to time passing.
@@ -224,6 +323,7 @@ def run_daily_tasks(
         'target_date': str(target_date),
         'new_case_search': None,
         'case_monitoring': None,
+        'upset_bid_validation': None,
         'stale_reclassification': None,
         'errors': []
     }
@@ -244,11 +344,18 @@ def run_daily_tasks(
             logger.error(f"Task 2 failed: {e}")
             results['errors'].append(f"case_monitoring: {e}")
 
-    # Task 3: Reclassify stale cases (always run)
+    # Task 3: Validate upset_bid data completeness (always run)
+    try:
+        results['upset_bid_validation'] = validate_upset_bid_data(dry_run)
+    except Exception as e:
+        logger.error(f"Task 3 failed: {e}")
+        results['errors'].append(f"upset_bid_validation: {e}")
+
+    # Task 4: Reclassify stale cases (always run)
     try:
         results['stale_reclassification'] = run_stale_reclassification(dry_run)
     except Exception as e:
-        logger.error(f"Task 3 failed: {e}")
+        logger.error(f"Task 4 failed: {e}")
         results['errors'].append(f"stale_reclassification: {e}")
 
     # Summary
@@ -272,6 +379,13 @@ def run_daily_tasks(
         logger.info(f"Cases monitored: {monitored}")
         logger.info(f"New events found: {events_added}")
         logger.info(f"Classifications changed: {classifications_changed}")
+
+    if results['upset_bid_validation']:
+        issues = results['upset_bid_validation'].get('total_issues', 0)
+        if issues > 0:
+            logger.warning(f"Upset bid data issues found: {issues} cases need attention")
+        else:
+            logger.info(f"Upset bid data validation: PASSED (all cases have complete data)")
 
     if results['stale_reclassification']:
         reclassified = results['stale_reclassification'].get('reclassified', 0)

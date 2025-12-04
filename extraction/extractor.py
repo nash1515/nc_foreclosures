@@ -40,11 +40,97 @@ BID_AMOUNT_PATTERNS = [
     r'winning\s+bid[:\s]*\$?\s*([\d,]+\.?\d*)',
 ]
 
-# Upset Bid Deadline patterns
+# =============================================================================
+# AOC-SP-301 (Report of Foreclosure Sale) PATTERNS - NC Standard Form
+# =============================================================================
+# The Report of Sale is filed after the auction and contains:
+# - The winning bid amount from the auction (this is the FIRST bid)
+# - Date of sale (for calculating the 10-day upset period deadline)
+# - This form starts the upset bid period
+
+# Report of Sale bid amount patterns
+REPORT_OF_SALE_BID_PATTERNS = [
+    # Field 5: "Highest Bid Amount" in AOC-SP-301
+    r'[Hh]ighest\s*[Bb]id\s*[Aa]mount[\s:]*\$?\s*([\d,]+\.?\d*)',
+    # Alternative wording
+    r'[Aa]mount\s*[Oo]f\s*[Ss]uccessful\s*[Bb]id[\s:]*\$?\s*([\d,]+\.?\d*)',
+    r'[Pp]roperty\s*[Ss]old\s*[Ff]or[\s:]*\$?\s*([\d,]+\.?\d*)',
+    r'[Ww]inning\s*[Bb]id[\s:]*\$?\s*([\d,]+\.?\d*)',
+    # Field with OCR artifacts - "Highest Bid" followed by amount on next line
+    r'[Hh]ighest\s*[Bb]id[\s\S]{1,50}?\$?\s*(\d[\d,\.\s]+\.\d{2})',
+]
+
+# Date of sale patterns for Report of Sale
+REPORT_OF_SALE_DATE_PATTERNS = [
+    # Field 3: "Date of Sale" in AOC-SP-301
+    r'[Dd]ate\s*[Oo]f\s*[Ss]ale[\s:]*(\d{1,2}/\d{1,2}/\d{4})',
+    r'[Ss]ale\s*(?:was\s*)?[Hh]eld\s*[Oo]n[\s:]*(\d{1,2}/\d{1,2}/\d{4})',
+    r'[Ss]ale\s*[Dd]ate[\s:]*(\d{1,2}/\d{1,2}/\d{4})',
+]
+
+
+# =============================================================================
+# AOC-SP-403 (Notice of Upset Bid) PATTERNS - NC Standard Form
+# =============================================================================
+# NOTE: These patterns need to handle OCR artifacts including:
+# - Extra spaces inside numbers ("45, 000.00" instead of "45,000.00")
+# - Typos ("UpsetBd" instead of "UpsetBid")
+# - Variable whitespace between fields
+# - Dollar signs may have extra spaces ("$   47,256.00")
+
+# Helper: Match dollar amount with potential spaces inside numbers
+# Matches: $47,256.00 or $ 47,256.00 or 47, 256.00 etc.
+# Captures the whole number portion which we'll clean up later
+# Also handles line breaks between label and amount (common in PDF extraction)
+DOLLAR_AMOUNT = r'[\$\']?\s*(\d[\d,\.\s]+\d{2})'
+
+# Current upset bid amount - the new higher bid being filed
+# NOTE: In PDF forms, the label and value may be on separate lines, so we
+# capture based on position relative to other fields
+UPSET_BID_NEW_AMOUNT_PATTERNS = [
+    # "AmountofNew UpsetBd" followed later by $47,256.00
+    # Use multiline pattern with [\s\S] to match across lines
+    r'AmountofNew\s*Upset\s*B[id]*[\s\S]{1,100}?' + DOLLAR_AMOUNT,
+    r'Amount\s*[Oo]f\s*New\s*Upset\s*B[id]*[\s\S]{1,100}?' + DOLLAR_AMOUNT,
+    # Direct dollar pattern when next to label
+    r'New\s*Upset\s*B[id]*\s*' + DOLLAR_AMOUNT,
+]
+
+# Previous bid amount - the bid being upset
+UPSET_BID_PREVIOUS_AMOUNT_PATTERNS = [
+    # "Amount Of Last Previous Sale Or Upset Bid" followed by '$45,000.00'
+    # The label is on one line, value on the next in PDF forms
+    r'Amount\s*[Oo]f\s*Last\s*Previous\s*(?:Sale|Upset)[\s\S]{1,100}?' + DOLLAR_AMOUNT,
+    r'Last\s*Previous\s*Sale\s*(?:[Oo]r)?\s*Upset[\s\S]{1,100}?' + DOLLAR_AMOUNT,
+    # Direct capture near "Previous Sale" text
+    r'Previous\s*(?:Sale|Bid)[\s\S]{1,50}?' + DOLLAR_AMOUNT,
+]
+
+# Minimum next upset bid amount - key for bidding strategy
+MINIMUM_NEXT_UPSET_PATTERNS = [
+    # "*Minimum Am junt Of Next Upset! Bat" (with OCR typos) followed by $49,612.50
+    # Handle OCR typos: "Am junt" = "Amount", "Bat" = "Bid"
+    r'[*\"]?[Mm]inimum\s*[Aa]m[ou\s]*[nrt]*\s*(?:[Oo]f)?\s*[Nn]ext\s*[Uu]pset[!\s]*[Bb][adit]*[\s\S]{1,100}?' + DOLLAR_AMOUNT,
+    r'Next\s*(?:Minimum)?\s*Upset\s*B[id]*[\s\S]{1,50}?' + DOLLAR_AMOUNT,
+]
+
+# Deposit required for next upset bid
+UPSET_DEPOSIT_PATTERNS = [
+    # "Amount of Deposit For Next Minimum Upset Bid" followed by $2,480.63
+    r'Deposit\s*(?:[Ff]or)?\s*[Nn]ext\s*(?:Minimum)?\s*Upset[\s\S]{1,100}?' + DOLLAR_AMOUNT,
+    r'Amount\s*(?:[Oo]f)?\s*Deposit[\s\S]{1,80}?[Nn]ext[\s\S]{1,50}?' + DOLLAR_AMOUNT,
+]
+
+# Upset Bid Deadline patterns (enhanced)
 UPSET_DEADLINE_PATTERNS = [
-    r'Last\s+Date\s+(?:For|for)\s+Upset\s+Bid[:\s]*(\d{1,2}/\d{1,2}/\d{4})',
+    # From AOC-SP-403: "Last Day For Nex! Upset" (note: OCR may render 't' as '!')
+    # followed by 12/4/2025 on next line
+    r'Last\s*Day\s*(?:[Ff]or)?\s*[Nn]ex[ti!]\s*[Uu]pset[\s\S]{1,50}?(\d{1,2}/\d{1,2}/\d{4})',
+    r'Last\s+Date\s+(?:[Ff]or)\s+Upset\s+Bid[:\s]*(\d{1,2}/\d{1,2}/\d{4})',
     r'LAST\s+DATE\s+FOR\s+UPSET\s+BID[:\s]*(\d{1,2}/\d{1,2}/\d{4})',
     r'upset\s+bid\s+deadline[:\s]*(\d{1,2}/\d{1,2}/\d{4})',
+    # "Next Upset" followed by date
+    r'[Nn]ext\s*[Uu]pset[\s\S]{1,30}?(\d{1,2}/\d{1,2}/\d{4})',
 ]
 
 # Sale Date patterns
@@ -167,6 +253,410 @@ def extract_upset_deadline(ocr_text: str) -> Optional[datetime]:
                 continue
 
     return None
+
+
+# =============================================================================
+# AOC-SP-403 (Notice of Upset Bid) EXTRACTION FUNCTIONS
+# =============================================================================
+
+def extract_upset_bid_data(ocr_text: str) -> Dict[str, Any]:
+    """
+    Extract all data from an AOC-SP-403 (Notice of Upset Bid) form.
+
+    This NC standard form contains crucial bid information:
+    - Current upset bid amount (the new bid being filed)
+    - Previous bid amount (the bid being upset)
+    - Minimum next upset bid (for bidding strategy)
+    - Next upset bid deadline
+    - Required deposit amount
+
+    Args:
+        ocr_text: Raw OCR text from upset bid document
+
+    Returns:
+        Dict with keys: current_bid, previous_bid, minimum_next_bid,
+                       next_deadline, deposit_required
+    """
+    result = {
+        'current_bid': None,
+        'previous_bid': None,
+        'minimum_next_bid': None,
+        'next_deadline': None,
+        'deposit_required': None,
+    }
+
+    if not ocr_text:
+        return result
+
+    def clean_amount(amount_str: str) -> Optional[Decimal]:
+        """Clean OCR amount string and convert to Decimal.
+
+        Handles OCR artifacts like:
+        - Extra spaces: "45, 000.00" -> "45000.00"
+        - Various delimiters: "47,256.00" -> "47256.00"
+        """
+        if not amount_str:
+            return None
+        # Remove all whitespace, commas, and normalize
+        cleaned = ''.join(c for c in amount_str if c.isdigit() or c == '.')
+        # Validate it looks like a reasonable amount
+        if cleaned and '.' in cleaned:
+            try:
+                amount = Decimal(cleaned)
+                # Filter out unreasonable values (less than $100 or more than $100M)
+                if 100 <= amount <= 100000000:
+                    return amount
+            except:
+                pass
+        return None
+
+    # Find all dollar amounts in the document with their positions
+    # This helps with documents where labels and values are in columns
+    dollar_pattern = r'[\$\']?\s*(\d[\d,\.\s]+\.\d{2})'
+    all_amounts = []
+    for m in re.finditer(dollar_pattern, ocr_text):
+        amount = clean_amount(m.group(1))
+        if amount:
+            all_amounts.append((m.start(), amount, m.group(0)))
+
+    # For AOC-SP-403 forms, the amounts typically appear in this order:
+    # 1. Previous bid (Amount Of Last Previous Sale Or Upset Bid)
+    # 2. New upset bid (AmountofNew UpsetBd)
+    # 3. Deposit amount (past With Clerk)
+    # 4. Minimum next bid (at the bottom of the form)
+    # 5. Deposit for next upset
+
+    # Use pattern matching to find the approximate location of each label
+    # then assign the nearest amount
+
+    # Check if this is an AOC-SP-403 style form
+    is_aoc_sp_403 = ('AmountofNew' in ocr_text or
+                     'Amount Of New' in ocr_text.replace('  ', ' ') or
+                     'NOTICE OF UPSET BID' in ocr_text.upper())
+
+    if is_aoc_sp_403:
+        # AOC-SP-403 forms have TWO sections:
+        # 1. TOP section (handwritten/fillable): Previous bid, New upset bid, Deposit with clerk
+        # 2. BOTTOM section (typed by clerk): Last Day, Minimum NEXT upset, Deposit for NEXT upset
+        #
+        # The BOTTOM section is most reliable since it's typed. Key insight:
+        # - "Minimum Amount Of Next Upset Bid" = current_bid * 1.05
+        # - So current_bid = minimum_next_bid / 1.05
+
+        # First, try to extract the reliable BOTTOM section values
+        # The bottom section has labels on one line and values on the next:
+        # Line 1: "Last Day For Next Upset Bid    M nimum Amount Of Next Upset Bid    Amount Of Deposit..."
+        # Line 2: "12/11/2025                     $58,782.80                          $2,939.14"
+        #
+        # Strategy: Find the label, then find the first dollar amount AFTER it
+        # (may be separated by many characters including newlines)
+
+        # Look for "M nimum Amount Of Next Upset Bid" or similar (handles OCR typos)
+        min_next_match = re.search(
+            r'[Mm][\s]*[in]*[i]*mum\s*[Aa]mount\s*[Oo]f\s*[Nn]ext\s*[Uu]pset\s*[Bb]id',
+            ocr_text, re.IGNORECASE
+        )
+        if min_next_match:
+            # Look for a dollar amount after this label
+            # The amount should be within 200 chars (allows for spacing and next label)
+            after_label = ocr_text[min_next_match.end():min_next_match.end()+200]
+            amt_match = re.search(r'\$?\s*(\d[\d,\.\s]+\.\d{2})', after_label)
+            if amt_match:
+                min_amt = clean_amount(amt_match.group(1))
+                if min_amt:
+                    result['minimum_next_bid'] = min_amt
+                    # Calculate current bid as minimum / 1.05
+                    result['current_bid'] = round(min_amt / Decimal('1.05'), 2)
+
+        # Look for deposit for next upset
+        # In columnar layout, all 3 labels are on one line and all 3 values on the next
+        # So "Amount Of Deposit For Next Minimum Upset Bid" is followed by ALL three values
+        # We need the LAST value (rightmost in the row) which is the deposit
+        deposit_next_match = re.search(
+            r'[Aa]mount\s*[Oo]f\s*[Dd]eposit\s*[Ff]or\s*[Nn]ext',
+            ocr_text, re.IGNORECASE
+        )
+        if deposit_next_match:
+            # Look for ALL dollar amounts after this label (within next line)
+            after_label = ocr_text[deposit_next_match.end():deposit_next_match.end()+200]
+            amt_matches = list(re.finditer(r'\$?\s*(\d[\d,\.\s]+\.\d{2})', after_label))
+            # The deposit is the LAST (rightmost) amount in the columnar row
+            if amt_matches:
+                deposit_amt = clean_amount(amt_matches[-1].group(1))
+                if deposit_amt:
+                    result['deposit_required'] = deposit_amt
+
+        # If bottom section extraction succeeded, we have the current bid
+        # Now try to get previous bid from TOP section if available
+        if result['current_bid']:
+            # Look for "Amount Of Last Previous Sale Or Upset Bid" in TOP section
+            # This is before the "Amount Of New Upset Bid" label
+            prev_match = re.search(
+                r'Last\s*Previous\s*Sale\s*[Oo]r\s*Upset\s*Bid[\s\S]{0,100}?\$?\s*(\d[\d,\.\s]+\.\d{2})',
+                ocr_text, re.IGNORECASE
+            )
+            if prev_match:
+                prev_amt = clean_amount(prev_match.group(1))
+                if prev_amt and prev_amt < result['current_bid']:
+                    result['previous_bid'] = prev_amt
+
+        # Fallback: if we didn't get current_bid from bottom section, try position-based
+        if not result['current_bid']:
+            # Find position markers
+            prev_pos = -1
+            new_pos = -1
+            min_pos = -1
+            deposit_pos = -1
+
+            m = re.search(r'Last\s*Previous\s*Sale', ocr_text, re.IGNORECASE)
+            if m:
+                prev_pos = m.end()
+
+            m = re.search(r'AmountofNew|Amount\s*[Oo]f\s*New', ocr_text, re.IGNORECASE)
+            if m:
+                new_pos = m.end()
+
+            m = re.search(r'[Mm]inimum\s*Am|Next\s*Upset[!\s]*B', ocr_text, re.IGNORECASE)
+            if m:
+                min_pos = m.end()
+
+            m = re.search(r'Deposit\s*(?:For|for)?\s*Next', ocr_text, re.IGNORECASE)
+            if m:
+                deposit_pos = m.end()
+
+            # Assign amounts based on position
+            # For columnar forms, amounts appear on the line AFTER the labels
+            if all_amounts and prev_pos >= 0:
+                # Find amounts after the previous label position
+                candidates = [(pos, amt) for pos, amt, _ in all_amounts if pos > prev_pos]
+                if candidates:
+                    # First amount after "Previous Sale" label is likely the previous bid
+                    result['previous_bid'] = candidates[0][1]
+                    # Second amount is likely the new bid (in the adjacent column)
+                    if len(candidates) > 1:
+                        result['current_bid'] = candidates[1][1]
+
+            # Minimum and deposit are usually at the bottom
+            if min_pos >= 0 and all_amounts:
+                candidates = [(pos, amt) for pos, amt, _ in all_amounts if pos > min_pos]
+                if candidates:
+                    result['minimum_next_bid'] = candidates[0][1]
+                    if len(candidates) > 1:
+                        result['deposit_required'] = candidates[1][1]
+
+    else:
+        # Fall back to pattern-based extraction for non-columnar documents
+        for pattern in UPSET_BID_NEW_AMOUNT_PATTERNS:
+            match = re.search(pattern, ocr_text, re.IGNORECASE | re.DOTALL)
+            if match:
+                amount = clean_amount(match.group(1))
+                if amount:
+                    result['current_bid'] = amount
+                    break
+
+        for pattern in UPSET_BID_PREVIOUS_AMOUNT_PATTERNS:
+            match = re.search(pattern, ocr_text, re.IGNORECASE | re.DOTALL)
+            if match:
+                amount = clean_amount(match.group(1))
+                if amount:
+                    result['previous_bid'] = amount
+                    break
+
+        for pattern in MINIMUM_NEXT_UPSET_PATTERNS:
+            match = re.search(pattern, ocr_text, re.IGNORECASE | re.DOTALL)
+            if match:
+                amount = clean_amount(match.group(1))
+                if amount:
+                    result['minimum_next_bid'] = amount
+                    break
+
+        for pattern in UPSET_DEPOSIT_PATTERNS:
+            match = re.search(pattern, ocr_text, re.IGNORECASE | re.DOTALL)
+            if match:
+                amount = clean_amount(match.group(1))
+                if amount:
+                    result['deposit_required'] = amount
+                    break
+
+    # Extract next upset deadline - use position-based for columnar forms
+    # In AOC-SP-403, the "Last Day For Next Upset" label may be on a different line
+    # than the date, so we look for dates near the deadline label position
+    if 'AmountofNew' in ocr_text or 'Amount Of New' in ocr_text.replace('  ', ' '):
+        # This is a columnar AOC-SP-403 form - use position-based extraction
+        # Find the "Last Day For Nex! Upset" label (OCR may render 't' as '!')
+        deadline_label_match = re.search(
+            r'Last\s*Day\s*(?:[Ff]or)?\s*[Nn]ex[ti!]\s*[Uu]pset',
+            ocr_text, re.IGNORECASE
+        )
+
+        if deadline_label_match:
+            deadline_label_pos = deadline_label_match.end()
+
+            # Find all dates in the document
+            date_pattern = r'(\d{1,2}/\d{1,2}/\d{4})'
+            all_dates = [(m.start(), m.group(1)) for m in re.finditer(date_pattern, ocr_text)]
+
+            # Find the closest date after the deadline label
+            # In columnar layout, dates appear after labels on the same or next line
+            candidates = [(pos, d) for pos, d in all_dates if pos > deadline_label_pos]
+            if candidates:
+                # First date after "Last Day For Next Upset" is the deadline
+                try:
+                    result['next_deadline'] = datetime.strptime(candidates[0][1], '%m/%d/%Y')
+                except ValueError:
+                    pass
+
+    # Fall back to pattern-based extraction if position-based didn't find it
+    if result['next_deadline'] is None:
+        result['next_deadline'] = extract_upset_deadline(ocr_text)
+
+    return result
+
+
+def is_upset_bid_document(ocr_text: str) -> bool:
+    """
+    Check if the document is an AOC-SP-403 (Notice of Upset Bid) form.
+
+    Args:
+        ocr_text: Raw OCR text from document
+
+    Returns:
+        True if this appears to be an upset bid notice
+    """
+    if not ocr_text:
+        return False
+
+    # Look for form identifier or key phrases
+    indicators = [
+        'NOTICE OF UPSET BID',
+        'AOC-SP-403',
+        'Amount Of New Upset Bid',
+        'AmountofNew UpsetBid',
+        'Last Day For Next Upset',
+        'Minimum Am.*?Next Upset',
+    ]
+
+    text_lower = ocr_text.lower()
+    for indicator in indicators:
+        if re.search(indicator, ocr_text, re.IGNORECASE):
+            return True
+
+    return False
+
+
+def is_report_of_sale_document(ocr_text: str) -> bool:
+    """
+    Check if the document is a Report of Foreclosure Sale (AOC-SP-301).
+
+    This form is filed after the auction and contains the initial winning bid.
+
+    Args:
+        ocr_text: Raw OCR text from document
+
+    Returns:
+        True if this appears to be a report of sale
+    """
+    if not ocr_text:
+        return False
+
+    # Strong indicators (form number or title)
+    strong_indicators = [
+        'AOC-SP-301',
+        'REPORT OF FORECLOSURE SALE',
+        'Report of Foreclosure Sale',
+    ]
+
+    for indicator in strong_indicators:
+        if re.search(indicator, ocr_text, re.IGNORECASE):
+            return True
+
+    # Combination indicators (must have multiple)
+    weak_indicators = [
+        'Date Of Sale',
+        'Highest Bid',
+        'Amount Bid',
+        'Place of Sale',
+        'Trustee',
+    ]
+
+    match_count = 0
+    for indicator in weak_indicators:
+        if re.search(indicator, ocr_text, re.IGNORECASE):
+            match_count += 1
+
+    # Need at least 2 weak indicators to confirm
+    return match_count >= 2
+
+
+def extract_report_of_sale_data(ocr_text: str) -> Dict[str, Any]:
+    """
+    Extract all data from an AOC-SP-301 (Report of Foreclosure Sale) form.
+
+    This NC standard form contains:
+    - Highest bid amount (the winning bid from the auction - this is the FIRST bid)
+    - Date of sale (used to calculate the 10-day upset period deadline)
+
+    The deadline for the first upset bid is 10 days from the sale date.
+
+    Args:
+        ocr_text: Raw OCR text from report of sale document
+
+    Returns:
+        Dict with keys: initial_bid, sale_date, next_deadline
+    """
+    from datetime import timedelta
+
+    result = {
+        'initial_bid': None,
+        'sale_date': None,
+        'next_deadline': None,
+    }
+
+    if not ocr_text:
+        return result
+
+    def clean_amount(amount_str: str) -> Optional[Decimal]:
+        """Clean OCR amount string and convert to Decimal."""
+        if not amount_str:
+            return None
+        # Remove all whitespace and commas
+        cleaned = ''.join(c for c in amount_str if c.isdigit() or c == '.')
+        if cleaned:
+            try:
+                amount = Decimal(cleaned)
+                # Filter out unreasonable values (less than $100 or more than $100M)
+                if 100 <= amount <= 100000000:
+                    return amount
+            except:
+                pass
+        return None
+
+    # Extract the highest bid amount
+    for pattern in REPORT_OF_SALE_BID_PATTERNS:
+        match = re.search(pattern, ocr_text, re.IGNORECASE | re.DOTALL)
+        if match:
+            amount = clean_amount(match.group(1))
+            if amount:
+                result['initial_bid'] = amount
+                logger.debug(f"  Found initial bid amount: ${amount}")
+                break
+
+    # Extract the date of sale
+    for pattern in REPORT_OF_SALE_DATE_PATTERNS:
+        match = re.search(pattern, ocr_text, re.IGNORECASE)
+        if match:
+            date_str = match.group(1)
+            try:
+                sale_date = datetime.strptime(date_str, '%m/%d/%Y')
+                result['sale_date'] = sale_date.date()
+                # Calculate the upset bid deadline (10 days from sale date per NC law)
+                result['next_deadline'] = sale_date + timedelta(days=10)
+                logger.debug(f"  Found sale date: {result['sale_date']}, deadline: {result['next_deadline']}")
+                break
+            except ValueError:
+                continue
+
+    return result
 
 
 def extract_sale_date(ocr_text: str) -> Optional[date]:
