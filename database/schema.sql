@@ -96,6 +96,27 @@ CREATE TABLE IF NOT EXISTS user_notes (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Skipped cases table - Cases examined but not saved during daily scrape
+CREATE TABLE IF NOT EXISTS skipped_cases (
+    id SERIAL PRIMARY KEY,
+    case_number VARCHAR(50) NOT NULL,
+    county_code VARCHAR(10) NOT NULL,
+    county_name VARCHAR(50) NOT NULL,
+    case_url TEXT,
+    case_type VARCHAR(100),
+    style TEXT,
+    file_date DATE,
+    events_json JSONB,
+    skip_reason VARCHAR(255),
+    scrape_date DATE NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    reviewed_at TIMESTAMP,
+    review_action VARCHAR(20)
+);
+
+CREATE INDEX IF NOT EXISTS idx_skipped_cases_scrape_date ON skipped_cases(scrape_date);
+CREATE INDEX IF NOT EXISTS idx_skipped_cases_reviewed ON skipped_cases(reviewed_at);
+
 -- Indexes for performance
 CREATE INDEX IF NOT EXISTS idx_cases_case_number ON cases(case_number);
 CREATE INDEX IF NOT EXISTS idx_cases_county_code ON cases(county_code);

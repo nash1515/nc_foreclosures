@@ -186,3 +186,27 @@ class SchedulerConfig(Base):
 
     def __repr__(self):
         return f"<SchedulerConfig(job='{self.job_name}', hour={self.schedule_hour}, enabled={self.enabled})>"
+
+
+class SkippedCase(Base):
+    """Cases examined but not saved during daily scrape - for review."""
+
+    __tablename__ = 'skipped_cases'
+
+    id = Column(Integer, primary_key=True)
+    case_number = Column(String(50), nullable=False)
+    county_code = Column(String(10), nullable=False)
+    county_name = Column(String(50), nullable=False)
+    case_url = Column(Text)
+    case_type = Column(String(100))
+    style = Column(Text)
+    file_date = Column(Date)
+    events_json = Column(Text)  # JSON string of events with document titles
+    skip_reason = Column(String(255))
+    scrape_date = Column(Date, nullable=False)
+    created_at = Column(TIMESTAMP, server_default=func.current_timestamp())
+    reviewed_at = Column(TIMESTAMP)
+    review_action = Column(String(20))  # 'added', 'dismissed', NULL (pending)
+
+    def __repr__(self):
+        return f"<SkippedCase(case_number='{self.case_number}', scrape_date='{self.scrape_date}')>"
