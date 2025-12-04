@@ -5,6 +5,7 @@ import AppLayout from './components/AppLayout';
 import Dashboard from './pages/Dashboard';
 import CaseList from './pages/CaseList';
 import CaseDetail from './pages/CaseDetail';
+import ReviewQueue from './pages/ReviewQueue';
 import Settings from './pages/Settings';
 import Login from './pages/Login';
 import './App.css';
@@ -62,6 +63,7 @@ function App() {
             <Route path="/" element={<Dashboard />} />
             <Route path="/cases" element={<CaseList />} />
             <Route path="/cases/:id" element={<CaseDetail />} />
+            <Route path="/review" element={<ReviewQueue />} />
             <Route path="/settings" element={<Settings />} />
           </Route>
         </Routes>

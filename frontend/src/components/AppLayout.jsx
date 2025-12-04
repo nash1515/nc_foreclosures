@@ -1,10 +1,12 @@
-import { Layout, Menu, Avatar, Dropdown, Space } from 'antd';
+import { useState, useEffect } from 'react';
+import { Layout, Menu, Avatar, Dropdown, Space, Badge } from 'antd';
 import {
   DashboardOutlined,
   FileSearchOutlined,
   SettingOutlined,
   LogoutOutlined,
-  UserOutlined
+  UserOutlined,
+  AuditOutlined
 } from '@ant-design/icons';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 
@@ -12,6 +14,14 @@ const { Header, Content } = Layout;
 
 function AppLayout({ user }) {
   const location = useLocation();
+  const [pendingCount, setPendingCount] = useState(0);
+
+  useEffect(() => {
+    fetch('/api/review/pending-count')
+      .then(res => res.json())
+      .then(data => setPendingCount(data.total || 0))
+      .catch(() => {});
+  }, []);
 
   const menuItems = [
     {
@@ -23,6 +33,11 @@ function AppLayout({ user }) {
       key: '/cases',
       icon: <FileSearchOutlined />,
       label: <Link to="/cases">All Cases</Link>,
+    },
+    {
+      key: '/review',
+      icon: <Badge count={pendingCount} size="small"><AuditOutlined /></Badge>,
+      label: <Link to="/review">Review Queue</Link>,
     },
     {
       key: '/settings',
