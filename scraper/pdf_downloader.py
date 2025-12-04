@@ -22,6 +22,214 @@ from database.models import Document
 logger = setup_logger(__name__)
 
 
+def handle_document_selector_popup(page: Page, download_path: Path, base_filename: str = None):
+    """
+    Handle the "Document Selector" popup that appears when an event has multiple documents.
+
+    When an event has multiple attached documents, clicking the document button shows
+    a modal dialog with a table listing all documents. This function:
+    1. Detects if the popup is present
+    2. Downloads each document in the table
+    3. Closes the popup
+
+    Args:
+        page: Playwright page object
+        download_path: Path where to save downloaded files
+        base_filename: Optional base filename for naming documents
+
+    Returns:
+        list: List of downloaded file paths, empty if no popup was present
+    """
+    downloaded_files = []
+
+    try:
+        # Check if Document Selector dialog is present
+        # The portal uses native HTML <dialog> elements, NOT div[role="dialog"]
+        # Try multiple selectors to find the dialog
+        dialog_selectors = [
+            'dialog:has-text("Document Selector")',  # Native HTML dialog element
+            'dialog[open]:has-text("Document Selector")',  # Only open dialogs
+            '[role="dialog"]:has-text("Document Selector")',  # ARIA role
+            'div[role="dialog"]:has-text("Document Selector")',  # Fallback for div-based
+            'md-dialog:has-text("Document Selector")',  # Angular Material
+            '.md-dialog-container:has-text("Document Selector")',
+            '[aria-label="Document Selector"]',
+        ]
+
+        dialog = None
+        for selector in dialog_selectors:
+            try:
+                d = page.locator(selector)
+                if d.count() > 0 and d.is_visible():
+                    dialog = d
+                    logger.debug(f"  Found dialog with selector: {selector}")
+                    break
+            except:
+                continue
+
+        # If no dialog found by selectors, try Playwright's role-based locator
+        if not dialog:
+            try:
+                d = page.get_by_role('dialog', name='Document Selector')
+                if d.count() > 0 and d.is_visible():
+                    dialog = d
+                    logger.debug("  Found dialog by role locator")
+            except:
+                pass
+
+        # If still no dialog, check by text content in heading
+        if not dialog:
+            try:
+                # Look for any visible element containing "Document Selector" heading
+                heading = page.locator('h2:has-text("Document Selector")')
+                if heading.count() > 0 and heading.is_visible():
+                    # Try both native dialog and div ancestors
+                    dialog = heading.locator('xpath=ancestor::dialog | ancestor::div[contains(@class, "dialog") or @role="dialog"]').first
+                    logger.debug("  Found dialog by heading traversal")
+            except:
+                pass
+
+        if not dialog:
+            # No dialog found
+            return []
+
+        logger.info("  Multi-document popup detected")
+
+        # Find all document rows in the table
+        # Try multiple approaches since the portal structure can vary
+        doc_rows = dialog.locator('table tbody tr')
+        row_count = doc_rows.count()
+
+        if row_count == 0:
+            # Try native dialog with table
+            doc_rows = page.locator('dialog table tbody tr')
+            row_count = doc_rows.count()
+
+        if row_count == 0:
+            # Try any visible dialog with table
+            doc_rows = page.locator('[role="dialog"] table tbody tr, md-dialog table tbody tr')
+            row_count = doc_rows.count()
+
+        # If still no rows, try finding rows by role
+        if row_count == 0:
+            doc_rows = dialog.get_by_role('row')
+            row_count = doc_rows.count()
+            # Skip header row if present
+            if row_count > 1:
+                row_count -= 1  # First row is usually header
+
+        logger.info(f"  Found {row_count} documents in popup")
+
+        for i in range(row_count):
+            row = doc_rows.nth(i)
+            row_text = row.inner_text(timeout=2000) if row.count() > 0 else ""
+
+            # Skip header rows
+            if 'Date' in row_text and 'Document Type' in row_text:
+                continue
+
+            # Extract document info from the row text
+            # Format observed: "11/25/2025 Public Check Deposit- Unlimited Reload LLC 2"
+            doc_name = f"document_{i+1}"
+            doc_date = ""
+            try:
+                # Try to extract date from row text using regex
+                date_match = re.search(r'(\d{1,2}/\d{1,2}/\d{4})', row_text)
+                if date_match:
+                    doc_date = date_match.group(1)
+                # Get document type/name after the date
+                if date_match:
+                    name_part = row_text[date_match.end():].strip()
+                    # Remove trailing page count number
+                    name_part = re.sub(r'\s+\d+\s*$', '', name_part)
+                    if name_part:
+                        doc_name = name_part
+            except:
+                pass
+
+            # Clean up for filename
+            clean_name = re.sub(r'[^\w\s-]', '', doc_name)[:40].strip()
+            clean_date = doc_date.replace('/', '-') if doc_date else 'unknown'
+
+            if base_filename:
+                filename = f"{base_filename}_{i+1}_{clean_name}.pdf" if row_count > 1 else f"{base_filename}.pdf"
+            else:
+                filename = f"{clean_date}_{clean_name}.pdf"
+
+            # Handle duplicate filenames
+            file_path = download_path / filename
+            counter = 1
+            while file_path.exists():
+                name_without_ext = filename.rsplit('.pdf', 1)[0]
+                filename = f"{name_without_ext}_{counter}.pdf"
+                file_path = download_path / filename
+                counter += 1
+
+            logger.info(f"    Downloading from popup: {doc_name[:50]}")
+
+            try:
+                # Click the download button in this row
+                # Try multiple button selectors
+                download_btn = None
+
+                # Try: button in first cell
+                try:
+                    btn = row.locator('td').first.locator('button')
+                    if btn.count() > 0:
+                        download_btn = btn.first
+                except:
+                    pass
+
+                # Try: any button in the row
+                if not download_btn:
+                    try:
+                        btn = row.locator('button')
+                        if btn.count() > 0:
+                            download_btn = btn.first
+                    except:
+                        pass
+
+                # Try: clickable cell (some dialogs use the whole row/cell as clickable)
+                if not download_btn:
+                    try:
+                        cell = row.locator('td').first
+                        if cell.count() > 0:
+                            download_btn = cell
+                    except:
+                        pass
+
+                if download_btn:
+                    with page.expect_download(timeout=30000) as download_info:
+                        download_btn.click()
+
+                    download = download_info.value
+                    download.save_as(str(file_path))
+                    downloaded_files.append(str(file_path))
+                    logger.info(f"      Saved: {filename}")
+                else:
+                    logger.warning(f"      No download button found in row {i}")
+
+            except Exception as e:
+                logger.warning(f"      Failed to download from popup: {e}")
+
+            # Small delay between downloads
+            time.sleep(0.3)
+
+        # Close the dialog
+        try:
+            cancel_btn = page.locator('button:has-text("Cancel"):visible')
+            cancel_btn.click(timeout=2000)
+            # Wait for dialog to close
+            page.wait_for_timeout(500)
+        except Exception as e:
+            logger.debug(f"  Could not close popup (may have closed automatically): {e}")
+
+    except Exception as e:
+        logger.debug(f"  No multi-document popup or error handling it: {e}")
+
+    return downloaded_files
+
+
 def extract_document_info_from_page(page: Page):
     """
     Extract document information from a case detail page using JavaScript.
@@ -443,63 +651,121 @@ def download_upset_bid_documents(page: Page, case_id: int, county: str, case_num
 
             logger.info(f"    Downloading: {event_date} - {event_type}")
 
+            # Generate filename base
+            clean_type = re.sub(r'[^\w\s-]', '', event_type)[:40]
+            clean_date = event_date.replace('/', '-') if event_date else 'unknown'
+
             try:
-                # Set up download handler
-                with page.expect_download(timeout=30000) as download_info:
-                    # Click the document button/image for this specific event
-                    page.evaluate(f'''
-                        () => {{
-                            const eventDivs = document.querySelectorAll('[ng-repeat*="event"]');
-                            const eventDiv = eventDivs[{event_index}];
-                            if (eventDiv) {{
-                                // Try button first, then image
-                                const docBtn = eventDiv.querySelector('button[aria-label*="document" i]');
-                                const docImg = eventDiv.querySelector('img[title*="document" i]');
-                                if (docBtn) docBtn.click();
-                                else if (docImg) docImg.click();
-                            }}
+                # Click the document button/image for this specific event
+                # This may trigger either a download or a multi-document popup
+                page.evaluate(f'''
+                    () => {{
+                        const eventDivs = document.querySelectorAll('[ng-repeat*="event"]');
+                        const eventDiv = eventDivs[{event_index}];
+                        if (eventDiv) {{
+                            // Try button first, then image
+                            const docBtn = eventDiv.querySelector('button[aria-label*="document" i]');
+                            const docImg = eventDiv.querySelector('img[title*="document" i]');
+                            if (docBtn) docBtn.click();
+                            else if (docImg) docImg.click();
                         }}
-                    ''')
+                    }}
+                ''')
 
-                download = download_info.value
+                # Wait a moment for either download or popup
+                time.sleep(0.5)
 
-                # Generate meaningful filename
-                clean_type = re.sub(r'[^\w\s-]', '', event_type)[:40]
-                clean_date = event_date.replace('/', '-') if event_date else 'unknown'
-                filename = f"{clean_date}_{clean_type}.pdf"
+                # Check for multi-document popup first
+                popup_files = handle_document_selector_popup(
+                    page,
+                    download_path,
+                    base_filename=f"{clean_date}_{clean_type}"
+                )
 
-                file_path = download_path / filename
-                download.save_as(str(file_path))
+                if popup_files:
+                    # Multiple documents were downloaded from the popup
+                    doc_date = None
+                    if event_date:
+                        try:
+                            doc_date = datetime.strptime(event_date, '%m/%d/%Y').date()
+                        except ValueError:
+                            pass
 
-                # Create database record
-                doc_date = None
-                if event_date:
+                    for file_path in popup_files:
+                        filename = Path(file_path).name
+                        with get_session() as session:
+                            document = Document(
+                                case_id=case_id,
+                                document_name=filename,
+                                file_path=str(file_path),
+                                document_date=doc_date
+                            )
+                            session.add(document)
+                            session.commit()
+                            doc_id = document.id
+
+                        downloaded.append({
+                            'file_path': str(file_path),
+                            'document_id': doc_id,
+                            'event_type': event_type,
+                            'event_date': event_date,
+                            'is_upset_bid': event_info.get('isUpsetBid', False),
+                            'is_sale': event_info.get('isSale', False)
+                        })
+                else:
+                    # Single document - re-click and capture download
                     try:
-                        doc_date = datetime.strptime(event_date, '%m/%d/%Y').date()
-                    except ValueError:
-                        pass
+                        with page.expect_download(timeout=30000) as download_info:
+                            page.evaluate(f'''
+                                () => {{
+                                    const eventDivs = document.querySelectorAll('[ng-repeat*="event"]');
+                                    const eventDiv = eventDivs[{event_index}];
+                                    if (eventDiv) {{
+                                        const docBtn = eventDiv.querySelector('button[aria-label*="document" i]');
+                                        const docImg = eventDiv.querySelector('img[title*="document" i]');
+                                        if (docBtn) docBtn.click();
+                                        else if (docImg) docImg.click();
+                                    }}
+                                }}
+                            ''')
 
-                with get_session() as session:
-                    document = Document(
-                        case_id=case_id,
-                        document_name=filename,
-                        file_path=str(file_path),
-                        document_date=doc_date
-                    )
-                    session.add(document)
-                    session.commit()
-                    doc_id = document.id
+                        download = download_info.value
+                        filename = f"{clean_date}_{clean_type}.pdf"
+                        file_path = download_path / filename
+                        download.save_as(str(file_path))
 
-                downloaded.append({
-                    'file_path': str(file_path),
-                    'document_id': doc_id,
-                    'event_type': event_type,
-                    'event_date': event_date,
-                    'is_upset_bid': event_info.get('isUpsetBid', False),
-                    'is_sale': event_info.get('isSale', False)
-                })
+                        # Create database record
+                        doc_date = None
+                        if event_date:
+                            try:
+                                doc_date = datetime.strptime(event_date, '%m/%d/%Y').date()
+                            except ValueError:
+                                pass
 
-                logger.info(f"      Saved: {filename}")
+                        with get_session() as session:
+                            document = Document(
+                                case_id=case_id,
+                                document_name=filename,
+                                file_path=str(file_path),
+                                document_date=doc_date
+                            )
+                            session.add(document)
+                            session.commit()
+                            doc_id = document.id
+
+                        downloaded.append({
+                            'file_path': str(file_path),
+                            'document_id': doc_id,
+                            'event_type': event_type,
+                            'event_date': event_date,
+                            'is_upset_bid': event_info.get('isUpsetBid', False),
+                            'is_sale': event_info.get('isSale', False)
+                        })
+
+                        logger.info(f"      Saved: {filename}")
+
+                    except Exception as e:
+                        logger.warning(f"      Single download failed: {e}")
 
             except Exception as e:
                 logger.warning(f"      Download failed: {e}")
@@ -652,68 +918,133 @@ def download_all_case_documents(page: Page, case_id: int, county: str, case_numb
             logger.info(f"    Downloading: {event_date} - {event_type}")
 
             try:
-                # Set up download handler
-                with page.expect_download(timeout=30000) as download_info:
-                    # Click the document button/image for this specific event
-                    page.evaluate(f'''
-                        () => {{
-                            const eventDivs = document.querySelectorAll('[ng-repeat*="event"]');
-                            const eventDiv = eventDivs[{event_index}];
-                            if (eventDiv) {{
-                                // Try button first, then image
-                                const docBtn = eventDiv.querySelector('button[aria-label*="document" i]');
-                                const docImg = eventDiv.querySelector('img[title*="document" i]');
-                                if (docBtn) docBtn.click();
-                                else if (docImg) docImg.click();
-                            }}
+                # Click the document button/image for this specific event
+                # This may trigger either:
+                # 1. A direct download (single document)
+                # 2. A "Document Selector" popup (multiple documents)
+                page.evaluate(f'''
+                    () => {{
+                        const eventDivs = document.querySelectorAll('[ng-repeat*="event"]');
+                        const eventDiv = eventDivs[{event_index}];
+                        if (eventDiv) {{
+                            // Try button first, then image
+                            const docBtn = eventDiv.querySelector('button[aria-label*="document" i]');
+                            const docImg = eventDiv.querySelector('img[title*="document" i]');
+                            if (docBtn) docBtn.click();
+                            else if (docImg) docImg.click();
                         }}
-                    ''')
+                    }}
+                ''')
 
-                download = download_info.value
+                # Wait a moment for either download or popup
+                time.sleep(0.5)
 
-                # Generate meaningful filename
-                filename = expected_filename
-                file_path = download_path / filename
+                # Check for multi-document popup first
+                popup_files = handle_document_selector_popup(
+                    page,
+                    download_path,
+                    base_filename=f"{clean_date}_{clean_type}"
+                )
 
-                # Handle duplicate filenames
-                counter = 1
-                while file_path.exists():
-                    filename = f"{clean_date}_{clean_type}_{counter}.pdf"
-                    file_path = download_path / filename
-                    counter += 1
+                if popup_files:
+                    # Multiple documents were downloaded from the popup
+                    doc_date = None
+                    if event_date:
+                        try:
+                            doc_date = datetime.strptime(event_date, '%m/%d/%Y').date()
+                        except ValueError:
+                            pass
 
-                download.save_as(str(file_path))
+                    for file_path in popup_files:
+                        filename = Path(file_path).name
+                        # Create database record for each
+                        with get_session() as session:
+                            document = Document(
+                                case_id=case_id,
+                                document_name=filename,
+                                file_path=str(file_path),
+                                document_date=doc_date
+                            )
+                            session.add(document)
+                            session.commit()
+                            doc_id = document.id
 
-                # Create database record
-                doc_date = None
-                if event_date:
+                        downloaded.append({
+                            'file_path': str(file_path),
+                            'document_id': doc_id,
+                            'event_type': event_type,
+                            'event_date': event_date,
+                            'is_new': True,
+                            'is_upset_bid': event_info.get('isUpsetBid', False),
+                            'is_sale': event_info.get('isSale', False)
+                        })
+                else:
+                    # Single document - wait for the download that should be in progress
                     try:
-                        doc_date = datetime.strptime(event_date, '%m/%d/%Y').date()
-                    except ValueError:
-                        pass
+                        # Re-click and capture download since the first click may have started it
+                        with page.expect_download(timeout=30000) as download_info:
+                            # Click again (first click may have just opened nothing or started download)
+                            page.evaluate(f'''
+                                () => {{
+                                    const eventDivs = document.querySelectorAll('[ng-repeat*="event"]');
+                                    const eventDiv = eventDivs[{event_index}];
+                                    if (eventDiv) {{
+                                        const docBtn = eventDiv.querySelector('button[aria-label*="document" i]');
+                                        const docImg = eventDiv.querySelector('img[title*="document" i]');
+                                        if (docBtn) docBtn.click();
+                                        else if (docImg) docImg.click();
+                                    }}
+                                }}
+                            ''')
 
-                with get_session() as session:
-                    document = Document(
-                        case_id=case_id,
-                        document_name=filename,
-                        file_path=str(file_path),
-                        document_date=doc_date
-                    )
-                    session.add(document)
-                    session.commit()
-                    doc_id = document.id
+                        download = download_info.value
 
-                downloaded.append({
-                    'file_path': str(file_path),
-                    'document_id': doc_id,
-                    'event_type': event_type,
-                    'event_date': event_date,
-                    'is_new': True,
-                    'is_upset_bid': event_info.get('isUpsetBid', False),
-                    'is_sale': event_info.get('isSale', False)
-                })
+                        # Generate meaningful filename
+                        filename = expected_filename
+                        file_path = download_path / filename
 
-                logger.info(f"      Saved: {filename}")
+                        # Handle duplicate filenames
+                        counter = 1
+                        while file_path.exists():
+                            filename = f"{clean_date}_{clean_type}_{counter}.pdf"
+                            file_path = download_path / filename
+                            counter += 1
+
+                        download.save_as(str(file_path))
+
+                        # Create database record
+                        doc_date = None
+                        if event_date:
+                            try:
+                                doc_date = datetime.strptime(event_date, '%m/%d/%Y').date()
+                            except ValueError:
+                                pass
+
+                        with get_session() as session:
+                            document = Document(
+                                case_id=case_id,
+                                document_name=filename,
+                                file_path=str(file_path),
+                                document_date=doc_date
+                            )
+                            session.add(document)
+                            session.commit()
+                            doc_id = document.id
+
+                        downloaded.append({
+                            'file_path': str(file_path),
+                            'document_id': doc_id,
+                            'event_type': event_type,
+                            'event_date': event_date,
+                            'is_new': True,
+                            'is_upset_bid': event_info.get('isUpsetBid', False),
+                            'is_sale': event_info.get('isSale', False)
+                        })
+
+                        logger.info(f"      Saved: {filename}")
+
+                    except Exception as e:
+                        logger.warning(f"      Single download failed: {e}")
 
             except Exception as e:
                 logger.warning(f"      Download failed: {e}")
