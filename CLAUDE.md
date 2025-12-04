@@ -127,7 +127,41 @@ gh pr status
 10. Implement enrichment module (Zillow, county records, tax values)
 11. Analyze `closed_sold` cases (183) for bidding strategy patterns by county
 
-### Recent Updates (Dec 3, 2025) - Session 16 (PDF Bid Extraction)
+### Recent Updates (Dec 4, 2025) - Session 17 (Report of Sale + Complete Bid Data)
+- **All 23 upset_bid Cases Now Have Complete Bid Data:**
+  - Fixed 4 problem cases that had NULL bid amounts or deadlines
+  - Case 1288 (25SP001000-910): Reclassified to `closed_sold` (deadline passed)
+  - Case 1311 (25SP000352-420): $115,500 bid, deadline 2025-11-29
+  - Case 1035 (25SP000281-310): $291,946.65 bid, deadline 2025-12-11
+  - Case 1545 (25SP001924-910): $239,020 bid, deadline 2025-12-04
+- **AOC-SP-301 (Report of Foreclosure Sale) Extraction Added:**
+  - **NC Form Numbers:**
+    - AOC-SP-301 = Report of Foreclosure Sale (initial auction results)
+    - AOC-SP-403 = Notice of Upset Bid (subsequent bids)
+  - New patterns in `extraction/extractor.py`:
+    - `REPORT_OF_SALE_BID_PATTERNS` - extracts initial bid from sale report
+    - `REPORT_OF_SALE_DATE_PATTERNS` - extracts sale date
+    - `extract_report_of_sale_data()` function returns initial_bid, sale_date, next_deadline
+    - `is_report_of_sale_document()` detects form via AOC-SP-301 marker or "Report of Foreclosure Sale"
+  - Updated `scraper/case_monitor.py`:
+    - `extract_bid_from_documents()` now checks BOTH form types
+    - Priority: Use upset bid if available (higher/more recent), otherwise use Report of Sale
+    - Saves sale_date when processing Report of Sale documents
+- **Daily Validation Added:**
+  - New `validate_upset_bid_data()` function in `scraper/daily_scrape.py`
+  - Runs as Task 3 in daily workflow
+  - Reports upset_bid cases missing current_bid_amount or next_bid_deadline
+  - Returns problem case IDs for remediation
+- **Known Issue - Multi-Document Popup:**
+  - Some events have 2+ documents and show a selection dialog
+  - pdf_downloader.py times out waiting for download when popup appears
+  - Workaround: Manual intervention or skip those documents
+  - Future fix: Detect popup and click first/all document options
+- **Current Database Status:**
+  - **23** upset_bid cases (all with complete bid data)
+  - **183+** closed_sold (includes 1 reclassified from upset_bid)
+
+### Previous Updates (Dec 3, 2025) - Session 16 (PDF Bid Extraction)
 - **PDF Document Download for Upset Bid Cases:**
   - New `download_all_case_documents()` function downloads ALL documents for upset_bid cases
   - Documents stored in `data/pdfs/{county}/{case_number}/`
@@ -143,10 +177,6 @@ gh pr status
   - Only downloads/extracts for `upset_bid` cases (not `upcoming`)
   - OCR processes upset bid and sale documents for bid data
   - Verifies PDF data against HTML-extracted bids when available
-- **Test Results:**
-  - Case 24SP001280-670: $47,256 bid, $49,612.50 min next, deadline 12/4/2025
-  - Case 25SP000122-670: $55,983.62 bid (calculated), deadline 12/11/2025
-  - 22 of 24 upset_bid cases now have complete bid data
 
 ### Previous Updates (Dec 3, 2025) - Session 15 (Scheduler Service)
 - **Automated Daily Scrape Scheduler:**

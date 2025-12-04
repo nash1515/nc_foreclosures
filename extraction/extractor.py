@@ -41,6 +41,35 @@ BID_AMOUNT_PATTERNS = [
 ]
 
 # =============================================================================
+# AOC-SP-301 (Report of Foreclosure Sale) PATTERNS - NC Standard Form
+# =============================================================================
+# The Report of Sale is filed after the auction and contains:
+# - The winning bid amount from the auction (this is the FIRST bid)
+# - Date of sale (for calculating the 10-day upset period deadline)
+# - This form starts the upset bid period
+
+# Report of Sale bid amount patterns
+REPORT_OF_SALE_BID_PATTERNS = [
+    # Field 5: "Highest Bid Amount" in AOC-SP-301
+    r'[Hh]ighest\s*[Bb]id\s*[Aa]mount[\s:]*\$?\s*([\d,]+\.?\d*)',
+    # Alternative wording
+    r'[Aa]mount\s*[Oo]f\s*[Ss]uccessful\s*[Bb]id[\s:]*\$?\s*([\d,]+\.?\d*)',
+    r'[Pp]roperty\s*[Ss]old\s*[Ff]or[\s:]*\$?\s*([\d,]+\.?\d*)',
+    r'[Ww]inning\s*[Bb]id[\s:]*\$?\s*([\d,]+\.?\d*)',
+    # Field with OCR artifacts - "Highest Bid" followed by amount on next line
+    r'[Hh]ighest\s*[Bb]id[\s\S]{1,50}?\$?\s*(\d[\d,\.\s]+\.\d{2})',
+]
+
+# Date of sale patterns for Report of Sale
+REPORT_OF_SALE_DATE_PATTERNS = [
+    # Field 3: "Date of Sale" in AOC-SP-301
+    r'[Dd]ate\s*[Oo]f\s*[Ss]ale[\s:]*(\d{1,2}/\d{1,2}/\d{4})',
+    r'[Ss]ale\s*(?:was\s*)?[Hh]eld\s*[Oo]n[\s:]*(\d{1,2}/\d{1,2}/\d{4})',
+    r'[Ss]ale\s*[Dd]ate[\s:]*(\d{1,2}/\d{1,2}/\d{4})',
+]
+
+
+# =============================================================================
 # AOC-SP-403 (Notice of Upset Bid) PATTERNS - NC Standard Form
 # =============================================================================
 # NOTE: These patterns need to handle OCR artifacts including:
@@ -517,7 +546,9 @@ def is_upset_bid_document(ocr_text: str) -> bool:
 
 def is_report_of_sale_document(ocr_text: str) -> bool:
     """
-    Check if the document is a Report of Foreclosure Sale.
+    Check if the document is a Report of Foreclosure Sale (AOC-SP-301).
+
+    This form is filed after the auction and contains the initial winning bid.
 
     Args:
         ocr_text: Raw OCR text from document
@@ -528,20 +559,104 @@ def is_report_of_sale_document(ocr_text: str) -> bool:
     if not ocr_text:
         return False
 
-    indicators = [
-        'REPORT OF.*FORECLOSURE SALE',
-        'Report of Sale',
+    # Strong indicators (form number or title)
+    strong_indicators = [
+        'AOC-SP-301',
+        'REPORT OF FORECLOSURE SALE',
         'Report of Foreclosure Sale',
-        'AOC-SP-',  # Other AOC forms related to sales
-        'Date Of Sale',
-        'Amount Bid',
     ]
 
-    for indicator in indicators:
+    for indicator in strong_indicators:
         if re.search(indicator, ocr_text, re.IGNORECASE):
             return True
 
-    return False
+    # Combination indicators (must have multiple)
+    weak_indicators = [
+        'Date Of Sale',
+        'Highest Bid',
+        'Amount Bid',
+        'Place of Sale',
+        'Trustee',
+    ]
+
+    match_count = 0
+    for indicator in weak_indicators:
+        if re.search(indicator, ocr_text, re.IGNORECASE):
+            match_count += 1
+
+    # Need at least 2 weak indicators to confirm
+    return match_count >= 2
+
+
+def extract_report_of_sale_data(ocr_text: str) -> Dict[str, Any]:
+    """
+    Extract all data from an AOC-SP-301 (Report of Foreclosure Sale) form.
+
+    This NC standard form contains:
+    - Highest bid amount (the winning bid from the auction - this is the FIRST bid)
+    - Date of sale (used to calculate the 10-day upset period deadline)
+
+    The deadline for the first upset bid is 10 days from the sale date.
+
+    Args:
+        ocr_text: Raw OCR text from report of sale document
+
+    Returns:
+        Dict with keys: initial_bid, sale_date, next_deadline
+    """
+    from datetime import timedelta
+
+    result = {
+        'initial_bid': None,
+        'sale_date': None,
+        'next_deadline': None,
+    }
+
+    if not ocr_text:
+        return result
+
+    def clean_amount(amount_str: str) -> Optional[Decimal]:
+        """Clean OCR amount string and convert to Decimal."""
+        if not amount_str:
+            return None
+        # Remove all whitespace and commas
+        cleaned = ''.join(c for c in amount_str if c.isdigit() or c == '.')
+        if cleaned:
+            try:
+                amount = Decimal(cleaned)
+                # Filter out unreasonable values (less than $100 or more than $100M)
+                if 100 <= amount <= 100000000:
+                    return amount
+            except:
+                pass
+        return None
+
+    # Extract the highest bid amount
+    for pattern in REPORT_OF_SALE_BID_PATTERNS:
+        match = re.search(pattern, ocr_text, re.IGNORECASE | re.DOTALL)
+        if match:
+            amount = clean_amount(match.group(1))
+            if amount:
+                result['initial_bid'] = amount
+                logger.debug(f"  Found initial bid amount: ${amount}")
+                break
+
+    # Extract the date of sale
+    for pattern in REPORT_OF_SALE_DATE_PATTERNS:
+        match = re.search(pattern, ocr_text, re.IGNORECASE)
+        if match:
+            date_str = match.group(1)
+            try:
+                sale_date = datetime.strptime(date_str, '%m/%d/%Y')
+                result['sale_date'] = sale_date.date()
+                # Calculate the upset bid deadline (10 days from sale date per NC law)
+                result['next_deadline'] = sale_date + timedelta(days=10)
+                logger.debug(f"  Found sale date: {result['sale_date']}, deadline: {result['next_deadline']}")
+                break
+            except ValueError:
+                continue
+
+    return result
 
 
 def extract_sale_date(ocr_text: str) -> Optional[date]:
