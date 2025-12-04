@@ -41,6 +41,10 @@ def create_app():
     from web_app.api.cases import cases_bp
     app.register_blueprint(cases_bp, url_prefix='/api/cases')
 
+    # Register review API
+    from web_app.api.review import review_bp
+    app.register_blueprint(review_bp, url_prefix='/api/review')
+
     return app
 
 
