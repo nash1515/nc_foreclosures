@@ -27,6 +27,26 @@ UPSET_BID_OPPORTUNITY_INDICATORS = [
     'partition by sale',
 ]
 
+# Document title patterns that indicate a potential sale with upset bid rights
+# These are checked against document titles (not event types) for day-1 detection
+SALE_DOCUMENT_INDICATORS = [
+    'petition to sell',
+    'petition to lease',
+    'petition to mortgage',
+    "ward's estate",
+    "incompetent's estate",
+    "minor's estate",
+    "decedent's estate",
+    'sell real property',
+    'tax lien foreclosure',
+    'tax foreclosure',
+    'delinquent tax',
+    'receivership',
+    "receiver's sale",
+    'trust property sale',
+    'sell trust property',
+]
+
 
 def is_foreclosure_case(case_data):
     """
@@ -66,6 +86,15 @@ def is_foreclosure_case(case_data):
             if indicator in event_type:
                 logger.debug(f"Upset bid opportunity identified by event: {event_type}")
                 return True
+
+    # Check document titles for sale indicators (for day-1 detection)
+    for event in events:
+        document_title = (event.get('document_title') or '').lower()
+        if document_title:
+            for indicator in SALE_DOCUMENT_INDICATORS:
+                if indicator in document_title:
+                    logger.debug(f"Sale opportunity identified by document title: {document_title}")
+                    return True
 
     return False
 
@@ -294,11 +323,34 @@ def parse_case_detail(page_content):
         doc_button = event_div.find('button', attrs={'aria-label': lambda v: v and 'document' in v.lower()}) if event_div.find('button') else None
         has_document = doc_button is not None
 
+        # Extract document title (text on clickable document link)
+        document_title = None
+        doc_link = event_div.find('a') or event_div.find('button', attrs={'aria-label': lambda v: v and 'document' in v.lower()})
+        if doc_link:
+            # Get text near the document link - usually the document title
+            doc_text = doc_link.get_text(strip=True) if doc_link else None
+            if not doc_text or doc_text == 'Click here to view the document':
+                # Look for text in sibling or parent elements
+                parent = doc_link.parent
+                if parent:
+                    # Get all text in the parent, excluding common labels
+                    parent_text = parent.get_text(' ', strip=True)
+                    # Extract document title - usually after "A document is available"
+                    for line in parent_text.split('\n'):
+                        line = line.strip()
+                        if line and 'document is available' not in line.lower() and 'click here' not in line.lower():
+                            if 5 < len(line) < 200 and not line.startswith('Index') and not line.startswith('Created'):
+                                document_title = line
+                                break
+            else:
+                document_title = doc_text
+
         if event_date or event_type:
             event_data = {
                 'event_date': event_date,
                 'event_type': event_type,
                 'event_description': None,
+                'document_title': document_title,  # Document title for classification
                 'filed_by': filed_by_match.group(1).strip() if filed_by_match else None,
                 'filed_against': against_match.group(1).strip() if against_match else None,
                 'hearing_date': f"{hearing_match.group(1)} {hearing_match.group(2)}" if hearing_match else None,
@@ -306,7 +358,7 @@ def parse_case_detail(page_content):
                 'has_document': has_document
             }
             case_data['events'].append(event_data)
-            logger.debug(f"Event: {event_date} - {event_type}")
+            logger.debug(f"Event: {event_date} - {event_type} - Doc: {document_title}")
 
     # ========== 6. HEARINGS ==========
     # Hearings are in a separate section with ng-repeat="hearing in ..."
