@@ -127,7 +127,27 @@ gh pr status
 10. Implement enrichment module (Zillow, county records, tax values)
 11. Analyze `closed_sold` cases (183) for bidding strategy patterns by county
 
-### Recent Updates (Dec 4, 2025) - Session 18 (Multi-Document Popup Fix)
+### Recent Updates (Dec 5, 2025) - Session 19 (Documentation & OAuth Fix)
+- **Google OAuth Credentials Restored:**
+  - Fixed "invalid_client" error - credentials were lost from `.env` file
+  - Retrieved credentials from Claude conversation history
+  - Added `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `FLASK_SECRET_KEY` to `.env`
+  - OAuth login now working at http://localhost:5173
+- **Frontend Development Workflow Confirmed Working:**
+  - Git worktree system documented in Session 18
+  - `scripts/dev_worktree.sh` for isolated feature development
+  - Stable frontend on port 5173, dev on port 5174
+- **Documentation Updated:** This session
+- **Current Database Status (Dec 5, 2025):**
+  - **Total Cases:** 1,731
+  - **1,345** upcoming
+  - **226** closed_sold
+  - **70** blocked
+  - **56** closed_dismissed
+  - **21** upset_bid
+  - **13** unclassified
+
+### Previous Updates (Dec 4, 2025) - Session 18 (Multi-Document Popup Fix)
 - **Multi-Document Popup Handling Fixed:**
   - **Problem**: Events with 2+ documents show a "Document Selector" dialog instead of direct download
   - **Root Cause**: Portal uses native HTML `<dialog>` elements, not `div[role="dialog"]`
@@ -176,9 +196,9 @@ gh pr status
   - `handle_document_selector_popup()` function detects native HTML `<dialog>` elements
   - Downloads all documents from popup table sequentially
   - Used by both `download_all_case_documents()` and `download_upset_bid_documents()`
-- **Current Database Status:**
+- **Database Status (Session 17):**
   - **23** upset_bid cases (all with complete bid data)
-  - **183+** closed_sold (includes 1 reclassified from upset_bid)
+  - **183** closed_sold (includes 1 reclassified from upset_bid)
 
 ### Previous Updates (Dec 3, 2025) - Session 16 (Frontend Phase 1)
 - **Frontend Phase 1 Complete:**
@@ -324,10 +344,11 @@ gh pr status
   - Case monitoring (50 case sample): Working correctly, 0 new events detected
   - Full monitoring run estimate: ~1.5 hours for 1,567 cases
 
-### TODO for Next Session
-1. **Set up cron job** for automated daily scraping
-2. **Enrichment module** - Add property data from Zillow, county tax records
-3. **Bidding strategy analysis** - Analyze 183 closed_sold cases for patterns
+### TODO / Next Steps
+1. ~~**Set up cron job** for automated daily scraping~~ ✅ Complete (scheduler service running)
+2. **Frontend Enhancement** - Build out Dashboard and Case views with real data
+3. **Enrichment module** - Add property data from Zillow, county tax records
+4. **Bidding strategy analysis** - Analyze 226 closed_sold cases for patterns by county
 
 ### Previous Updates (Dec 1, 2025) - Session 10
 - **VPN requirement removed** - scraper works without VPN, no IP banning issues observed
@@ -716,8 +737,12 @@ curl http://localhost:5000/api/scheduler/history?limit=10
 ### Environment Variables (.env)
 - `DATABASE_URL` - PostgreSQL connection string
 - `CAPSOLVER_API_KEY` - CapSolver API key
+- `ANTHROPIC_API_KEY` - Claude API key (for AI analysis)
 - `PDF_STORAGE_PATH` - Where to store downloaded PDFs
 - `LOG_LEVEL` - Logging verbosity (INFO, DEBUG, etc.)
+- `GOOGLE_CLIENT_ID` - Google OAuth client ID
+- `GOOGLE_CLIENT_SECRET` - Google OAuth client secret
+- `FLASK_SECRET_KEY` - Flask session secret key
 
 ### County Codes
 Target counties: Chatham (180), Durham (310), Harnett (420), Lee (520), Orange (670), Wake (910)

@@ -1,5 +1,7 @@
 # FrootVPN Setup Guide for WSL
 
+> **NOTE (Dec 2025):** VPN is **NOT REQUIRED** for this project. The NC Courts Portal does not block or rate-limit requests. This documentation is kept for reference if VPN is ever needed in the future.
+
 This guide walks through setting up FrootVPN with OpenVPN in WSL (Windows Subsystem for Linux).
 
 ## Prerequisites

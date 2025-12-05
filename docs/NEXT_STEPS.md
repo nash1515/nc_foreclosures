@@ -1,254 +1,153 @@
 # NC Foreclosures - Next Steps
 
-## Current Status
+## Current Status (Dec 5, 2025)
 
-**Phase 1 Foundation:** 100% Complete ✅✅✅
+**All Core Infrastructure:** ✅ Complete
+**Database:** 1,731 cases across 6 NC counties
+**Frontend:** React + Vite + Ant Design (working)
+**Backend:** Flask + Google OAuth (working)
+**Scheduler:** 5 AM Mon-Fri automated scraping (working)
 
-### Completed
-- ✅ Full infrastructure (database, VPN, CapSolver, tests)
-- ✅ Portal exploration and HTML capture
-- ✅ Portal selectors identified (`portal_selectors.py`)
-- ✅ Portal interaction functions (`portal_interactions.py`)
-- ✅ Initial scraper updated with portal integration
-- ✅ HTML parsing functions implemented
+### Phase Completion Status
 
-### Ready for Testing
+| Phase | Status | Description |
+|-------|--------|-------------|
+| Phase 1 | ✅ Complete | Database, scraping, Kendo UI parsing |
+| Phase 2 | ✅ Complete | PDF download, OCR processing |
+| Phase 2.5 | ✅ Complete | Data extraction, classification |
+| Phase 3 | ✅ Complete | AI analysis integration (Claude API) |
+| Phase 4 | 🔄 In Progress | Frontend web application |
 
-## Testing & Next Steps
+### Current Database Statistics
 
-**All implementation is complete!** See `docs/TESTING_GUIDE.md` for detailed testing instructions.
+```
+upcoming:         1,345 (active foreclosures)
+closed_sold:        226 (completed sales)
+blocked:             70 (bankruptcy/stay)
+closed_dismissed:    56 (dismissed cases)
+upset_bid:           21 (bidding opportunities!)
+unclassified:        13
+─────────────────────────
+TOTAL:            1,731
+```
 
-### Quick Test
+## Immediate Next Steps
 
+### 1. Frontend Enhancement (Priority: High)
+The frontend shell is complete. Next steps:
+- Connect Dashboard to real API data
+- Display case statistics with charts
+- Build case list with filtering/sorting
+- Implement case detail view
+- Add upset_bid opportunity highlights
+
+### 2. Enrichment Module (Priority: Medium)
+Add external data sources:
+- Zillow property values and estimates
+- County tax records
+- Property ownership history
+- Nearby comparable sales
+
+### 3. Bidding Strategy Analysis (Priority: Medium)
+Analyze 226 closed_sold cases:
+- Winning bid patterns by county
+- Time from sale to upset bid deadline
+- Equity estimation accuracy
+- Success rate predictions
+
+## Running the Application
+
+### Quick Start
 ```bash
-cd /home/ahn/projects/nc_foreclosures/.worktrees/phase1-foundation
-source venv/bin/activate
-export PYTHONPATH=$(pwd)
-
-# Ensure VPN is ON and PostgreSQL is running
-PYTHONPATH=$(pwd) venv/bin/python scraper/initial_scrape.py \
-  --county wake \
-  --start 2024-01-01 \
-  --end 2024-01-31 \
-  --test \
-  --limit 5
-```
-
----
-
-## Implementation Details (Completed)
-
-#### 1. ✅ Updated `scraper/initial_scrape.py`
-
-Replaced all placeholder methods with actual implementations:
-
-**`_fill_search_form()` method:**
-```python
-from scraper.portal_interactions import click_advanced_filter, fill_search_form as fill_form
-
-def _fill_search_form(self, page):
-    """Fill out the search form."""
-    # Click advanced filter first
-    click_advanced_filter(page)
-
-    # Fill the form
-    fill_form(
-        page,
-        county_name=f"{self.county.title()} County",
-        start_date=self.start_date,
-        end_date=self.end_date,
-        search_text=get_search_text(self.county, self.start_date.year)
-    )
-```
-
-**In `_solve_captcha()` method** (line ~191):
-```python
-from scraper.portal_interactions import solve_and_submit_captcha
-
-def _solve_captcha(self, page):
-    """Solve reCAPTCHA on the page."""
-    return solve_and_submit_captcha(page)
-```
-
-**In `_check_for_too_many_results()` method** (line ~198):
-```python
-from scraper.portal_interactions import check_for_error
-
-def _check_for_too_many_results(self, page):
-    """Check if 'too many results' error is displayed."""
-    has_error, error_msg = check_for_error(page)
-    if has_error and 'too many' in error_msg.lower():
-        return True
-    return False
-```
-
-**In `_go_to_next_page()` method** (line ~202):
-```python
-from scraper.portal_interactions import go_to_next_page
-
-def _go_to_next_page(self, page):
-    """Navigate to next page of results."""
-    return go_to_next_page(page)
-```
-
-#### 2. Update `scraper/page_parser.py`
-
-Implement these functions with actual HTML parsing:
-
-**`parse_search_results()`**:
-```python
-from scraper.portal_selectors import RESULTS_ROWS
-
-def parse_search_results(page_content):
-    soup = BeautifulSoup(page_content, 'html.parser')
-    cases = []
-
-    # Find all result rows
-    rows = soup.select('table.searchResults tbody tr')
-
-    for row in rows:
-        # Extract case number and URL from each row
-        case_link = row.select_one('a')  # Adjust selector based on actual HTML
-        if case_link:
-            case_number = case_link.text.strip()
-            case_url = case_link.get('href')
-            # Make URL absolute if needed
-            if not case_url.startswith('http'):
-                case_url = f'https://portal-nc.tylertech.cloud{case_url}'
-
-            cases.append({
-                'case_number': case_number,
-                'case_url': case_url
-            })
-
-    return {
-        'cases': cases,
-        'total_count': len(cases)
-    }
-```
-
-**`parse_case_detail()`**:
-```python
-def parse_case_detail(page_content):
-    soup = BeautifulSoup(page_content, 'html.parser')
-
-    case_data = {
-        'case_type': None,
-        'case_status': None,
-        'file_date': None,
-        'property_address': None,
-        'events': [],
-        'documents': []
-    }
-
-    # Parse case information section
-    # Find the table with case details
-    info_rows = soup.select('#CaseInformationContainer tr')
-    for row in info_rows:
-        cells = row.find_all('td')
-        if len(cells) >= 2:
-            label = cells[0].text.strip().lower()
-            value = cells[1].text.strip()
-
-            if 'case type' in label:
-                case_data['case_type'] = value
-            elif 'status' in label:
-                case_data['case_status'] = value
-            elif 'file date' in label:
-                case_data['file_date'] = value  # Parse to date object if needed
-
-    # Parse events table
-    event_rows = soup.select('#EventsTable tbody tr')
-    for row in event_rows:
-        cells = row.find_all('td')
-        if len(cells) >= 2:
-            case_data['events'].append({
-                'event_date': cells[0].text.strip(),
-                'event_type': cells[1].text.strip(),
-                'event_description': cells[1].text.strip()
-            })
-
-    return case_data
-```
-
-**`extract_total_count()`**:
-```python
-from scraper.portal_interactions import extract_total_count_from_page
-
-def extract_total_count(page_content):
-    # This can delegate to portal_interactions
-    # Or parse from BeautifulSoup if needed
-    soup = BeautifulSoup(page_content, 'html.parser')
-    summary = soup.select_one('.pagingSummary')
-    if summary:
-        text = summary.text
-        match = re.search(r'of\s+(\d+)\s+items', text, re.IGNORECASE)
-        if match:
-            return int(match.group(1))
-    return None
-```
-
-#### 3. Test with Small Sample
-
-Once the above is implemented:
-
-```bash
-cd /home/ahn/projects/nc_foreclosures/.worktrees/phase1-foundation
-source venv/bin/activate
-export PYTHONPATH=$(pwd)
-
-# Make sure VPN is ON
-# Make sure PostgreSQL is running
+# Terminal 1: PostgreSQL
 sudo service postgresql start
 
-# Run test scrape
-PYTHONPATH=$(pwd) venv/bin/python scraper/initial_scrape.py \
-  --county wake \
-  --start 2024-01-01 \
-  --end 2024-01-31 \
-  --test \
-  --limit 5
+# Terminal 2: Backend (port 5000)
+cd /home/ahn/projects/nc_foreclosures
+PYTHONPATH=$(pwd) venv/bin/python web_app/app.py
+
+# Terminal 3: Frontend (port 5173)
+cd /home/ahn/projects/nc_foreclosures/frontend
+npm run dev
 ```
 
-#### 4. Debug and Refine
+### Access
+- **Frontend:** http://localhost:5173
+- **API:** http://localhost:5000/api
+- **Login:** Google OAuth via "Sign in with Google"
 
-Watch the output and browser automation. Common issues:
-- **Selectors not matching:** Use browser DevTools to verify selectors
-- **Timing issues:** Add `time.sleep()` calls if elements load slowly
-- **CAPTCHA fails:** Check CapSolver API key and balance
-- **Date format:** Verify date format matches portal expectations (MM/DD/YYYY)
+## Key Commands
 
-## Quick Commands Reference
-
+### Database
 ```bash
-# Activate environment
-cd /home/ahn/projects/nc_foreclosures/.worktrees/phase1-foundation
-source venv/bin/activate
-export PYTHONPATH=$(pwd)
+# Connect
+PGPASSWORD=nc_password psql -U nc_user -d nc_foreclosures -h localhost
 
-# Start PostgreSQL
-sudo service postgresql start
+# View classifications
+SELECT classification, COUNT(*) FROM cases
+GROUP BY classification ORDER BY COUNT(*) DESC;
 
-# Run tests
-venv/bin/python tests/test_phase1_integration.py
-
-# Check database
-PGPASSWORD=nc_password psql -U nc_user -d nc_foreclosures -h localhost -c "SELECT case_number, county_name FROM cases;"
-
-# View scrape logs
-PGPASSWORD=nc_password psql -U nc_user -d nc_foreclosures -h localhost -c "SELECT * FROM scrape_logs ORDER BY started_at DESC LIMIT 5;"
+# View upset_bid opportunities
+SELECT case_number, property_address, current_bid_amount, next_bid_deadline
+FROM cases WHERE classification = 'upset_bid';
 ```
 
-## Files to Modify
+### Scraping
+```bash
+# Manual daily scrape
+./scripts/run_daily.sh
 
-1. `scraper/initial_scrape.py` - Replace 4 placeholder methods
-2. `scraper/page_parser.py` - Implement 3 parsing functions
+# Monitor upset_bid cases specifically
+PYTHONPATH=$(pwd) venv/bin/python scraper/case_monitor.py --classification upset_bid
 
-Total: ~200-300 lines of code to complete the scraper!
+# Scheduler control
+./scripts/scheduler_control.sh status
+./scripts/scheduler_control.sh logs
+```
 
-## After Portal Implementation Works
+### Development
+```bash
+# Create feature worktree
+./scripts/dev_worktree.sh create my-feature
 
-1. Commit and push to GitHub
-2. Test with larger samples (full month, multiple counties)
-3. Merge `feature/phase1-foundation` to `main`
-4. Begin Phase 2: PDF downloading and OCR
+# Work in isolation
+cd .worktrees/my-feature/frontend
+npm install && npm run dev -- --port 5174
+
+# Cleanup when done
+./scripts/dev_worktree.sh delete my-feature
+```
+
+## Architecture Overview
+
+```
+nc_foreclosures/
+├── common/          # Config, logging, county codes
+├── database/        # SQLAlchemy models, connection
+├── scraper/         # Playwright scrapers, CAPTCHA
+├── scheduler/       # Automated job service
+├── extraction/      # Regex data extraction, classification
+├── ocr/             # PDF text extraction (Tesseract)
+├── analysis/        # Claude AI integration
+├── web_app/         # Flask API + OAuth
+├── frontend/        # React + Vite + Ant Design
+├── scripts/         # Helper scripts
+└── docs/            # Documentation
+```
+
+## Documentation Index
+
+| Document | Purpose |
+|----------|---------|
+| `CLAUDE.md` | Main project guide (read this first) |
+| `docs/SESSION_SUMMARY.md` | Latest session notes |
+| `docs/SETUP.md` | Initial setup instructions |
+| `docs/TESTING_GUIDE.md` | Testing procedures |
+| `docs/KENDO_GRID_FIXES.md` | Portal parsing details |
+
+## Notes
+
+- VPN is NOT required - portal doesn't rate limit
+- Scheduler runs at 5 AM Mon-Fri automatically
+- OAuth credentials stored in `.env` (gitignored)
+- Use worktrees for feature development
