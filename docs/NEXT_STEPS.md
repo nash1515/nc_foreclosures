@@ -4,7 +4,7 @@
 
 **All Core Infrastructure:** ✅ Complete
 **Database:** 1,731 cases across 6 NC counties
-**Frontend:** React + Vite + Ant Design (working)
+**Frontend:** React + Vite + Ant Design (Dashboard complete!)
 **Backend:** Flask + Google OAuth (working)
 **Scheduler:** 5 AM Mon-Fri automated scraping (working)
 
@@ -17,6 +17,16 @@
 | Phase 2.5 | ✅ Complete | Data extraction, classification |
 | Phase 3 | ✅ Complete | AI analysis integration (Claude API) |
 | Phase 4 | 🔄 In Progress | Frontend web application |
+
+### Phase 4 Progress (Frontend)
+
+| Component | Status | Description |
+|-----------|--------|-------------|
+| Dashboard | ✅ Complete | Stats, charts, upset bid table with urgency colors |
+| Case List | ⏳ Pending | Filtering, sorting, pagination |
+| Case Detail | ⏳ Pending | Full case info, events, parties, documents |
+| Scheduler UI | ⏳ Pending | Configure scrape schedule |
+| Settings | ⏳ Pending | User preferences |
 
 ### Current Database Statistics
 
@@ -33,22 +43,31 @@ TOTAL:            1,731
 
 ## Immediate Next Steps
 
-### 1. Frontend Enhancement (Priority: High)
-The frontend shell is complete. Next steps:
-- Connect Dashboard to real API data
-- Display case statistics with charts
-- Build case list with filtering/sorting
-- Implement case detail view
-- Add upset_bid opportunity highlights
+### 1. Case List Page (Priority: High)
+Build the All Cases page with:
+- Table with sortable columns
+- Filters: classification, county, date range
+- Search: case number, address, party name
+- Pagination
+- Quick watchlist toggle
 
-### 2. Enrichment Module (Priority: Medium)
+### 2. Case Detail Page (Priority: High)
+Display full case information:
+- Case metadata (number, type, status, dates)
+- Property information with map
+- All parties (respondents, petitioners, trustees)
+- Event timeline with document links
+- Bid history for upset_bid cases
+- AI analysis results (if available)
+
+### 3. Enrichment Module (Priority: Medium)
 Add external data sources:
 - Zillow property values and estimates
 - County tax records
 - Property ownership history
 - Nearby comparable sales
 
-### 3. Bidding Strategy Analysis (Priority: Medium)
+### 4. Bidding Strategy Analysis (Priority: Medium)
 Analyze 226 closed_sold cases:
 - Winning bid patterns by county
 - Time from sale to upset bid deadline
@@ -151,3 +170,4 @@ nc_foreclosures/
 - Scheduler runs at 5 AM Mon-Fri automatically
 - OAuth credentials stored in `.env` (gitignored)
 - Use worktrees for feature development
+- Dashboard now shows real-time upset bid opportunities with urgency colors

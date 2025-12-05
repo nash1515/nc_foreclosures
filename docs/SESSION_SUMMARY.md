@@ -1,4 +1,4 @@
-# Session Summary - Dec 5, 2025 (Session 19)
+# Session Summary - Dec 5, 2025 (Session 20)
 
 ## Current Project Status
 
@@ -20,22 +20,47 @@
 - **Scheduler:** 5 AM Mon-Fri automated scraping
 - **Scraper:** All modules working (CAPTCHA, monitoring, PDF download)
 
-## Session 19 Accomplishments (Dec 5, 2025)
+## Session 20 Accomplishments (Dec 5, 2025)
 
-### 1. OAuth Credentials Restored
-- **Problem:** Google OAuth returning "invalid_client" error
-- **Cause:** Credentials were lost from `.env` file between sessions
-- **Solution:** Retrieved credentials from Claude conversation history
-- **Added to .env:**
-  - `GOOGLE_CLIENT_ID`
-  - `GOOGLE_CLIENT_SECRET`
-  - `FLASK_SECRET_KEY`
+### 1. Dashboard Implementation Complete
+- **Stats Cards:**
+  - Total Cases (1,731)
+  - Active Upset Bids (21)
+  - Urgent cases (<3 days deadline)
+  - Recent Filings (last 7 days)
+- **Classification Breakdown:**
+  - Color-coded progress bars for each classification
+  - Shows count and percentage
+- **County Breakdown:**
+  - Progress bars showing cases per county
+- **Upset Bid Opportunities Table:**
+  - Urgency color coding:
+    - Red: Expired (deadline passed)
+    - Orange: Critical (≤2 days)
+    - Yellow: Warning (≤5 days)
+    - Green: Normal (>5 days)
+  - Watchlist toggle (star icon)
+  - Case number links to detail page
+  - Property addresses
+  - Current bid amount and minimum next bid
+  - Days remaining countdown
 
-### 2. Documentation Updated
-- Updated CLAUDE.md with Session 19 notes
-- Updated database statistics to current counts
-- Updated environment variables documentation
-- Refreshed TODO/Next Steps list
+### 2. New API Endpoints Added
+- `GET /api/cases/stats` - Dashboard statistics
+  - Classification counts
+  - County counts
+  - Upset bid metrics (total, urgent, upcoming)
+  - Recent filings count
+- `GET /api/cases/upset-bids` - Upset bid cases sorted by deadline
+  - Returns all upset_bid cases
+  - Calculated urgency levels
+  - Days remaining until deadline
+  - Watchlist status
+
+### 3. Bug Fixed
+- **datetime vs date type mismatch:** Fixed in `get_upset_bids()` endpoint
+  - `case.next_bid_deadline` was datetime, `today` was date
+  - Added proper type handling with `.date()` method
 
 ## Running the Application
 
@@ -58,73 +83,35 @@ npm run dev
 - **Backend API:** http://localhost:5000/api
 - **OAuth Login:** Click "Sign in with Google" on frontend
 
-## Development Workflow
+## Files Modified This Session
 
-### Feature Development with Git Worktrees
-```bash
-# Create isolated worktree
-./scripts/dev_worktree.sh create my-feature
+### Backend
+- `web_app/api/cases.py`
+  - Added `get_stats()` endpoint (lines 321-378)
+  - Added `get_upset_bids()` endpoint (lines 381-443)
+  - Fixed datetime handling bug (line 415)
 
-# Work in worktree
-cd .worktrees/my-feature/frontend
-npm install
-npm run dev -- --port 5174
-
-# When done
-git add . && git commit -m "Feature complete"
-git push origin feature/my-feature
-
-# Merge and cleanup
-cd /home/ahn/projects/nc_foreclosures
-git checkout main
-git merge feature/my-feature
-./scripts/dev_worktree.sh delete my-feature
-```
-
-## Key Commands Reference
-
-### Database
-```bash
-# Connect to database
-PGPASSWORD=nc_password psql -U nc_user -d nc_foreclosures -h localhost
-
-# Check classification counts
-PGPASSWORD=nc_password psql -U nc_user -d nc_foreclosures -h localhost -c \
-  "SELECT classification, COUNT(*) FROM cases GROUP BY classification ORDER BY COUNT(*) DESC;"
-```
-
-### Scraping
-```bash
-# Run daily scrape manually
-./scripts/run_daily.sh
-
-# Monitor specific cases
-PYTHONPATH=$(pwd) venv/bin/python scraper/case_monitor.py --classification upset_bid
-
-# Scheduler control
-./scripts/scheduler_control.sh status
-./scripts/scheduler_control.sh logs
-```
-
-### Scheduler API
-```bash
-# View schedule
-curl http://localhost:5000/api/scheduler/config/daily_scrape
-
-# Trigger manual run
-curl -X POST http://localhost:5000/api/scheduler/run/daily_scrape
-```
+### Frontend
+- `frontend/src/pages/Dashboard.jsx`
+  - Complete rewrite from placeholder
+  - Stats cards with Ant Design
+  - Classification/county breakdowns with progress bars
+  - Upset bid table with urgency colors
+  - Watchlist toggle functionality
 
 ## Next Steps
 
-1. **Frontend Enhancement** - Build Dashboard with real case data, charts, and filters
-2. **Enrichment Module** - Add Zillow property data, county tax records
-3. **Bidding Strategy Analysis** - Analyze 226 closed_sold cases for patterns
+1. **Build Case Detail Page** - Full case information with events, parties, documents
+2. **Build Case List Page** - Filtering by classification, county, date range
+3. **Add Scheduler Config UI** - Frontend for adjusting scrape schedule
+4. **Enrichment Module** - Add Zillow property data, county tax records
+5. **Bidding Strategy Analysis** - Analyze 226 closed_sold cases for patterns
 
 ## Previous Sessions Quick Reference
 
 | Session | Date | Focus |
 |---------|------|-------|
+| 20 | Dec 5 | Dashboard implementation complete |
 | 19 | Dec 5 | OAuth fix, documentation update |
 | 18 | Dec 4 | Multi-document popup fix, worktree workflow |
 | 17 | Dec 4 | Report of Sale extraction, bid data validation |

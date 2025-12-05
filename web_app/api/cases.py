@@ -2,10 +2,10 @@
 
 from flask import Blueprint, jsonify, request
 from flask_dance.contrib.google import google
-from sqlalchemy import or_
+from sqlalchemy import or_, func
 from database.connection import get_session
 from database.models import Case, Party, Watchlist, User
-from datetime import datetime
+from datetime import datetime, date
 
 cases_bp = Blueprint('cases', __name__)
 
@@ -316,3 +316,128 @@ def remove_from_watchlist(case_id):
             db_session.commit()
 
         return jsonify({'message': 'Removed from watchlist', 'is_watchlisted': False})
+
+
+@cases_bp.route('/stats', methods=['GET'])
+def get_stats():
+    """Get dashboard statistics."""
+    if not google.authorized:
+        return jsonify({'error': 'Not authenticated'}), 401
+
+    with get_session() as db_session:
+        # Classification counts
+        classification_counts = db_session.query(
+            Case.classification,
+            func.count(Case.id)
+        ).group_by(Case.classification).all()
+
+        classifications = {c[0] or 'unclassified': c[1] for c in classification_counts}
+
+        # County counts
+        county_counts = db_session.query(
+            Case.county_name,
+            func.count(Case.id)
+        ).group_by(Case.county_name).all()
+
+        counties = {c[0]: c[1] for c in county_counts}
+
+        # Upset bid cases with deadlines
+        today = date.today()
+        urgent_count = db_session.query(Case).filter(
+            Case.classification == 'upset_bid',
+            Case.next_bid_deadline != None,
+            Case.next_bid_deadline <= today
+        ).count()
+
+        upcoming_deadlines = db_session.query(Case).filter(
+            Case.classification == 'upset_bid',
+            Case.next_bid_deadline != None,
+            Case.next_bid_deadline > today
+        ).count()
+
+        # Total cases
+        total = db_session.query(Case).count()
+
+        # Recent activity (cases filed in last 7 days)
+        from datetime import timedelta
+        week_ago = today - timedelta(days=7)
+        recent_filings = db_session.query(Case).filter(
+            Case.file_date >= week_ago
+        ).count()
+
+        return jsonify({
+            'total_cases': total,
+            'classifications': classifications,
+            'counties': counties,
+            'upset_bid': {
+                'total': classifications.get('upset_bid', 0),
+                'urgent': urgent_count,
+                'upcoming': upcoming_deadlines
+            },
+            'recent_filings': recent_filings
+        })
+
+
+@cases_bp.route('/upset-bids', methods=['GET'])
+def get_upset_bids():
+    """Get all upset_bid cases sorted by deadline urgency."""
+    if not google.authorized:
+        return jsonify({'error': 'Not authenticated'}), 401
+
+    user_id = get_current_user_id()
+
+    with get_session() as db_session:
+        # Get all upset_bid cases, ordered by deadline (soonest first)
+        cases = db_session.query(Case).filter(
+            Case.classification == 'upset_bid'
+        ).order_by(
+            Case.next_bid_deadline.asc().nullslast()
+        ).all()
+
+        today = date.today()
+
+        # Get watchlist status
+        watchlist_case_ids = set()
+        if user_id:
+            watchlist_items = db_session.query(Watchlist.case_id).filter(
+                Watchlist.user_id == user_id,
+                Watchlist.case_id.in_([c.id for c in cases])
+            ).all()
+            watchlist_case_ids = {w.case_id for w in watchlist_items}
+
+        result = []
+        for case in cases:
+            # Calculate days until deadline
+            days_remaining = None
+            urgency = 'normal'
+            if case.next_bid_deadline:
+                # Handle both date and datetime types
+                deadline_date = case.next_bid_deadline.date() if hasattr(case.next_bid_deadline, 'date') else case.next_bid_deadline
+                delta = (deadline_date - today).days
+                days_remaining = delta
+                if delta <= 0:
+                    urgency = 'expired'
+                elif delta <= 2:
+                    urgency = 'critical'
+                elif delta <= 5:
+                    urgency = 'warning'
+
+            result.append({
+                'id': case.id,
+                'case_number': case.case_number,
+                'county_code': case.county_code,
+                'county_name': case.county_name,
+                'property_address': case.property_address,
+                'current_bid_amount': float(case.current_bid_amount) if case.current_bid_amount else None,
+                'minimum_next_bid': float(case.minimum_next_bid) if case.minimum_next_bid else None,
+                'next_bid_deadline': case.next_bid_deadline.isoformat() if case.next_bid_deadline else None,
+                'days_remaining': days_remaining,
+                'urgency': urgency,
+                'sale_date': case.sale_date.isoformat() if case.sale_date else None,
+                'is_watchlisted': case.id in watchlist_case_ids
+            })
+
+        return jsonify({
+            'cases': result,
+            'total': len(result)
+        })

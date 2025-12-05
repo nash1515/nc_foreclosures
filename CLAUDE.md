@@ -123,11 +123,31 @@ gh pr status
 6. ~~Implement daily scrape functionality (include monitoring of `blocked` cases)~~ ✅ Complete
 7. ~~Re-scrape NULL event types~~ ✅ Complete (5,461 events added, 112 classifications updated)
 8. ~~Set up automated daily scraping~~ ✅ Complete (scheduler service + API)
-9. Build frontend web application (scheduler config UI included)
+9. ~~Build frontend web application~~ ✅ Dashboard complete (Session 20)
 10. Implement enrichment module (Zillow, county records, tax values)
-11. Analyze `closed_sold` cases (183) for bidding strategy patterns by county
+11. Analyze `closed_sold` cases (226) for bidding strategy patterns by county
+12. Build Case Detail page with full case information
+13. Build Case List page with filtering/sorting
+14. Add scheduler configuration UI
 
-### Recent Updates (Dec 5, 2025) - Session 19 (Documentation & OAuth Fix)
+### Recent Updates (Dec 5, 2025) - Session 20 (Dashboard Implementation)
+- **Dashboard Component Built:**
+  - Stats cards: Total Cases, Active Upset Bids, Urgent (<3 days), Recent Filings
+  - Classification breakdown with color-coded progress bars
+  - County breakdown with progress bars
+  - Upset bid opportunities table with urgency color coding:
+    - Expired (red), Critical ≤2 days (orange), Warning ≤5 days (yellow), Normal (green)
+  - Watchlist toggle functionality (star icon)
+  - Case links, property addresses, bid amounts, days remaining
+- **New API Endpoints Added** (`web_app/api/cases.py`):
+  - `GET /api/cases/stats` - Dashboard statistics (classification counts, county counts, urgent/upcoming deadlines, recent filings)
+  - `GET /api/cases/upset-bids` - All upset_bid cases sorted by deadline urgency
+- **Bug Fixed:** datetime vs date type mismatch in upset-bids endpoint
+- **Files Modified:**
+  - `web_app/api/cases.py` - Added stats and upset-bids endpoints
+  - `frontend/src/pages/Dashboard.jsx` - Complete rewrite from placeholder
+
+### Previous Updates (Dec 5, 2025) - Session 19 (Documentation & OAuth Fix)
 - **Google OAuth Credentials Restored:**
   - Fixed "invalid_client" error - credentials were lost from `.env` file
   - Retrieved credentials from Claude conversation history
