@@ -487,6 +487,55 @@ export PYTHONPATH=$(pwd)
 sudo service postgresql start
 ```
 
+### Frontend Development Workflow
+
+Use **Git Worktrees** for isolated feature development. This keeps your stable frontend untouched while you work on new features.
+
+**Create a new feature worktree:**
+```bash
+# Create worktree for new feature
+./scripts/dev_worktree.sh create my-feature
+
+# Navigate to worktree frontend
+cd .worktrees/my-feature/frontend
+
+# Install dependencies (first time only)
+npm install
+
+# Start dev server on port 5174 (stable uses 5173)
+npm run dev -- --port 5174
+```
+
+**Daily development:**
+```bash
+cd .worktrees/my-feature/frontend
+npm run dev -- --port 5174
+# Open http://localhost:5174 - changes appear instantly (HMR)
+```
+
+**When feature is complete:**
+```bash
+# In worktree directory
+git add . && git commit -m "Feature complete"
+git push origin feature/my-feature
+
+# Merge to main
+cd /home/ahn/projects/nc_foreclosures
+git checkout main
+git merge feature/my-feature
+
+# Clean up worktree
+./scripts/dev_worktree.sh delete my-feature
+```
+
+**Quick reference:**
+```bash
+./scripts/dev_worktree.sh create <name>   # Create new worktree
+./scripts/dev_worktree.sh delete <name>   # Remove worktree
+./scripts/dev_worktree.sh list            # List all worktrees
+git worktree list                         # Git's worktree list
+```
+
 ### Database Commands
 
 ```bash
