@@ -25,7 +25,7 @@ sys.path.insert(0, str(project_root))
 
 from database.connection import get_session
 from database.models import SchedulerConfig
-from scraper.date_range_scrape import run_date_range_scrape
+from scraper.daily_scrape import run_daily_tasks
 from common.logger import setup_logger
 
 logger = setup_logger(__name__)
@@ -112,32 +112,51 @@ class SchedulerService:
         return True
 
     def run_daily_scrape(self):
-        """Execute the daily scrape job."""
+        """Execute the full daily scrape job (all 4 tasks)."""
         logger.info("=" * 60)
-        logger.info("STARTING SCHEDULED DAILY SCRAPE")
+        logger.info("STARTING SCHEDULED DAILY SCRAPE (ALL TASKS)")
         logger.info("=" * 60)
 
         # Calculate yesterday's date
         yesterday = (datetime.now() - timedelta(days=1)).date()
-        logger.info(f"Scraping cases from: {yesterday}")
+        logger.info(f"Target date for new cases: {yesterday}")
+        logger.info("Tasks: search_new + monitor_existing + validate + reclassify")
 
         try:
-            result = run_date_range_scrape(
-                start_date=yesterday,
-                end_date=yesterday
+            # Run all 4 daily tasks with 8 parallel browsers for monitoring
+            result = run_daily_tasks(
+                target_date=yesterday,
+                search_new=True,
+                monitor_existing=True,
+                dry_run=False
             )
 
-            if result['status'] == 'success':
-                message = f"Scraped {result['cases_processed']} foreclosures from {yesterday}"
+            # Build summary message from results
+            new_cases = 0
+            if result.get('new_case_search'):
+                new_cases = result['new_case_search'].get('cases_processed', 0)
+
+            monitored = 0
+            events_added = 0
+            classifications_changed = 0
+            if result.get('case_monitoring'):
+                monitored = result['case_monitoring'].get('cases_checked', 0)
+                events_added = result['case_monitoring'].get('events_added', 0)
+                classifications_changed = result['case_monitoring'].get('classifications_changed', 0)
+
+            # Check for errors
+            errors = result.get('errors', [])
+            if errors:
+                message = f"Completed with {len(errors)} errors. New: {new_cases}, Monitored: {monitored}, Events: {events_added}"
+                logger.warning(f"PARTIAL SUCCESS: {message}")
+                self.update_job_status('daily_scrape', 'partial', message)
+            else:
+                message = f"New cases: {new_cases}, Monitored: {monitored}, Events added: {events_added}, Classifications changed: {classifications_changed}"
                 logger.info(f"SUCCESS: {message}")
                 self.update_job_status('daily_scrape', 'success', message)
-            else:
-                message = f"Scrape failed: {result.get('error', 'Unknown error')}"
-                logger.error(f"FAILED: {message}")
-                self.update_job_status('daily_scrape', 'failed', message)
 
         except Exception as e:
-            message = f"Exception during scrape: {str(e)}"
+            message = f"Exception during daily scrape: {str(e)}"
             logger.exception(message)
             self.update_job_status('daily_scrape', 'failed', message)
 
