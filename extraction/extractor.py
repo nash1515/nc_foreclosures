@@ -31,6 +31,33 @@ ADDRESS_PATTERNS = [
     r'(?:commonly\s+known\s+as|known\s+as)[:\s]+([^.]+(?:NC|North\s+Carolina)\s*\d{5}(?:-\d{4})?)',
     # Pattern 4: "Property Address:"
     r'Property\s+Address[:\s]+([^\n]+(?:NC|North\s+Carolina)\s*\d{5}(?:-\d{4})?)',
+    # Pattern 5: "Address of property:" (different word order - COMMON in NC docs)
+    r'Address\s+of\s+property[:\s]+([0-9]+[^\n]+(?:NC|North\s+Carolina)\s*\d{5}(?:-\d{4})?)',
+    # Pattern 6: Multi-line after "Address of property:"
+    r'Address\s+of\s+property[:\s]+\n*\s*(\d+[^\n]+)\n+\s*([A-Z][A-Za-z\s]+,\s*NC\s*\d{5})',
+    # Pattern 7: "known as" with street number start (more specific)
+    r'known\s+as\s+(\d+[^,\n]+,\s*[A-Z][A-Za-z\s]+,\s*NC\s*\d{5}(?:-\d{4})?)',
+    # Pattern 8: Street address followed by City, NC ZIP on same/next line
+    r'(\d+\s+[A-Za-z]+(?:\s+[A-Za-z]+)*\s+(?:Street|St|Road|Rd|Drive|Dr|Lane|Ln|Court|Ct|Circle|Cir|Way|Avenue|Ave|Boulevard|Blvd|Place|Pl|Terrace|Ter)[,.]?)\s*[,\n]\s*([A-Z][A-Za-z\s]+,\s*NC\s*\d{5})',
+    # Pattern 9: "assessments upon ADDRESS" (HOA lien foreclosures)
+    r'assessments?\s+upon\s+(\d+\s+[A-Za-z]+(?:\s+[A-Za-z]+)*\s+(?:Street|St|Road|Rd|Drive|Dr|Lane|Ln|Court|Ct|Circle|Cir|Way|Avenue|Ave|Boulevard|Blvd|Place|Pl|Terrace|Ter)[,\s]+[A-Z][A-Za-z\s]+,?\s*NC,?\s*\d{5})',
+    # Pattern 10: "lien upon ADDRESS" (alternative lien foreclosure format)
+    r'lien\s+upon\s+(\d+\s+[A-Za-z]+(?:\s+[A-Za-z]+)*\s+(?:Street|St|Road|Rd|Drive|Dr|Lane|Ln|Court|Ct|Circle|Cir|Way|Avenue|Ave|Boulevard|Blvd|Place|Pl|Terrace|Ter)[,\s]+[A-Z][A-Za-z\s]+,?\s*NC,?\s*\d{5})',
+]
+
+# Attorney/Law Firm Address Indicators
+# These strings indicate an address is likely a law firm/attorney address, NOT a property
+ATTORNEY_ADDRESS_INDICATORS = [
+    'Brock & Scott',
+    'Brock &: Scott',  # OCR artifact
+    'PLLC',
+    'P.L.L.C.',
+    'Law Firm',
+    'Law Office',
+    'Attorney',
+    'Attorneys at Law',
+    'Substitute Trustee',
+    'Trustee Services',
 ]
 
 # Bid Amount patterns (from Report of Foreclosure Sale)
@@ -179,6 +206,8 @@ def extract_property_address(ocr_text: str) -> Optional[str]:
     """
     Extract property address from OCR text.
 
+    Filters out attorney/law firm addresses to prevent false positives.
+
     Args:
         ocr_text: Raw OCR text from document
 
@@ -192,6 +221,24 @@ def extract_property_address(ocr_text: str) -> Optional[str]:
     for pattern in ADDRESS_PATTERNS:
         match = re.search(pattern, ocr_text, re.IGNORECASE | re.MULTILINE)
         if match:
+            # Check if this address is near attorney/law firm indicators
+            # Look at the text ~200 characters before the match
+            match_pos = match.start()
+            context_start = max(0, match_pos - 200)
+            context_text = ocr_text[context_start:match_pos]
+
+            # Check if any attorney indicators appear in the context
+            is_attorney_address = False
+            for indicator in ATTORNEY_ADDRESS_INDICATORS:
+                if indicator.lower() in context_text.lower():
+                    is_attorney_address = True
+                    logger.debug(f"  Skipping attorney address (found '{indicator}' near match)")
+                    break
+
+            # If this is an attorney address, skip it and try the next pattern
+            if is_attorney_address:
+                continue
+
             # Handle multi-group patterns (street + city)
             if len(match.groups()) > 1:
                 address = f"{match.group(1).strip()}, {match.group(2).strip()}"
