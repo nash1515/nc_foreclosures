@@ -130,7 +130,29 @@ gh pr status
 13. Build Case List page with filtering/sorting
 14. Add scheduler configuration UI
 
-### Recent Updates (Dec 5, 2025) - Session 20 (Dashboard Implementation)
+### Recent Updates (Dec 6, 2025) - Session 21 (Address Extraction Enhancement)
+- **Enhanced Property Address Extraction:**
+  - Added 6 new address patterns for HOA and lien foreclosures:
+    - "Address of property:" with multi-line variations
+    - "assessments upon [ADDRESS]" (HOA lien foreclosures)
+    - "lien upon [ADDRESS]" (alternative lien format)
+  - **Attorney Address Filtering:** Prevents false positives from law firm addresses
+    - Detects law firm indicators (PLLC, Brock & Scott, Law Firm, etc.)
+    - Checks 200-character context before each match
+    - Skips addresses near attorney/law firm keywords
+  - **Results from extraction run:**
+    - Cleared 1 incorrect attorney address (25SP000628-310)
+    - Extracted 10 new property addresses from 378 eligible cases
+    - Current coverage: 1,066/1,731 cases (61.6%)
+- **New Scripts Added:**
+  - `scripts/extract_addresses.py` - Re-extract addresses from existing OCR text
+  - `scripts/test_address_extraction.py` - Unit tests for extraction patterns
+  - `TEST_RESULTS_ADDRESS_EXTRACTION.md` - Detailed test results
+- **Remaining Address Gaps:**
+  - 368 cases have OCR but no address extracted (likely procedural docs only)
+  - 297 cases have no OCR text (need PDF download/OCR)
+
+### Previous Updates (Dec 5, 2025) - Session 20 (Dashboard Implementation)
 - **Dashboard Component Built:**
   - Stats cards: Total Cases, Active Upset Bids, Urgent (<3 days), Recent Filings
   - Classification breakdown with color-coded progress bars
