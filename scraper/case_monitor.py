@@ -202,11 +202,11 @@ class CaseMonitor:
         # Create set of existing event signatures for comparison
         existing_signatures = set()
         for e in existing_events:
-            sig = (e.get('event_date'), (e.get('event_type') or '').lower())
+            sig = (e.get('event_date'), (e.get('event_type') or '').strip().lower())
             existing_signatures.add(sig)
 
         for event in parsed_events:
-            sig = (event.get('event_date'), (event.get('event_type') or '').lower())
+            sig = (event.get('event_date'), (event.get('event_type') or '').strip().lower())
             if sig not in existing_signatures and event.get('event_type'):
                 new_events.append(event)
 
@@ -617,9 +617,23 @@ class CaseMonitor:
 
                     # Check for upset bid -> update bid amounts
                     if self.is_upset_bid_event(event_type):
+                        # Get the actual event date from database, not HTML parse
+                        # HTML-parsed party events often have NULL dates
+                        with get_session() as session:
+                            latest_upset = session.query(CaseEvent).filter(
+                                CaseEvent.case_id == case.id,
+                                CaseEvent.event_type.ilike('%upset bid filed%'),
+                                CaseEvent.event_date.isnot(None)
+                            ).order_by(CaseEvent.event_date.desc()).first()
+
+                            if latest_upset and latest_upset.event_date:
+                                event_date_str = latest_upset.event_date.strftime('%m/%d/%Y')
+                            else:
+                                event_date_str = None
+
                         bid_amount = self.extract_bid_amount(html)
                         if bid_amount:
-                            self.update_case_bid_info(case.id, bid_amount, event.get('event_date'))
+                            self.update_case_bid_info(case.id, bid_amount, event_date_str)
                             result['bid_updated'] = True
 
                     # Check for sale event on upcoming case -> will trigger reclassification
@@ -646,9 +660,16 @@ class CaseMonitor:
                     result['bid_updated'] = True
                     logger.info(f"  Extracted missing bid amount: ${bid_amount}")
 
-            # For upset_bid cases, try to extract bid data from PDF documents
+            # Check if this case has upset bid activity (either classified or has events)
+            has_upset_events = any(
+                self.is_upset_bid_event(e.get('event_type', ''))
+                for e in parsed_data.get('events', [])
+            )
+
+            # For upset_bid cases OR cases with upset bid events, try to extract bid data from PDF documents
             # PDFs (AOC-SP-403 forms) contain more accurate/complete bid information
-            if case.classification == 'upset_bid':
+            # This ensures misclassified cases still get their PDFs processed for accurate deadlines
+            if case.classification == 'upset_bid' or has_upset_events:
                 # Get HTML bid for verification
                 html_bid = self.extract_bid_amount(html) if not case.current_bid_amount else case.current_bid_amount
 

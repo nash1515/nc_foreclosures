@@ -285,16 +285,16 @@ class DateRangeScraper:
             logger.info(f"  ✓ {case_number} is a foreclosure case")
 
             # Save to database
-            saved = self._save_case(case_number, case_url, county_code, county_name, case_data)
+            case_id = self._save_case(case_number, case_url, county_code, county_name, case_data)
 
             # Download PDFs if we saved the case
-            if saved and not self.test_mode:
+            if case_id and not self.test_mode:
                 try:
-                    download_case_documents(detail_page, case_number, county_name)
+                    download_case_documents(detail_page, case_id, county_name, case_number)
                 except Exception as e:
                     logger.warning(f"  Failed to download documents for {case_number}: {e}")
 
-            return saved
+            return case_id
 
         except Exception as e:
             logger.error(f"  Error processing case {case_number}: {e}")
@@ -304,7 +304,7 @@ class DateRangeScraper:
             detail_page.close()
 
     def _save_case(self, case_number, case_url, county_code, county_name, case_data):
-        """Save case to database with upsert logic."""
+        """Save case to database with upsert logic. Returns case ID on success."""
         with get_session() as session:
             # Check if case already exists
             existing = session.query(Case).filter_by(case_number=case_number).first()
@@ -317,7 +317,7 @@ class DateRangeScraper:
                 existing.updated_at = datetime.utcnow()
                 logger.info(f"  Updated existing case {case_number}")
                 session.commit()
-                return True
+                return existing.id
 
             # Create new case
             case = Case(
@@ -367,7 +367,7 @@ class DateRangeScraper:
 
             session.commit()
             logger.info(f"  ✓ Saved new case {case_number}")
-            return True
+            return case.id
 
     def _save_skipped_case(self, case_number, case_url, county_code, county_name, case_data, skip_reason):
         """Save a skipped case for later review."""

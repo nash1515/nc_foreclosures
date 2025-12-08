@@ -241,6 +241,29 @@ def is_foreclosure_case(case_id: int) -> bool:
         return False
 
 
+def get_most_recent_upset_bid_event(case_id: int) -> Optional[CaseEvent]:
+    """Get the most recent 'Upset Bid Filed' event with a valid date.
+
+    Args:
+        case_id: Database ID of the case
+
+    Returns:
+        The most recent CaseEvent with type containing 'upset bid filed' and a valid date,
+        or None if no such event exists.
+    """
+    with get_session() as session:
+        event = session.query(CaseEvent).filter(
+            CaseEvent.case_id == case_id,
+            CaseEvent.event_type.ilike('%upset bid filed%'),
+            CaseEvent.event_date.isnot(None)
+        ).order_by(CaseEvent.event_date.desc()).first()
+
+        if event:
+            # Detach from session before returning
+            session.expunge(event)
+        return event
+
+
 def classify_case(case_id: int) -> Optional[str]:
     """
     Classify a case into one of the defined states.
@@ -300,7 +323,16 @@ def classify_case(case_id: int) -> Optional[str]:
         # IMPORTANT: Each upset bid resets the 10-day period!
         # So we need to check the LATEST of: sale date, last upset bid date
 
-        # First check if there's a deadline stored in the database
+        # FIRST: Check for recent upset bid events (regardless of stored deadline)
+        # This ensures we catch newly filed upset bids even if stored deadline is stale
+        recent_upset = get_most_recent_upset_bid_event(case_id)
+        if recent_upset and recent_upset.event_date:
+            event_deadline = recent_upset.event_date + timedelta(days=10)
+            if datetime.now().date() <= event_deadline:
+                logger.debug(f"  Case {case_id}: Recent upset bid event on {recent_upset.event_date} -> 'upset_bid'")
+                return 'upset_bid'
+
+        # THEN: Fall back to stored deadline if no recent events or deadline passed
         with get_session() as session:
             case = session.query(Case).filter_by(id=case_id).first()
             if case and case.next_bid_deadline:
@@ -308,7 +340,6 @@ def classify_case(case_id: int) -> Optional[str]:
                 if datetime.now() <= deadline:
                     logger.debug(f"  Case {case_id}: Within upset period (DB deadline) -> 'upset_bid'")
                     return 'upset_bid'
-                # Don't return closed_sold yet - check for recent upset bids first
 
         # Check for upset bid events - each one resets the 10-day period
         latest_upset_bid = get_latest_event_of_type(events, UPSET_BID_EVENTS)
@@ -469,6 +500,9 @@ def reclassify_stale_cases() -> int:
 
     For example, cases in 'upset_bid' status that are now past their deadline.
 
+    IMPORTANT: Before reclassifying, checks for recent upset bid events that
+    would extend the deadline. Updates the deadline if a recent upset bid is found.
+
     Returns:
         Number of cases reclassified
     """
@@ -477,16 +511,30 @@ def reclassify_stale_cases() -> int:
     with get_session() as session:
         # Find upset_bid cases with passed deadlines
         now = datetime.now()
-        cases = session.query(Case).filter(
+        case_data = session.query(Case.id, Case.classification).filter(
             Case.classification == 'upset_bid',
             Case.next_bid_deadline < now
         ).all()
 
-        logger.info(f"Found {len(cases)} potentially stale upset_bid cases")
+        logger.info(f"Found {len(case_data)} potentially stale upset_bid cases")
 
-    for case in cases:
-        old_class = case.classification
-        new_class = update_case_classification(case.id)
+    for case_id, old_class in case_data:
+        # CHECK for recent upset bids before reclassifying
+        recent_upset = get_most_recent_upset_bid_event(case_id)
+        if recent_upset and recent_upset.event_date:
+            new_deadline = recent_upset.event_date + timedelta(days=10)
+            if datetime.now().date() <= new_deadline:
+                # Update deadline instead of reclassifying
+                with get_session() as session:
+                    case = session.query(Case).filter_by(id=case_id).first()
+                    if case:
+                        case.next_bid_deadline = datetime.combine(new_deadline, datetime.min.time())
+                        session.commit()
+                        logger.info(f"  Case {case_id}: Updated deadline to {new_deadline} (recent upset bid on {recent_upset.event_date})")
+                continue
+
+        # No recent upset bids - safe to reclassify
+        new_class = update_case_classification(case_id)
         if old_class != new_class:
             reclassified += 1
 
