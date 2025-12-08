@@ -337,11 +337,14 @@ class CaseMonitor:
                 - current_bid: Decimal bid amount
                 - previous_bid: Decimal previous bid amount
                 - minimum_next_bid: Decimal minimum for next bid
-                - next_deadline: datetime deadline
                 - deposit_required: Decimal deposit amount
                 - source: 'pdf' or 'html'
                 - verified: True if HTML and PDF match
                 - total_docs_downloaded: Count of all documents downloaded
+                - event_date: Date of the event (for logging only, NOT used for deadline)
+
+            NOTE: next_deadline is NOT included - deadlines are always calculated
+            from event dates using calculate_upset_bid_deadline(), not from PDF OCR.
         """
         # Get county name from case number (format: YYSPXXXXXX-CCC)
         county_code = case.case_number.split('-')[-1] if '-' in case.case_number else None
@@ -414,11 +417,12 @@ class CaseMonitor:
                     logger.info(f"    Extracted initial bid from auction: ${ros_data['initial_bid']}")
 
                     # Convert to standard bid_data format
+                    # NOTE: We do NOT include next_deadline from PDF - it will be calculated
+                    # from event dates using calculate_upset_bid_deadline()
                     report_of_sale_data = {
                         'current_bid': ros_data['initial_bid'],
                         'previous_bid': None,  # No previous bid - this is the first
                         'minimum_next_bid': round(ros_data['initial_bid'] * Decimal('1.05'), 2),
-                        'next_deadline': ros_data.get('next_deadline'),
                         'deposit_required': None,
                         'source': 'pdf_report_of_sale',
                         'document_path': file_path,
@@ -427,9 +431,6 @@ class CaseMonitor:
                         'sale_date': ros_data.get('sale_date'),
                         'verified': False,
                     }
-
-                    if ros_data.get('next_deadline'):
-                        logger.info(f"    Upset bid deadline: {ros_data['next_deadline']}")
 
             # Check if this is an upset bid document (AOC-SP-403)
             # This contains subsequent upset bids (higher than Report of Sale bid)
@@ -497,8 +498,10 @@ class CaseMonitor:
         Fields updated:
         - current_bid_amount: The current highest bid
         - minimum_next_bid: Calculated 5% above current (from PDF or calculated)
-        - next_bid_deadline: The deadline for the next upset bid
         - sale_date: Date of the auction sale (from Report of Sale)
+
+        NOTE: next_bid_deadline is NOT updated from PDF data - it is ALWAYS calculated
+        from the most recent "Upset Bid Filed" event date using business day logic.
 
         Args:
             case_id: Database ID of the case
@@ -526,23 +529,15 @@ class CaseMonitor:
             else:
                 case.minimum_next_bid = round(bid_data['current_bid'] * Decimal('1.05'), 2)
 
-            # Use PDF deadline if available, otherwise calculate from event date (adjusted for weekends/holidays)
-            if bid_data.get('next_deadline'):
-                # PDF deadline may not account for weekends - adjust it
-                if isinstance(bid_data['next_deadline'], datetime):
-                    deadline_date = bid_data['next_deadline'].date()
-                else:
-                    deadline_date = bid_data['next_deadline']
-                # Re-calculate using business day logic from the underlying event
-                # For now, trust PDF deadline but it may need adjustment
-                case.next_bid_deadline = bid_data['next_deadline']
-            elif bid_data.get('event_date'):
-                try:
-                    bid_date = datetime.strptime(bid_data['event_date'], '%m/%d/%Y').date()
-                    adjusted_deadline = calculate_upset_bid_deadline(bid_date)
-                    case.next_bid_deadline = datetime.combine(adjusted_deadline, datetime.min.time())
-                except:
-                    pass
+            # Calculate deadline from the most recent "Upset Bid Filed" event date
+            # This ensures the deadline is always based on actual event dates, not PDF OCR
+            # which may have stale data or OCR errors
+            from extraction.classifier import get_most_recent_upset_bid_event
+            recent_upset = get_most_recent_upset_bid_event(case_id)
+            if recent_upset and recent_upset.event_date:
+                adjusted_deadline = calculate_upset_bid_deadline(recent_upset.event_date)
+                case.next_bid_deadline = datetime.combine(adjusted_deadline, datetime.min.time())
+                logger.debug(f"  Calculated deadline from event {recent_upset.event_date}: {adjusted_deadline}")
 
             # Update sale_date if available (from Report of Sale)
             if bid_data.get('sale_date') and not case.sale_date:

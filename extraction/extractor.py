@@ -316,7 +316,7 @@ def extract_upset_bid_data(ocr_text: str) -> Dict[str, Any]:
     - Current upset bid amount (the new bid being filed)
     - Previous bid amount (the bid being upset)
     - Minimum next upset bid (for bidding strategy)
-    - Next upset bid deadline
+    - Next upset bid deadline (DEPRECATED - see note below)
     - Required deposit amount
 
     Args:
@@ -325,6 +325,10 @@ def extract_upset_bid_data(ocr_text: str) -> Dict[str, Any]:
     Returns:
         Dict with keys: current_bid, previous_bid, minimum_next_bid,
                        next_deadline, deposit_required
+
+    NOTE: The next_deadline field is still extracted but should NOT be used by callers.
+    Deadlines should ALWAYS be calculated from the most recent "Upset Bid Filed" event
+    date using calculate_upset_bid_deadline(). PDF deadlines may be stale or have OCR errors.
     """
     result = {
         'current_bid': None,
@@ -645,13 +649,15 @@ def extract_report_of_sale_data(ocr_text: str) -> Dict[str, Any]:
     - Highest bid amount (the winning bid from the auction - this is the FIRST bid)
     - Date of sale (used to calculate the 10-day upset period deadline)
 
-    The deadline for the first upset bid is 10 days from the sale date.
-
     Args:
         ocr_text: Raw OCR text from report of sale document
 
     Returns:
         Dict with keys: initial_bid, sale_date, next_deadline
+
+    NOTE: The next_deadline field is still extracted but should NOT be used by callers.
+    Deadlines should ALWAYS be calculated from the most recent "Upset Bid Filed" event
+    date using calculate_upset_bid_deadline(). PDF deadlines may be stale or have OCR errors.
     """
     from datetime import timedelta
 
