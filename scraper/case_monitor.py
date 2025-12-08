@@ -365,8 +365,23 @@ class CaseMonitor:
         best_bid_data = None
         report_of_sale_data = None  # Track Report of Sale data separately
 
+        # Sort documents by event_date in REVERSE chronological order (newest first)
+        # This ensures we process the most recent upset bid documents first
+        # and don't overwrite with stale data from older PDFs
+        def parse_event_date(doc_info):
+            """Parse event_date string to datetime for sorting, None sorts last."""
+            event_date = doc_info.get('event_date')
+            if event_date:
+                try:
+                    return datetime.strptime(event_date, '%m/%d/%Y')
+                except:
+                    pass
+            return datetime.min  # Documents without dates sort to the end
+
+        sorted_docs = sorted(downloaded, key=parse_event_date, reverse=True)
+
         # Process documents for bid extraction (focus on upset bid/sale docs)
-        for doc_info in downloaded:
+        for doc_info in sorted_docs:
             # Skip if not a new download and we don't need to re-OCR
             if not doc_info.get('is_new') and not doc_info.get('is_upset_bid') and not doc_info.get('is_sale'):
                 continue
@@ -445,13 +460,17 @@ class CaseMonitor:
                     else:
                         bid_data['verified'] = False
 
-                    # Keep the highest bid data (upset bids are filed in order, each higher than last)
-                    if not best_bid_data or (bid_data.get('current_bid') and
-                                              bid_data['current_bid'] > (best_bid_data.get('current_bid') or 0)):
+                    # Keep the FIRST upset bid data we find (documents are sorted newest first)
+                    # This ensures we use the most recent upset bid, not the highest amount
+                    # (older PDFs may have OCR errors that extract incorrectly high amounts)
+                    if not best_bid_data:
                         best_bid_data = bid_data
+                        logger.info(f"    Using upset bid from {doc_info.get('event_date', 'unknown')} as most recent")
+                    else:
+                        logger.debug(f"    Skipping older upset bid from {doc_info.get('event_date', 'unknown')}")
 
         # Decide which data to return:
-        # 1. If we have upset bid data, use that (it's the most recent/highest bid)
+        # 1. If we have upset bid data, use that (it's the most recent bid - documents sorted newest first)
         # 2. If we only have Report of Sale data, use that (initial bid from auction)
         # 3. If neither, return None
         if best_bid_data:
