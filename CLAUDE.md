@@ -130,7 +130,25 @@ gh pr status
 13. Build Case List page with filtering/sorting
 14. Add scheduler configuration UI
 
-### Recent Updates (Dec 6, 2025) - Session 21 (Address Extraction Enhancement)
+### Recent Updates (Dec 8, 2025) - Session 22 (Critical Upset Bid Bug Fixes)
+- **Fixed 6 Critical Bugs in Upset Bid Classification:**
+  1. **Event date extraction** (`case_monitor.py`): Was using NULL dates from HTML-parsed party events; now queries DB for actual "Upset Bid Filed" event dates
+  2. **Classifier order of operations** (`classifier.py`): Now checks recent upset bid events BEFORE checking stale deadline
+  3. **PDF extraction gate removed** (`case_monitor.py`): Now runs for any case with upset events, not just those already classified
+  4. **Stale reclassification** (`classifier.py`): Now updates deadline from recent events instead of wrongly reclassifying to closed_sold
+  5. **Event whitespace comparison** (`case_monitor.py`): Added .strip() to fix event deduplication
+  6. **download_case_documents args** (`date_range_scrape.py`): Fixed to pass all 4 required arguments
+- **Root Cause:** Party events ("Upset Bidder") have NULL event_date, causing deadline calculation to silently fail
+- **Helper Function Added:** `get_most_recent_upset_bid_event(case_id)` in classifier.py
+- **Data Fix Applied:** 4 Wake County cases corrected to upset_bid with proper deadlines
+- **Wake County Upset Bids Now:** 8 active cases (was showing only 4)
+- **Daily Scrape Dec 5-7:** +8 new cases from Dec 5, no weekend filings
+- **Files Modified:**
+  - `scraper/case_monitor.py` - Event date fix, whitespace fix, PDF gate removal
+  - `extraction/classifier.py` - Logic order fix, stale reclassification fix, helper function
+  - `scraper/date_range_scrape.py` - Function argument fix
+
+### Previous Updates (Dec 6, 2025) - Session 21 (Address Extraction Enhancement)
 - **Enhanced Property Address Extraction:**
   - Added 6 new address patterns for HOA and lien foreclosures:
     - "Address of property:" with multi-line variations
