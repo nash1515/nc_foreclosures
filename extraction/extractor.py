@@ -9,9 +9,11 @@ from decimal import Decimal
 from datetime import datetime, date
 from typing import Optional, Dict, Any, Tuple
 
+from datetime import timedelta
 from database.connection import get_session
 from database.models import Case, Document
 from common.logger import setup_logger
+from common.business_days import calculate_upset_bid_deadline
 
 logger = setup_logger(__name__)
 
@@ -696,9 +698,10 @@ def extract_report_of_sale_data(ocr_text: str) -> Dict[str, Any]:
             try:
                 sale_date = datetime.strptime(date_str, '%m/%d/%Y')
                 result['sale_date'] = sale_date.date()
-                # Calculate the upset bid deadline (10 days from sale date per NC law)
-                result['next_deadline'] = sale_date + timedelta(days=10)
-                logger.debug(f"  Found sale date: {result['sale_date']}, deadline: {result['next_deadline']}")
+                # Calculate the upset bid deadline (10 days from sale date, adjusted for weekends/holidays)
+                adjusted_deadline = calculate_upset_bid_deadline(sale_date.date())
+                result['next_deadline'] = datetime.combine(adjusted_deadline, datetime.min.time())
+                logger.debug(f"  Found sale date: {result['sale_date']}, deadline: {adjusted_deadline}")
                 break
             except ValueError:
                 continue

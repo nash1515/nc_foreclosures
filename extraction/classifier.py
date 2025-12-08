@@ -14,6 +14,7 @@ from typing import Optional, List
 from database.connection import get_session
 from database.models import Case, CaseEvent, Document
 from common.logger import setup_logger
+from common.business_days import calculate_upset_bid_deadline
 
 logger = setup_logger(__name__)
 
@@ -327,9 +328,9 @@ def classify_case(case_id: int) -> Optional[str]:
         # This ensures we catch newly filed upset bids even if stored deadline is stale
         recent_upset = get_most_recent_upset_bid_event(case_id)
         if recent_upset and recent_upset.event_date:
-            event_deadline = recent_upset.event_date + timedelta(days=10)
+            event_deadline = calculate_upset_bid_deadline(recent_upset.event_date)
             if datetime.now().date() <= event_deadline:
-                logger.debug(f"  Case {case_id}: Recent upset bid event on {recent_upset.event_date} -> 'upset_bid'")
+                logger.debug(f"  Case {case_id}: Recent upset bid event on {recent_upset.event_date} -> 'upset_bid' (deadline: {event_deadline})")
                 return 'upset_bid'
 
         # THEN: Fall back to stored deadline if no recent events or deadline passed
@@ -361,16 +362,14 @@ def classify_case(case_id: int) -> Optional[str]:
                     reference_source = "upset bid"
 
         if reference_date:
-            # NC upset bid period is 10 days from the reference event
-            estimated_deadline = datetime.combine(
-                reference_date + timedelta(days=10),
-                datetime.min.time()
-            )
+            # NC upset bid period is 10 days from the reference event (adjusted for weekends/holidays)
+            adjusted_deadline = calculate_upset_bid_deadline(reference_date)
+            estimated_deadline = datetime.combine(adjusted_deadline, datetime.min.time())
             if datetime.now() <= estimated_deadline:
-                logger.debug(f"  Case {case_id}: Within upset period (from {reference_source} on {reference_date}) -> 'upset_bid'")
+                logger.debug(f"  Case {case_id}: Within upset period (from {reference_source} on {reference_date}, deadline {adjusted_deadline}) -> 'upset_bid'")
                 return 'upset_bid'
             else:
-                logger.debug(f"  Case {case_id}: Past deadline (from {reference_source} on {reference_date}) -> 'closed_sold'")
+                logger.debug(f"  Case {case_id}: Past deadline (from {reference_source} on {reference_date}, deadline {adjusted_deadline}) -> 'closed_sold'")
                 return 'closed_sold'
 
         # Has sale but can't determine deadline - assume closed
@@ -522,7 +521,7 @@ def reclassify_stale_cases() -> int:
         # CHECK for recent upset bids before reclassifying
         recent_upset = get_most_recent_upset_bid_event(case_id)
         if recent_upset and recent_upset.event_date:
-            new_deadline = recent_upset.event_date + timedelta(days=10)
+            new_deadline = calculate_upset_bid_deadline(recent_upset.event_date)
             if datetime.now().date() <= new_deadline:
                 # Update deadline instead of reclassifying
                 with get_session() as session:

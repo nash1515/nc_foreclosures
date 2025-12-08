@@ -13,7 +13,7 @@ Usage:
 import os
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, date
 from decimal import Decimal
 from typing import List, Dict, Optional, Tuple
 
@@ -40,6 +40,7 @@ from extraction.extractor import (
 from ocr.processor import extract_text_from_pdf
 from common.logger import setup_logger
 from common.county_codes import get_county_name
+from common.business_days import calculate_upset_bid_deadline
 
 logger = setup_logger(__name__)
 
@@ -293,11 +294,12 @@ class CaseMonitor:
                 case.current_bid_amount = new_bid_amount
                 case.minimum_next_bid = round(new_bid_amount * Decimal('1.05'), 2)
 
-                # Calculate new deadline (10 days from bid date)
+                # Calculate new deadline (10 days from bid date, adjusted for weekends/holidays)
                 if event_date:
                     try:
-                        bid_date = datetime.strptime(event_date, '%m/%d/%Y')
-                        case.next_bid_deadline = bid_date + timedelta(days=10)
+                        bid_date = datetime.strptime(event_date, '%m/%d/%Y').date()
+                        adjusted_deadline = calculate_upset_bid_deadline(bid_date)
+                        case.next_bid_deadline = datetime.combine(adjusted_deadline, datetime.min.time())
                     except:
                         pass
 
@@ -505,13 +507,21 @@ class CaseMonitor:
             else:
                 case.minimum_next_bid = round(bid_data['current_bid'] * Decimal('1.05'), 2)
 
-            # Use PDF deadline if available, otherwise calculate from event date
+            # Use PDF deadline if available, otherwise calculate from event date (adjusted for weekends/holidays)
             if bid_data.get('next_deadline'):
+                # PDF deadline may not account for weekends - adjust it
+                if isinstance(bid_data['next_deadline'], datetime):
+                    deadline_date = bid_data['next_deadline'].date()
+                else:
+                    deadline_date = bid_data['next_deadline']
+                # Re-calculate using business day logic from the underlying event
+                # For now, trust PDF deadline but it may need adjustment
                 case.next_bid_deadline = bid_data['next_deadline']
             elif bid_data.get('event_date'):
                 try:
-                    bid_date = datetime.strptime(bid_data['event_date'], '%m/%d/%Y')
-                    case.next_bid_deadline = bid_date + timedelta(days=10)
+                    bid_date = datetime.strptime(bid_data['event_date'], '%m/%d/%Y').date()
+                    adjusted_deadline = calculate_upset_bid_deadline(bid_date)
+                    case.next_bid_deadline = datetime.combine(adjusted_deadline, datetime.min.time())
                 except:
                     pass
 
@@ -663,7 +673,7 @@ class CaseMonitor:
             # Check if this case has upset bid activity (either classified or has events)
             has_upset_events = any(
                 self.is_upset_bid_event(e.get('event_type', ''))
-                for e in parsed_data.get('events', [])
+                for e in case_data.get('events', [])
             )
 
             # For upset_bid cases OR cases with upset bid events, try to extract bid data from PDF documents
