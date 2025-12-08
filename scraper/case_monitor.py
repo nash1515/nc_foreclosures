@@ -532,8 +532,13 @@ class CaseMonitor:
             # Calculate deadline from the most recent "Upset Bid Filed" event date
             # This ensures the deadline is always based on actual event dates, not PDF OCR
             # which may have stale data or OCR errors
-            from extraction.classifier import get_most_recent_upset_bid_event
-            recent_upset = get_most_recent_upset_bid_event(case_id)
+            # Query within the existing session to avoid detached object issues
+            recent_upset = session.query(CaseEvent).filter(
+                CaseEvent.case_id == case_id,
+                CaseEvent.event_type.ilike('%upset bid filed%'),
+                CaseEvent.event_date.isnot(None)
+            ).order_by(CaseEvent.event_date.desc()).first()
+
             if recent_upset and recent_upset.event_date:
                 adjusted_deadline = calculate_upset_bid_deadline(recent_upset.event_date)
                 case.next_bid_deadline = datetime.combine(adjusted_deadline, datetime.min.time())
