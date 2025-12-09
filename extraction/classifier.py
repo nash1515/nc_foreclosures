@@ -242,6 +242,69 @@ def is_foreclosure_case(case_id: int) -> bool:
         return False
 
 
+def has_foreclosure_withdrawal(case_id: int, events: List[CaseEvent] = None) -> bool:
+    """
+    Check if case has a "Withdrawn" event indicating foreclosure withdrawal.
+
+    A 'Withdrawn' event cancels the foreclosure. If it comes after a sale,
+    it means the sale was withdrawn before the upset period completed.
+
+    Since the sale isn't final until the 10-day upset period ends, a withdrawal
+    during that period cancels everything.
+
+    NOTE: This is different from "Withdrawal of Upset Bid" which is just
+    a bidder withdrawing their bid - that doesn't affect case status.
+
+    IMPORTANT: Chronology matters!
+    - If there's a withdrawal but then a sale report AFTER the withdrawal,
+      the case proceeded past the withdrawal -> not a foreclosure withdrawal
+    - If there's a withdrawal AFTER a sale (during upset period), the sale
+      was withdrawn before completion -> IS a foreclosure withdrawal
+
+    The portal stores this as event_type = 'Withdrawn' in case_events.
+
+    Args:
+        case_id: Database ID of the case
+        events: Optional list of events (to avoid re-querying)
+
+    Returns:
+        True if the most recent significant event is a withdrawal
+    """
+    # Get events if not provided
+    if events is None:
+        events = get_case_events(case_id)
+
+    # Find most recent withdrawn event (excluding upset bid withdrawals)
+    withdrawn_event = None
+    for event in events:
+        if event.event_type and 'withdrawn' in event.event_type.lower():
+            # Skip "withdrawal of upset bid" - that's different
+            if 'upset bid' in event.event_type.lower():
+                continue
+            # Use the most recent withdrawal (events are sorted desc)
+            if withdrawn_event is None:
+                withdrawn_event = event
+
+    if not withdrawn_event or not withdrawn_event.event_date:
+        return False
+
+    # Get most recent sale report
+    sale_event = get_latest_event_of_type(events, SALE_REPORT_EVENTS)
+
+    # If no sale, or withdrawal is after most recent sale -> withdrawn
+    if not sale_event or not sale_event.event_date:
+        logger.debug(f"  Case {case_id}: Found foreclosure withdrawal event: {withdrawn_event.event_type} on {withdrawn_event.event_date} (no sale)")
+        return True
+
+    if withdrawn_event.event_date >= sale_event.event_date:
+        logger.debug(f"  Case {case_id}: Withdrawal on {withdrawn_event.event_date} after/same as sale on {sale_event.event_date} -> foreclosure withdrawn")
+        return True
+
+    # Withdrawal before sale means it was withdrawn then restarted
+    logger.debug(f"  Case {case_id}: Withdrawal on {withdrawn_event.event_date} superseded by sale on {sale_event.event_date}")
+    return False
+
+
 def get_most_recent_upset_bid_event(case_id: int) -> Optional[CaseEvent]:
     """Get the most recent 'Upset Bid Filed' event with a valid date.
 
@@ -270,20 +333,22 @@ def classify_case(case_id: int) -> Optional[str]:
     Classify a case into one of the defined states.
 
     Classification logic (chronology-aware):
-    1. If has dismissal event (and NOT later reversed/reopened) -> 'closed_dismissed'
-    2. If has sale report:
+    1. If has foreclosure withdrawal document -> 'upcoming' (foreclosure may restart)
+    2. If has dismissal event (and NOT later reversed/reopened) -> 'closed_dismissed'
+    3. If has sale report:
        - If within upset period (sale date + 10 days, or latest upset bid + 10 days) -> 'upset_bid'
        - If past upset period -> 'closed_sold'
-    3. If has bankruptcy/stay event (and NOT later lifted/reopened) -> 'blocked'
-    4. If foreclosure initiated (no sale yet) -> 'upcoming'
-    5. If foreclosure case type + legacy events -> 'upcoming'
-    6. Otherwise -> None
+    4. If has bankruptcy/stay event (and NOT later lifted/reopened) -> 'blocked'
+    5. If foreclosure initiated (no sale yet) -> 'upcoming'
+    6. If foreclosure case type + legacy events -> 'upcoming'
+    7. Otherwise -> None
 
     IMPORTANT: Chronology matters! Later events can supersede earlier ones:
     - Dismissal can be reversed by "Order to Reopen"
     - Bankruptcy can be lifted by "Order to Reopen"
     - Sale report takes priority over bankruptcy (case proceeded past bankruptcy)
     - Upset bids AFTER sale reset the 10-day deadline
+    - Foreclosure withdrawal resets case to 'upcoming' (entire foreclosure withdrawn, may restart)
 
     Args:
         case_id: Database ID of the case
@@ -293,7 +358,16 @@ def classify_case(case_id: int) -> Optional[str]:
     """
     events = get_case_events(case_id)
 
-    # Step 1: Check for dismissal (case terminated)
+    # Step 1: Check for foreclosure withdrawal FIRST
+    # If the entire foreclosure was withdrawn, case returns to 'upcoming'
+    # (foreclosure may be refiled/restarted)
+    # NOTE: "Withdrawal of Upset Bid" is handled differently - see has_foreclosure_withdrawal()
+    # IMPORTANT: Pass events to avoid re-querying and to check chronology
+    if has_foreclosure_withdrawal(case_id, events):
+        logger.debug(f"  Case {case_id}: Foreclosure withdrawn -> 'upcoming'")
+        return 'upcoming'
+
+    # Step 2: Check for dismissal (case terminated)
     # Excludes "denying motion to dismiss" which means case continues
     if has_event_type(events, DISMISSAL_EVENTS, exclusions=DISMISSAL_EXCLUSIONS):
         # Has dismissal - but check if it was later reversed/reopened
@@ -315,7 +389,7 @@ def classify_case(case_id: int) -> Optional[str]:
             logger.debug(f"  Case {case_id}: Has dismissal event -> 'closed_dismissed'")
             return 'closed_dismissed'
 
-    # Step 2: Check for sale report FIRST (takes priority over bankruptcy)
+    # Step 3: Check for sale report FIRST (takes priority over bankruptcy)
     # A sale after bankruptcy means the case resumed and proceeded to sale
     sale_event = get_latest_event_of_type(events, SALE_REPORT_EVENTS)
 
@@ -376,7 +450,7 @@ def classify_case(case_id: int) -> Optional[str]:
         logger.debug(f"  Case {case_id}: Has sale, unknown deadline -> 'closed_sold'")
         return 'closed_sold'
 
-    # Step 3: No sale yet - check for bankruptcy/stay (case blocked, may resume)
+    # Step 4: No sale yet - check for bankruptcy/stay (case blocked, may resume)
     # Only check bankruptcy if there's no sale - a sale means case proceeded past bankruptcy
     if has_event_type(events, BANKRUPTCY_EVENTS, exclusions=BANKRUPTCY_EXCLUSIONS):
         # Has bankruptcy - but check if it was later lifted (e.g., "Order to Reopen")
@@ -398,13 +472,13 @@ def classify_case(case_id: int) -> Optional[str]:
             logger.debug(f"  Case {case_id}: Has bankruptcy/stay (no sale) -> 'blocked'")
             return 'blocked'
 
-    # Step 4: No sale yet - check if foreclosure has been initiated
+    # Step 5: No sale yet - check if foreclosure has been initiated
     # Excludes "cancellation", "withdrawal" which don't indicate initiation
     if has_event_type(events, FORECLOSURE_INITIATED_EVENTS, exclusions=FORECLOSURE_INITIATED_EXCLUSIONS):
         logger.debug(f"  Case {case_id}: Foreclosure initiated, no sale -> 'upcoming'")
         return 'upcoming'
 
-    # Step 5: Check for legacy event terminology (older cases)
+    # Step 6: Check for legacy event terminology (older cases)
     # Only if case_type confirms this is a foreclosure
     # Uses strict matching to avoid false positives like "Petitioner" (party type)
     if is_foreclosure_case(case_id):
@@ -417,7 +491,7 @@ def classify_case(case_id: int) -> Optional[str]:
             logger.debug(f"  Case {case_id}: Legacy foreclosure events -> 'upcoming'")
             return 'upcoming'
 
-    # Step 6: No foreclosure events at all
+    # Step 7: No foreclosure events at all
     logger.debug(f"  Case {case_id}: No foreclosure events")
     return None
 

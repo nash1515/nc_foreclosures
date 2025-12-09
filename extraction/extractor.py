@@ -62,6 +62,14 @@ ATTORNEY_ADDRESS_INDICATORS = [
     'Trustee Services',
 ]
 
+# Form Artifacts to Filter
+# These strings indicate the address contains form field text and should be rejected
+FORM_ARTIFACTS = [
+    'summons submitted',
+    'yes no',
+    'yes  no',  # Extra space variant
+]
+
 # Bid Amount patterns (from Report of Foreclosure Sale)
 BID_AMOUNT_PATTERNS = [
     r'Amount\s+Bid[:\s]*\$?\s*([\d,]+\.?\d*)',
@@ -249,6 +257,20 @@ def extract_property_address(ocr_text: str) -> Optional[str]:
 
             # Clean up extra whitespace
             address = re.sub(r'\s+', ' ', address)
+
+            # Check if address contains form artifacts
+            address_lower = address.lower()
+            contains_form_artifact = False
+            for artifact in FORM_ARTIFACTS:
+                if artifact in address_lower:
+                    contains_form_artifact = True
+                    logger.debug(f"  Skipping address with form artifact (found '{artifact}' in address)")
+                    break
+
+            # If this address contains form artifacts, skip it and try the next pattern
+            if contains_form_artifact:
+                continue
+
             return address
 
     return None

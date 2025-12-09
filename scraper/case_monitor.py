@@ -668,6 +668,22 @@ class CaseMonitor:
                     # Check for sale event on upcoming case -> will trigger reclassification
                     if self.is_sale_event(event_type) and case.classification == 'upcoming':
                         logger.info(f"  Sale event detected on upcoming case")
+                        # Store deadline from sale date
+                        try:
+                            event_date_str = event.get('event_date')
+                            if event_date_str:
+                                event_date = datetime.strptime(event_date_str, '%m/%d/%Y').date()
+                                from common.business_days import calculate_upset_bid_deadline
+                                deadline = calculate_upset_bid_deadline(event_date)
+                                with get_session() as sess:
+                                    case_obj = sess.query(Case).filter_by(id=case.id).first()
+                                    if case_obj:
+                                        case_obj.next_bid_deadline = datetime.combine(deadline, datetime.min.time())
+                                        case_obj.sale_date = event_date
+                                        sess.commit()
+                                        logger.info(f"  Set deadline to {deadline} from sale date {event_date}")
+                        except Exception as e:
+                            logger.warning(f"  Failed to set deadline from sale event: {e}")
 
                     # Check for blocking event
                     if self.is_blocking_event(event_type):
