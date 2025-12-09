@@ -33,6 +33,7 @@ SALE_DOCUMENT_INDICATORS = [
     'petition to sell',
     'petition to lease',
     'petition to mortgage',
+    'petition for partition',  # Partition of real property - leads to sale
     "ward's estate",
     "incompetent's estate",
     "minor's estate",
