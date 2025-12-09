@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Typography, Card, Row, Col, Table, Tag, Statistic,
-  Spin, Alert, Progress, Space, Button
+  Spin, Alert, Progress, Space, Button, Select
 } from 'antd';
 import {
   DollarOutlined, ClockCircleOutlined, HomeOutlined,
@@ -30,22 +30,38 @@ const classificationColors = {
   closed_dismissed: { color: '#8c8c8c', bg: '#fafafa' }
 };
 
+// County options
+const COUNTIES = [
+  { label: 'All Counties', value: 'all' },
+  { label: 'Wake', value: '910' },
+  { label: 'Durham', value: '310' },
+  { label: 'Harnett', value: '420' },
+  { label: 'Lee', value: '520' },
+  { label: 'Orange', value: '670' },
+  { label: 'Chatham', value: '180' }
+];
+
 function Dashboard() {
   const [stats, setStats] = useState(null);
   const [upsetBids, setUpsetBids] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [selectedCounty, setSelectedCounty] = useState('all');
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [selectedCounty]);
 
   const fetchData = async () => {
     try {
       setLoading(true);
+
+      // Build query params for county filter
+      const countyParam = selectedCounty !== 'all' ? `?county=${selectedCounty}` : '';
+
       const [statsRes, upsetRes] = await Promise.all([
-        fetch('/api/cases/stats', { credentials: 'include' }),
-        fetch('/api/cases/upset-bids', { credentials: 'include' })
+        fetch(`/api/cases/stats${countyParam}`, { credentials: 'include' }),
+        fetch(`/api/cases/upset-bids${countyParam}`, { credentials: 'include' })
       ]);
 
       if (!statsRes.ok || !upsetRes.ok) {
@@ -119,9 +135,9 @@ function Dashboard() {
       )
     },
     {
-      title: 'Deadline',
-      key: 'deadline',
-      width: 140,
+      title: 'Urgency',
+      key: 'urgency',
+      width: 110,
       render: (_, record) => {
         const colors = urgencyColors[record.urgency] || urgencyColors.normal;
         return (
@@ -137,22 +153,28 @@ function Dashboard() {
               <Text strong style={{ color: colors.text }}>
                 {record.days_remaining === null ? 'No deadline' :
                  record.days_remaining <= 0 ? 'EXPIRED' :
-                 record.days_remaining === 1 ? '1 day left' :
+                 record.days_remaining === 1 ? '1 day' :
                  `${record.days_remaining} days`}
               </Text>
             </div>
-            {record.next_bid_deadline && (
-              <Text type="secondary" style={{ fontSize: 11 }}>
-                {dayjs(record.next_bid_deadline).format('MMM D, YYYY')}
-              </Text>
-            )}
           </div>
         );
       }
     },
     {
+      title: 'Bid Deadline',
+      key: 'deadline',
+      width: 110,
+      render: (_, record) => (
+        <Text>
+          {record.next_bid_deadline ? dayjs(record.next_bid_deadline).format('MMM D, YYYY') : '-'}
+        </Text>
+      )
+    },
+    {
       title: 'Case',
       key: 'case',
+      width: 140,
       render: (_, record) => (
         <div>
           <Link to={`/cases/${record.id}`} style={{ fontWeight: 500 }}>
@@ -165,11 +187,11 @@ function Dashboard() {
       )
     },
     {
-      title: 'Property',
+      title: 'Property Address',
       dataIndex: 'property_address',
       key: 'property',
       render: (address) => (
-        <div style={{ maxWidth: 250 }}>
+        <div style={{ maxWidth: 300 }}>
           <HomeOutlined style={{ marginRight: 8, color: '#8c8c8c' }} />
           {address || 'Address not available'}
         </div>
@@ -177,21 +199,24 @@ function Dashboard() {
     },
     {
       title: 'Current Bid',
-      key: 'bid',
+      key: 'current_bid',
       align: 'right',
+      width: 120,
       render: (_, record) => (
-        <div>
-          <Text strong style={{ color: '#52c41a', fontSize: 16 }}>
-            {formatCurrency(record.current_bid_amount)}
-          </Text>
-          {record.minimum_next_bid && (
-            <div>
-              <Text type="secondary" style={{ fontSize: 12 }}>
-                Min next: {formatCurrency(record.minimum_next_bid)}
-              </Text>
-            </div>
-          )}
-        </div>
+        <Text strong style={{ color: '#52c41a' }}>
+          {formatCurrency(record.current_bid_amount)}
+        </Text>
+      )
+    },
+    {
+      title: 'Min Next Bid',
+      key: 'min_next_bid',
+      align: 'right',
+      width: 120,
+      render: (_, record) => (
+        <Text style={{ color: '#fa8c16' }}>
+          {formatCurrency(record.minimum_next_bid)}
+        </Text>
       )
     }
   ];
@@ -218,7 +243,19 @@ function Dashboard() {
 
   return (
     <div style={{ padding: 24 }}>
-      <Title level={2}>Upset Bid Dashboard</Title>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+        <Title level={2} style={{ margin: 0 }}>Upset Bid Dashboard</Title>
+        <Space>
+          <Text style={{ marginRight: 8 }}>Filter by County:</Text>
+          <Select
+            value={selectedCounty}
+            onChange={setSelectedCounty}
+            options={COUNTIES}
+            style={{ width: 160 }}
+            loading={loading}
+          />
+        </Space>
+      </div>
 
       {/* Stats Cards */}
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>

@@ -320,13 +320,25 @@ def remove_from_watchlist(case_id):
 
 @cases_bp.route('/stats', methods=['GET'])
 def get_stats():
-    """Get dashboard statistics."""
+    """Get dashboard statistics.
+
+    Query params:
+    - county: Filter by county code (optional)
+    """
     if not google.authorized:
         return jsonify({'error': 'Not authenticated'}), 401
 
+    # Parse query params
+    county_filter = request.args.get('county', '').strip()
+
     with get_session() as db_session:
+        # Base query - can be filtered by county
+        base_query = db_session.query(Case)
+        if county_filter:
+            base_query = base_query.filter(Case.county_code == county_filter)
+
         # Classification counts
-        classification_counts = db_session.query(
+        classification_counts = base_query.with_entities(
             Case.classification,
             func.count(Case.id)
         ).group_by(Case.classification).all()
@@ -334,7 +346,7 @@ def get_stats():
         classifications = {c[0] or 'unclassified': c[1] for c in classification_counts}
 
         # County counts
-        county_counts = db_session.query(
+        county_counts = base_query.with_entities(
             Case.county_name,
             func.count(Case.id)
         ).group_by(Case.county_name).all()
@@ -343,25 +355,26 @@ def get_stats():
 
         # Upset bid cases with deadlines
         today = date.today()
-        urgent_count = db_session.query(Case).filter(
+        upset_query = base_query.filter(
             Case.classification == 'upset_bid',
-            Case.next_bid_deadline != None,
+            Case.next_bid_deadline != None
+        )
+
+        urgent_count = upset_query.filter(
             Case.next_bid_deadline <= today
         ).count()
 
-        upcoming_deadlines = db_session.query(Case).filter(
-            Case.classification == 'upset_bid',
-            Case.next_bid_deadline != None,
+        upcoming_deadlines = upset_query.filter(
             Case.next_bid_deadline > today
         ).count()
 
         # Total cases
-        total = db_session.query(Case).count()
+        total = base_query.count()
 
         # Recent activity (cases filed in last 7 days)
         from datetime import timedelta
         week_ago = today - timedelta(days=7)
-        recent_filings = db_session.query(Case).filter(
+        recent_filings = base_query.filter(
             Case.file_date >= week_ago
         ).count()
 
@@ -380,17 +393,30 @@ def get_stats():
 
 @cases_bp.route('/upset-bids', methods=['GET'])
 def get_upset_bids():
-    """Get all upset_bid cases sorted by deadline urgency."""
+    """Get all upset_bid cases sorted by deadline urgency.
+
+    Query params:
+    - county: Filter by county code (optional)
+    """
     if not google.authorized:
         return jsonify({'error': 'Not authenticated'}), 401
 
     user_id = get_current_user_id()
 
+    # Parse query params
+    county_filter = request.args.get('county', '').strip()
+
     with get_session() as db_session:
         # Get all upset_bid cases, ordered by deadline (soonest first)
-        cases = db_session.query(Case).filter(
+        query = db_session.query(Case).filter(
             Case.classification == 'upset_bid'
-        ).order_by(
+        )
+
+        # Apply county filter if specified
+        if county_filter:
+            query = query.filter(Case.county_code == county_filter)
+
+        cases = query.order_by(
             Case.next_bid_deadline.asc().nullslast()
         ).all()
 
