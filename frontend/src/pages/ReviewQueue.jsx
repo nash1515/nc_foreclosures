@@ -23,6 +23,7 @@ import dayjs from 'dayjs';
 import {
   getDailyReview,
   approveAllForeclosures,
+  approveForeclosures,
   rejectForeclosures,
   addSkippedCases,
   dismissSkippedCases
@@ -62,6 +63,17 @@ export default function ReviewQueue() {
       fetchData();
     } catch (error) {
       message.error('Failed to approve all foreclosures');
+    }
+  };
+
+  const handleApproveSelected = async () => {
+    if (selectedForeclosures.length === 0) return;
+    try {
+      const result = await approveForeclosures(selectedForeclosures);
+      message.success(`Approved ${result.approved} case(s)`);
+      fetchData();
+    } catch (error) {
+      message.error('Failed to approve cases');
     }
   };
 
@@ -147,23 +159,41 @@ export default function ReviewQueue() {
       title: 'Action',
       key: 'action',
       render: (_, record) => (
-        <Popconfirm
-          title="Reject this case?"
-          description="This will delete the case from the database."
-          onConfirm={async () => {
-            try {
-              await rejectForeclosures([record.id]);
-              message.success('Case rejected');
-              fetchData();
-            } catch (error) {
-              message.error('Failed to reject case');
-            }
-          }}
-        >
-          <Button danger icon={<CloseOutlined />} size="small">
-            Reject
+        <Space>
+          <Button
+            type="primary"
+            icon={<CheckOutlined />}
+            size="small"
+            onClick={async () => {
+              try {
+                await approveForeclosures([record.id]);
+                message.success('Case approved');
+                fetchData();
+              } catch (error) {
+                message.error('Failed to approve case');
+              }
+            }}
+          >
+            Approve
           </Button>
-        </Popconfirm>
+          <Popconfirm
+            title="Reject this case?"
+            description="This will delete the case from the database."
+            onConfirm={async () => {
+              try {
+                await rejectForeclosures([record.id]);
+                message.success('Case rejected');
+                fetchData();
+              } catch (error) {
+                message.error('Failed to reject case');
+              }
+            }}
+          >
+            <Button danger icon={<CloseOutlined />} size="small">
+              Reject
+            </Button>
+          </Popconfirm>
+        </Space>
       )
     }
   ];
@@ -265,6 +295,13 @@ export default function ReviewQueue() {
         icon: <CheckOutlined />,
         disabled: data.foreclosures.length === 0,
         onClick: handleApproveAll
+      },
+      {
+        key: 'approveSelected',
+        label: `Approve Selected (${selectedForeclosures.length})`,
+        icon: <CheckOutlined />,
+        disabled: selectedForeclosures.length === 0,
+        onClick: handleApproveSelected
       },
       { type: 'divider' },
       {

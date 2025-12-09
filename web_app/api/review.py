@@ -145,6 +145,38 @@ def approve_all_foreclosures():
         })
 
 
+@review_bp.route('/foreclosures/approve', methods=['POST'])
+def approve_foreclosures():
+    """
+    Mark specific foreclosures as reviewed (approved) by case IDs.
+
+    Body:
+        {"case_ids": [1, 2, 3]}
+    """
+    data = request.get_json() or {}
+    case_ids = data.get('case_ids', [])
+
+    if not case_ids:
+        return jsonify({'error': 'No case IDs provided'}), 400
+
+    with get_session() as session:
+        approved = 0
+        for case_id in case_ids:
+            case = session.query(Case).get(case_id)
+            if case and case.reviewed_at is None:
+                case.reviewed_at = datetime.utcnow()
+                approved += 1
+
+        session.commit()
+
+        logger.info(f"Approved {approved} foreclosures by ID")
+
+        return jsonify({
+            'success': True,
+            'approved': approved
+        })
+
+
 @review_bp.route('/foreclosures/reject', methods=['POST'])
 def reject_foreclosures():
     """
