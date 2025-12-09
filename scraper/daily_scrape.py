@@ -1,7 +1,7 @@
 """Daily scrape orchestrator - coordinates all daily tasks.
 
 This script runs the complete daily scraping workflow:
-1. Search for new cases filed yesterday (or specified date)
+1. Search for new cases filed yesterday (or 3 days back on Mondays to catch weekend filings)
 2. OCR and extraction for newly downloaded documents
 3. Monitor upcoming cases for sale events
 4. Monitor blocked cases for status changes
@@ -306,9 +306,20 @@ def run_daily_tasks(
     """
     start_time = datetime.now()
 
-    # Default to yesterday
+    # Default to yesterday, but on Mondays look back 3 days to catch Friday filings
     if target_date is None:
-        target_date = (datetime.now(timezone.utc) - timedelta(days=1)).date()
+        now = datetime.now(timezone.utc)
+        # Monday is 0, Sunday is 6
+        if now.weekday() == 0:
+            # Monday: look back 3 days (to Friday)
+            lookback_days = 3
+            logger.info("Monday detected - looking back 3 days to catch weekend filings")
+        else:
+            # Other weekdays: look back 1 day
+            lookback_days = 1
+
+        target_date = (now - timedelta(days=lookback_days)).date()
+        logger.info(f"Using {lookback_days}-day lookback period")
 
     logger.info("=" * 60)
     logger.info("DAILY SCRAPE STARTED")
