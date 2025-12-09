@@ -22,6 +22,7 @@ import {
 import dayjs from 'dayjs';
 import {
   getDailyReview,
+  approveAllForeclosures,
   rejectForeclosures,
   addSkippedCases,
   dismissSkippedCases
@@ -53,6 +54,16 @@ export default function ReviewQueue() {
   useEffect(() => {
     fetchData();
   }, [date]);
+
+  const handleApproveAll = async () => {
+    try {
+      const result = await approveAllForeclosures(date.format('YYYY-MM-DD'));
+      message.success(`Approved ${result.approved} foreclosure(s)`);
+      fetchData();
+    } catch (error) {
+      message.error('Failed to approve all foreclosures');
+    }
+  };
 
   const handleRejectSelected = async () => {
     if (selectedForeclosures.length === 0) return;
@@ -248,6 +259,14 @@ export default function ReviewQueue() {
 
   const foreclosureBulkMenu = {
     items: [
+      {
+        key: 'approveAll',
+        label: 'Approve All',
+        icon: <CheckOutlined />,
+        disabled: data.foreclosures.length === 0,
+        onClick: handleApproveAll
+      },
+      { type: 'divider' },
       {
         key: 'reject',
         label: `Reject Selected (${selectedForeclosures.length})`,

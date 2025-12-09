@@ -7,6 +7,16 @@ export async function getDailyReview(date) {
   return response.json();
 }
 
+export async function approveAllForeclosures(date) {
+  const response = await fetch(`${API_BASE}/foreclosures/approve-all`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ date })
+  });
+  if (!response.ok) throw new Error('Failed to approve all foreclosures');
+  return response.json();
+}
+
 export async function rejectForeclosures(caseIds) {
   const response = await fetch(`${API_BASE}/foreclosures/reject`, {
     method: 'POST',

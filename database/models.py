@@ -1,6 +1,7 @@
 """SQLAlchemy ORM models for NC Foreclosures database."""
 
 from sqlalchemy import Column, Integer, String, Text, Date, TIMESTAMP, DECIMAL, ForeignKey, Boolean
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -67,6 +68,7 @@ class Case(Base):
     attorney_name = Column(String(255))
     attorney_phone = Column(String(50))
     attorney_email = Column(String(255))
+    reviewed_at = Column(TIMESTAMP)
     last_scraped_at = Column(TIMESTAMP)
     created_at = Column(TIMESTAMP, server_default=func.current_timestamp())
     updated_at = Column(TIMESTAMP, server_default=func.current_timestamp(), onupdate=func.current_timestamp())
@@ -235,7 +237,7 @@ class SkippedCase(Base):
     case_type = Column(String(100))
     style = Column(Text)
     file_date = Column(Date)
-    events_json = Column(Text)  # JSON string of events with document titles
+    events_json = Column(JSONB)  # JSONB: auto-deserializes to Python list
     skip_reason = Column(String(255))
     scrape_date = Column(Date, nullable=False)
     created_at = Column(TIMESTAMP, server_default=func.current_timestamp())

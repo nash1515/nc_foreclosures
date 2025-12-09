@@ -1,6 +1,5 @@
 """Review Queue API endpoints."""
 
-import json
 from datetime import datetime, date, timedelta
 from flask import Blueprint, request, jsonify
 from sqlalchemy import func
@@ -41,9 +40,10 @@ def get_daily_review():
         review_date = date.today()
 
     with get_session() as session:
-        # Get foreclosures added on this date
+        # Get foreclosures added on this date (exclude already reviewed)
         foreclosures = session.query(Case).filter(
-            func.date(Case.created_at) == review_date
+            func.date(Case.created_at) == review_date,
+            Case.reviewed_at.is_(None)
         ).all()
 
         foreclosure_list = []
@@ -79,7 +79,7 @@ def get_daily_review():
 
         skipped_list = []
         for case in skipped:
-            events = json.loads(case.events_json) if case.events_json else []
+            events = case.events_json if case.events_json else []
             skipped_list.append({
                 'id': case.id,
                 'case_number': case.case_number,
@@ -101,6 +101,47 @@ def get_daily_review():
                 'skipped': len(skipped_list),
                 'pending_review': len(foreclosure_list) + len(skipped_list)
             }
+        })
+
+
+@review_bp.route('/foreclosures/approve-all', methods=['POST'])
+def approve_all_foreclosures():
+    """
+    Mark all foreclosures for a date as reviewed (approved).
+
+    Body:
+        {"date": "2025-12-08"}
+    """
+    data = request.get_json() or {}
+    date_str = data.get('date')
+
+    if not date_str:
+        return jsonify({'error': 'No date provided'}), 400
+
+    try:
+        review_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+    except ValueError:
+        return jsonify({'error': 'Invalid date format. Use YYYY-MM-DD'}), 400
+
+    with get_session() as session:
+        # Get all unreviewed foreclosures for this date
+        foreclosures = session.query(Case).filter(
+            func.date(Case.created_at) == review_date,
+            Case.reviewed_at.is_(None)
+        ).all()
+
+        approved = 0
+        for case in foreclosures:
+            case.reviewed_at = datetime.utcnow()
+            approved += 1
+
+        session.commit()
+
+        logger.info(f"Approved all {approved} foreclosures for {date_str}")
+
+        return jsonify({
+            'success': True,
+            'approved': approved
         })
 
 
@@ -186,7 +227,7 @@ def add_skipped_cases():
             session.flush()
 
             # Add events from JSON
-            events = json.loads(skipped.events_json) if skipped.events_json else []
+            events = skipped.events_json if skipped.events_json else []
             for event_data in events:
                 event = CaseEvent(
                     case_id=case.id,
@@ -275,10 +316,11 @@ def cleanup_old_skipped():
 def get_pending_count():
     """Get count of cases pending review (for badge)."""
     with get_session() as session:
-        # Count today's foreclosures
+        # Count today's unreviewed foreclosures
         today = date.today()
         foreclosure_count = session.query(Case).filter(
-            func.date(Case.created_at) == today
+            func.date(Case.created_at) == today,
+            Case.reviewed_at.is_(None)
         ).count()
 
         # Count pending skipped cases (any date)

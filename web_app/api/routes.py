@@ -2,6 +2,7 @@
 
 from flask import Blueprint, jsonify, redirect, session
 from flask_dance.contrib.google import google
+from oauthlib.oauth2.rfc6749.errors import TokenExpiredError
 from database.connection import get_session
 from database.models import User
 from datetime import datetime
@@ -22,7 +23,14 @@ def get_current_user():
         return jsonify({'error': 'Not authenticated'}), 401
 
     # Get user info from Google
-    resp = google.get('/oauth2/v2/userinfo')
+    try:
+        resp = google.get('/oauth2/v2/userinfo')
+    except TokenExpiredError:
+        # Clear expired token and force re-login
+        if 'google_oauth_token' in session:
+            del session['google_oauth_token']
+        return jsonify({'error': 'Token expired'}), 401
+
     if not resp.ok:
         return jsonify({'error': 'Failed to get user info'}), 401
 
