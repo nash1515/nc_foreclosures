@@ -23,28 +23,63 @@ logger = setup_logger(__name__)
 # =============================================================================
 
 # Property Address patterns
-# Format: "ADDRESS/LOCATION OF PROPERTY BEING FORECLOSED:" followed by address
+# Format: Ordered by priority - EXPLICIT property labels first, generic patterns last
 ADDRESS_PATTERNS = [
-    # Pattern 1: After "ADDRESS/LOCATION OF PROPERTY" header
-    r'ADDRESS/LOCATION\s+OF\s+PROPERTY\s*(?:BEING\s+FORECLOSED)?[:\s]*\n+\s*([^\n]+(?:NC|North\s+Carolina)\s*\d{5}(?:-\d{4})?)',
-    # Pattern 2: Multi-line address (street on one line, city/state on next)
-    r'ADDRESS/LOCATION\s+OF\s+PROPERTY\s*(?:BEING\s+FORECLOSED)?[:\s]*\n+\s*(\d+[^\n]+)\n+\s*([A-Z][A-Za-z\s]+,\s*NC\s*\d{5})',
-    # Pattern 3: "commonly known as"
-    r'(?:commonly\s+known\s+as|known\s+as)[:\s]+([^.]+(?:NC|North\s+Carolina)\s*\d{5}(?:-\d{4})?)',
-    # Pattern 4: "Property Address:"
-    r'Property\s+Address[:\s]+([^\n]+(?:NC|North\s+Carolina)\s*\d{5}(?:-\d{4})?)',
-    # Pattern 5: "Address of property:" (different word order - COMMON in NC docs)
-    r'Address\s+of\s+property[:\s]+([0-9]+[^\n]+(?:NC|North\s+Carolina)\s*\d{5}(?:-\d{4})?)',
-    # Pattern 6: Multi-line after "Address of property:"
-    r'Address\s+of\s+property[:\s]+\n*\s*(\d+[^\n]+)\n+\s*([A-Z][A-Za-z\s]+,\s*NC\s*\d{5})',
-    # Pattern 7: "known as" with street number start (more specific)
-    r'known\s+as\s+(\d+[^,\n]+,\s*[A-Z][A-Za-z\s]+,\s*NC\s*\d{5}(?:-\d{4})?)',
-    # Pattern 8: Street address followed by City, NC ZIP on same/next line
-    r'(\d+\s+[A-Za-z]+(?:\s+[A-Za-z]+)*\s+(?:Street|St|Road|Rd|Drive|Dr|Lane|Ln|Court|Ct|Circle|Cir|Way|Avenue|Ave|Boulevard|Blvd|Place|Pl|Terrace|Ter)[,.]?)\s*[,\n]\s*([A-Z][A-Za-z\s]+,\s*NC\s*\d{5})',
-    # Pattern 9: "assessments upon ADDRESS" (HOA lien foreclosures)
-    r'assessments?\s+upon\s+(\d+\s+[A-Za-z]+(?:\s+[A-Za-z]+)*\s+(?:Street|St|Road|Rd|Drive|Dr|Lane|Ln|Court|Ct|Circle|Cir|Way|Avenue|Ave|Boulevard|Blvd|Place|Pl|Terrace|Ter)[,\s]+[A-Z][A-Za-z\s]+,?\s*NC,?\s*\d{5})',
-    # Pattern 10: "lien upon ADDRESS" (alternative lien foreclosure format)
-    r'lien\s+upon\s+(\d+\s+[A-Za-z]+(?:\s+[A-Za-z]+)*\s+(?:Street|St|Road|Rd|Drive|Dr|Lane|Ln|Court|Ct|Circle|Cir|Way|Avenue|Ave|Boulevard|Blvd|Place|Pl|Terrace|Ter)[,\s]+[A-Z][A-Za-z\s]+,?\s*NC,?\s*\d{5})',
+    # HIGHEST PRIORITY: Explicit property address labels
+    # Pattern 1: "The address for the real property is:"
+    (r'The\s+address\s+for\s+the\s+real\s+property\s+is[:\s]*\n?\s*([0-9]+[^,\n]+),?\s*\n?\s*([A-Za-z\s]+,\s*(?:NC|North\s+Carolina)\s*\d{5})', 'real_property'),
+    # Pattern 2: "Property Address (to post):"
+    (r'Property\s+Address\s*\(to\s+post\)[:\s]*\n?\s*([0-9]+[^,\n]+),?\s*\n?\s*([A-Za-z\s]+,\s*(?:NC|North\s+Carolina)\s*\d{5})', 'property_to_post'),
+    # Pattern 3: "real property located at"
+    (r'real\s+property\s+located\s+at[:\s]+([0-9]+[^,]+,\s*[A-Za-z\s]+,\s*(?:NC|North\s+Carolina)\s*\d{5})', 'located_at'),
+    # Pattern 4: "property secured by" (from mortgage documents)
+    (r'property\s+secured\s+by[:\s]+([0-9]+[^,]+,\s*[A-Za-z\s]+,\s*(?:NC|North\s+Carolina)\s*\d{5})', 'secured_by'),
+
+    # HIGH PRIORITY: Standard foreclosure document headers
+    # Pattern 5: After "ADDRESS/LOCATION OF PROPERTY" header
+    (r'ADDRESS/LOCATION\s+OF\s+PROPERTY\s*(?:BEING\s+FORECLOSED)?[:\s]*\n+\s*([^\n]+(?:NC|North\s+Carolina)\s*\d{5}(?:-\d{4})?)', 'address_location_header'),
+    # Pattern 6: Multi-line address (street on one line, city/state on next)
+    (r'ADDRESS/LOCATION\s+OF\s+PROPERTY\s*(?:BEING\s+FORECLOSED)?[:\s]*\n+\s*(\d+[^\n]+)\n+\s*([A-Z][A-Za-z\s]+,\s*NC\s*\d{5})', 'address_location_multiline'),
+    # Pattern 7: "Address of property:" (different word order - COMMON in NC docs)
+    (r'Address\s+of\s+property[:\s]+([0-9]+[^\n]+(?:NC|North\s+Carolina)\s*\d{5}(?:-\d{4})?)', 'address_of_property'),
+    # Pattern 8: Multi-line after "Address of property:"
+    (r'Address\s+of\s+property[:\s]+\n*\s*(\d+[^\n]+)\n+\s*([A-Z][A-Za-z\s]+,\s*NC\s*\d{5})', 'address_of_property_multiline'),
+
+    # MEDIUM PRIORITY: Common property description patterns
+    # Pattern 9: "commonly known as" or "known as"
+    (r'(?:commonly\s+known\s+as|known\s+as)[:\s]+([^.]+(?:NC|North\s+Carolina)\s*\d{5}(?:-\d{4})?)', 'commonly_known'),
+    # Pattern 10: "Property Address:"
+    (r'Property\s+Address[:\s]+([^\n]+(?:NC|North\s+Carolina)\s*\d{5}(?:-\d{4})?)', 'property_address'),
+    # Pattern 11: "known as" with street number start (more specific)
+    (r'known\s+as\s+(\d+[^,\n]+,\s*[A-Z][A-Za-z\s]+,\s*NC\s*\d{5}(?:-\d{4})?)', 'known_as_specific'),
+    # Pattern 12: "assessments upon ADDRESS" (HOA lien foreclosures)
+    (r'assessments?\s+upon\s+(\d+\s+[A-Za-z]+(?:\s+[A-Za-z]+)*\s+(?:Street|St|Road|Rd|Drive|Dr|Lane|Ln|Court|Ct|Circle|Cir|Way|Avenue|Ave|Boulevard|Blvd|Place|Pl|Terrace|Ter)[,\s]+[A-Z][A-Za-z\s]+,?\s*NC,?\s*\d{5})', 'assessments_upon'),
+    # Pattern 13: "lien upon ADDRESS" (alternative lien foreclosure format)
+    (r'lien\s+upon\s+(\d+\s+[A-Za-z]+(?:\s+[A-Za-z]+)*\s+(?:Street|St|Road|Rd|Drive|Dr|Lane|Ln|Court|Ct|Circle|Cir|Way|Avenue|Ave|Boulevard|Blvd|Place|Pl|Terrace|Ter)[,\s]+[A-Z][A-Za-z\s]+,?\s*NC,?\s*\d{5})', 'lien_upon'),
+
+    # LOWEST PRIORITY: Generic street address pattern (use only as fallback)
+    # Pattern 14: Street address followed by City, NC ZIP on same/next line
+    (r'(\d+\s+[A-Za-z]+(?:\s+[A-Za-z]+)*\s+(?:Street|St|Road|Rd|Drive|Dr|Lane|Ln|Court|Ct|Circle|Cir|Way|Avenue|Ave|Boulevard|Blvd|Place|Pl|Terrace|Ter)[,.]?)\s*[,\n]\s*([A-Z][A-Za-z\s]+,\s*NC\s*\d{5})', 'generic_street'),
+]
+
+# Address Rejection Contexts
+# These patterns indicate an address is NOT a property address (attorney/defendant/heir addresses)
+REJECT_ADDRESS_CONTEXTS = [
+    # OCR-tolerant patterns (allow common OCR errors like "Attormey", "Adgress")
+    r'Name\s+And\s+Ad[dg]?ress\s+Of\s+(?:Att?or[mn]ey|Agent|Upset\s+Bidder)',
+    r'Att?or[mn]ey\s+[Oo]r\s+Agent\s+[Ff]or\s+Upset\s+Bidder',
+    r'For\s+Upset\s+Bidder',  # Simpler catch-all
+    r'Upset\s+Bidder\s*\n',  # Header for upset bidder section
+    r'Heir\s+of\s+',
+    r'TO:\s*\n',
+    r'Current\s+Resident',
+    r'DEFENDANT[:\s]',
+    r'defendant[:\s]',
+    r'Unknown\s+Heirs',
+    r'Unknown\s+Spouse',
+    r'or\s+to\s+the\s+heirs',
+    r'service\s+of\s+process',
+    r'last\s+known\s+address',
 ]
 
 # Attorney/Law Firm Address Indicators
@@ -217,6 +252,7 @@ def extract_property_address(ocr_text: str) -> Optional[str]:
     Extract property address from OCR text.
 
     Filters out attorney/law firm addresses to prevent false positives.
+    Prioritizes explicit property labels over generic address patterns.
 
     Args:
         ocr_text: Raw OCR text from document
@@ -227,22 +263,36 @@ def extract_property_address(ocr_text: str) -> Optional[str]:
     if not ocr_text:
         return None
 
-    # Try each pattern
-    for pattern in ADDRESS_PATTERNS:
+    # Try each pattern in priority order
+    for pattern_tuple in ADDRESS_PATTERNS:
+        # Pattern is now a tuple: (regex, label)
+        pattern = pattern_tuple[0]
+        pattern_label = pattern_tuple[1]
+
         match = re.search(pattern, ocr_text, re.IGNORECASE | re.MULTILINE)
         if match:
-            # Check if this address is near attorney/law firm indicators
-            # Look at the text ~200 characters before the match
+            # Check context 300 characters before the match for rejection patterns
             match_pos = match.start()
-            context_start = max(0, match_pos - 200)
+            context_start = max(0, match_pos - 300)
             context_text = ocr_text[context_start:match_pos]
 
-            # Check if any attorney indicators appear in the context
+            # FIRST: Check for rejection contexts (defendant/heir/attorney addresses)
+            is_rejected = False
+            for reject_pattern in REJECT_ADDRESS_CONTEXTS:
+                if re.search(reject_pattern, context_text, re.IGNORECASE):
+                    is_rejected = True
+                    logger.debug(f"  Skipping address (found rejection context '{reject_pattern}' near match for pattern '{pattern_label}')")
+                    break
+
+            if is_rejected:
+                continue
+
+            # SECOND: Check if any attorney indicators appear in the context
             is_attorney_address = False
             for indicator in ATTORNEY_ADDRESS_INDICATORS:
                 if indicator.lower() in context_text.lower():
                     is_attorney_address = True
-                    logger.debug(f"  Skipping attorney address (found '{indicator}' near match)")
+                    logger.debug(f"  Skipping attorney address (found '{indicator}' near match for pattern '{pattern_label}')")
                     break
 
             # If this is an attorney address, skip it and try the next pattern
@@ -258,19 +308,26 @@ def extract_property_address(ocr_text: str) -> Optional[str]:
             # Clean up extra whitespace
             address = re.sub(r'\s+', ' ', address)
 
-            # Check if address contains form artifacts
+            # CLEAN form artifacts from the address instead of rejecting
+            # This handles OCR issues where form text like "Summons Submitted Yes No"
+            # appears between street and city/state
             address_lower = address.lower()
-            contains_form_artifact = False
             for artifact in FORM_ARTIFACTS:
                 if artifact in address_lower:
-                    contains_form_artifact = True
-                    logger.debug(f"  Skipping address with form artifact (found '{artifact}' in address)")
-                    break
+                    logger.debug(f"  Cleaning form artifact '{artifact}' from address")
+                    # Remove the artifact (case-insensitive)
+                    address = re.sub(re.escape(artifact), '', address, flags=re.IGNORECASE)
+                    address_lower = address.lower()
 
-            # If this address contains form artifacts, skip it and try the next pattern
-            if contains_form_artifact:
+            # Clean up any resulting extra whitespace after artifact removal
+            address = re.sub(r'\s+', ' ', address).strip()
+
+            # If after cleaning we're left with an incomplete address, skip it
+            if not address or len(address) < 10:
+                logger.debug(f"  Address too short after cleaning artifacts, skipping")
                 continue
 
+            logger.debug(f"  Extracted address using pattern '{pattern_label}': {address}")
             return address
 
     return None
