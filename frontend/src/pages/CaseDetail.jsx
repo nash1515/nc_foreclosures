@@ -117,7 +117,7 @@ function CaseDetail() {
           </Tag>
           {daysUntilDeadline !== null && daysUntilDeadline >= 0 && (
             <Tag color={daysUntilDeadline <= 3 ? 'red' : 'orange'}>
-              Deadline: {dayjs(c.next_bid_deadline).format('MMM D')} ({daysUntilDeadline} days)
+              Bid Deadline: {dayjs(c.next_bid_deadline).format('MMM D')} ({daysUntilDeadline} days)
             </Tag>
           )}
         </div>

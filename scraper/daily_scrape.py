@@ -2,10 +2,11 @@
 
 This script runs the complete daily scraping workflow:
 1. Search for new cases filed yesterday (or specified date)
-2. Monitor upcoming cases for sale events
-3. Monitor blocked cases for status changes
-4. Monitor upset_bid cases for new bids or blocking events
-5. Reclassify stale cases based on time (upset_bid -> closed_sold)
+2. OCR and extraction for newly downloaded documents
+3. Monitor upcoming cases for sale events
+4. Monitor blocked cases for status changes
+5. Monitor upset_bid cases for new bids or blocking events
+6. Reclassify stale cases based on time (upset_bid -> closed_sold)
 
 Usage:
     # Run all daily tasks
@@ -322,6 +323,7 @@ def run_daily_tasks(
         'start_time': str(start_time),
         'target_date': str(target_date),
         'new_case_search': None,
+        'ocr_processed': None,
         'case_monitoring': None,
         'upset_bid_validation': None,
         'stale_reclassification': None,
@@ -335,6 +337,22 @@ def run_daily_tasks(
         except Exception as e:
             logger.error(f"Task 1 failed: {e}")
             results['errors'].append(f"new_case_search: {e}")
+
+    # Task 1.5: OCR and extraction for newly downloaded documents
+    if search_new and not dry_run and results.get('new_case_search', {}).get('cases_processed', 0) > 0:
+        try:
+            logger.info("=" * 60)
+            logger.info("TASK 1.5: OCR and extraction for new documents")
+            logger.info("=" * 60)
+
+            from ocr.processor import process_unprocessed_documents
+            ocr_count = process_unprocessed_documents()
+
+            results['ocr_processed'] = ocr_count
+            logger.info(f"OCR processed {ocr_count} documents (extraction auto-triggered)")
+        except Exception as e:
+            logger.error(f"Task 1.5 failed: {e}")
+            results['errors'].append(f"ocr_processing: {e}")
 
     # Task 2: Monitor existing cases
     if monitor_existing:
@@ -371,6 +389,10 @@ def run_daily_tasks(
     if results['new_case_search']:
         new_cases = results['new_case_search'].get('cases_processed', 0)
         logger.info(f"New cases added: {new_cases}")
+
+    if results.get('ocr_processed') is not None:
+        ocr_count = results.get('ocr_processed', 0)
+        logger.info(f"Documents OCR processed: {ocr_count} (extraction auto-triggered)")
 
     if results['case_monitoring']:
         monitored = results['case_monitoring'].get('cases_checked', 0)

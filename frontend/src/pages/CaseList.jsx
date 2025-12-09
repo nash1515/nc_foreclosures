@@ -180,7 +180,7 @@ function CaseList() {
       render: (amount) => amount ? `$${amount.toLocaleString()}` : '-'
     },
     {
-      title: 'Deadline',
+      title: 'Bid Deadline',
       dataIndex: 'next_bid_deadline',
       key: 'next_bid_deadline',
       sorter: true,
