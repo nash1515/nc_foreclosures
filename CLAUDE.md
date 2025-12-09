@@ -20,12 +20,13 @@ cd frontend && npm run dev -- --host &
 - Frontend: http://localhost:5173
 - API: http://localhost:5001
 
-## Current Status (Dec 8, 2025)
+## Current Status (Dec 9, 2025)
 
 - **1,731 cases** across 6 counties (Wake, Durham, Harnett, Lee, Orange, Chatham)
 - **17 active upset_bid** cases with deadlines
-- **Scheduler running** 5 AM Mon-Fri
+- **Scheduler running** 5 AM Mon-Fri (3-day lookback on Mondays)
 - **Frontend:** React + Flask API (Dashboard with county filtering)
+- **Review Queue:** Approve/Reject buttons + Flagged for Re-review section
 
 ### Classifications
 | Status | Count | Description |
@@ -65,9 +66,11 @@ PGPASSWORD=nc_password psql -U nc_user -d nc_foreclosures -h localhost
 
 ### Key Files
 - `scraper/case_monitor.py` - Monitors existing cases via direct URLs (no CAPTCHA)
-- `scraper/daily_scrape.py` - Orchestrates daily tasks
+- `scraper/daily_scrape.py` - Orchestrates daily tasks (3-day lookback on Mondays)
+- `scraper/page_parser.py` - Day-1 detection indicators + exclusions
 - `extraction/classifier.py` - Case status classification
 - `common/business_days.py` - NC court holiday calendar for deadline calculation
+- `scripts/reevaluate_skipped.py` - Re-check skipped cases against updated indicators
 
 ### Database Tables
 `cases`, `case_events`, `parties`, `hearings`, `documents`, `scrape_logs`, `scheduler_config`, `users`
