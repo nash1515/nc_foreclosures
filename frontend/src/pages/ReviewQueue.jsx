@@ -17,7 +17,8 @@ import {
   CloseOutlined,
   PlusOutlined,
   DeleteOutlined,
-  DownOutlined
+  DownOutlined,
+  ExclamationCircleOutlined
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import {
@@ -26,7 +27,8 @@ import {
   approveForeclosures,
   rejectForeclosures,
   addSkippedCases,
-  dismissSkippedCases
+  dismissSkippedCases,
+  getFlaggedCases
 } from '../api/review';
 
 const { Title, Text } = Typography;
@@ -34,9 +36,11 @@ const { Title, Text } = Typography;
 export default function ReviewQueue() {
   const [date, setDate] = useState(dayjs());
   const [data, setData] = useState({ foreclosures: [], skipped: [], counts: {} });
+  const [flaggedData, setFlaggedData] = useState({ flagged: [], count: 0 });
   const [loading, setLoading] = useState(true);
   const [selectedForeclosures, setSelectedForeclosures] = useState([]);
   const [selectedSkipped, setSelectedSkipped] = useState([]);
+  const [selectedFlagged, setSelectedFlagged] = useState([]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -52,8 +56,19 @@ export default function ReviewQueue() {
     }
   };
 
+  const fetchFlaggedData = async () => {
+    try {
+      const result = await getFlaggedCases();
+      setFlaggedData(result);
+      setSelectedFlagged([]);
+    } catch (error) {
+      message.error('Failed to load flagged cases');
+    }
+  };
+
   useEffect(() => {
     fetchData();
+    fetchFlaggedData();
   }, [date]);
 
   const handleApproveAll = async () => {
@@ -88,23 +103,27 @@ export default function ReviewQueue() {
     }
   };
 
-  const handleAddSelected = async () => {
-    if (selectedSkipped.length === 0) return;
+  const handleAddSelected = async (ids = null) => {
+    const idsToAdd = ids || selectedSkipped;
+    if (idsToAdd.length === 0) return;
     try {
-      const result = await addSkippedCases(selectedSkipped);
+      const result = await addSkippedCases(idsToAdd);
       message.success(`Added ${result.added} case(s)`);
       fetchData();
+      fetchFlaggedData();
     } catch (error) {
       message.error('Failed to add cases');
     }
   };
 
-  const handleDismissSelected = async () => {
-    if (selectedSkipped.length === 0) return;
+  const handleDismissSelected = async (ids = null) => {
+    const idsToDismiss = ids || selectedSkipped;
+    if (idsToDismiss.length === 0) return;
     try {
-      await dismissSkippedCases(selectedSkipped);
-      message.success(`Dismissed ${selectedSkipped.length} case(s)`);
+      await dismissSkippedCases(idsToDismiss);
+      message.success(`Dismissed ${idsToDismiss.length} case(s)`);
       fetchData();
+      fetchFlaggedData();
     } catch (error) {
       message.error('Failed to dismiss cases');
     }
@@ -120,6 +139,16 @@ export default function ReviewQueue() {
     } catch (error) {
       message.error('Failed to dismiss cases');
     }
+  };
+
+  const handleAddFlagged = async () => {
+    if (selectedFlagged.length === 0) return;
+    await handleAddSelected(selectedFlagged);
+  };
+
+  const handleDismissFlagged = async () => {
+    if (selectedFlagged.length === 0) return;
+    await handleDismissSelected(selectedFlagged);
   };
 
   const foreclosureColumns = [
@@ -322,14 +351,14 @@ export default function ReviewQueue() {
         label: `Add Selected (${selectedSkipped.length})`,
         icon: <PlusOutlined />,
         disabled: selectedSkipped.length === 0,
-        onClick: handleAddSelected
+        onClick: () => handleAddSelected()
       },
       {
         key: 'dismiss',
         label: `Dismiss Selected (${selectedSkipped.length})`,
         icon: <DeleteOutlined />,
         disabled: selectedSkipped.length === 0,
-        onClick: handleDismissSelected
+        onClick: () => handleDismissSelected()
       },
       { type: 'divider' },
       {
@@ -343,7 +372,57 @@ export default function ReviewQueue() {
     ]
   };
 
+  const flaggedBulkMenu = {
+    items: [
+      {
+        key: 'add',
+        label: `Add Selected (${selectedFlagged.length})`,
+        icon: <PlusOutlined />,
+        disabled: selectedFlagged.length === 0,
+        onClick: handleAddFlagged
+      },
+      {
+        key: 'dismiss',
+        label: `Dismiss Selected (${selectedFlagged.length})`,
+        icon: <DeleteOutlined />,
+        disabled: selectedFlagged.length === 0,
+        onClick: handleDismissFlagged
+      }
+    ]
+  };
+
   const collapseItems = [
+    {
+      key: 'flagged',
+      label: (
+        <Space>
+          <ExclamationCircleOutlined style={{ color: '#ff4d4f' }} />
+          <span>Flagged for Re-review ({flaggedData.count || 0} cases)</span>
+        </Space>
+      ),
+      extra: (
+        <Dropdown menu={flaggedBulkMenu} trigger={['click']}>
+          <Button onClick={(e) => e.stopPropagation()}>
+            Bulk Actions <DownOutlined />
+          </Button>
+        </Dropdown>
+      ),
+      children: (
+        <Table
+          rowKey="id"
+          columns={skippedColumns}
+          dataSource={flaggedData.flagged}
+          loading={loading}
+          pagination={{ pageSize: 10 }}
+          expandable={{ expandedRowRender }}
+          rowSelection={{
+            selectedRowKeys: selectedFlagged,
+            onChange: setSelectedFlagged
+          }}
+          size="small"
+        />
+      )
+    },
     {
       key: 'foreclosures',
       label: (
@@ -419,7 +498,7 @@ export default function ReviewQueue() {
         />
       </div>
 
-      <Collapse defaultActiveKey={['foreclosures', 'skipped']} items={collapseItems} />
+      <Collapse defaultActiveKey={['flagged', 'foreclosures', 'skipped']} items={collapseItems} />
     </div>
   );
 }

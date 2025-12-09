@@ -46,6 +46,25 @@ SALE_DOCUMENT_INDICATORS = [
     "receiver's sale",
     'trust property sale',
     'sell trust property',
+    # Estate administration (leads to property sales)
+    'estate administration',
+    'administration of estate',
+    'personal representative',
+    # Property-related proceedings
+    'quiet title',
+    'condemnation',
+    'eminent domain',
+    'claim and delivery',
+]
+
+# Event types that indicate NON-property cases (skip these)
+NON_PROPERTY_INDICATORS = [
+    'adoption',
+    'name change',
+    'motor vehicle',
+    'incompetent driver',
+    'incompetency',
+    'guardianship',
 ]
 
 
@@ -65,6 +84,17 @@ def is_foreclosure_case(case_data):
     Returns:
         bool: True if case is a foreclosure or upset bid opportunity
     """
+    # Get events for checking
+    events = case_data.get('events') or []
+
+    # Check for non-property indicators FIRST (exclusions)
+    for event in events:
+        event_type = (event.get('event_type') or '').lower()
+        for indicator in NON_PROPERTY_INDICATORS:
+            if indicator in event_type:
+                logger.debug(f"Non-property case identified by event type: {event_type}")
+                return False
+
     # Check case type - must contain "foreclosure"
     case_type = (case_data.get('case_type') or '').lower()
     if 'foreclosure' in case_type:
@@ -72,7 +102,6 @@ def is_foreclosure_case(case_data):
         return True
 
     # Check events for foreclosure indicators
-    events = case_data.get('events') or []
     for event in events:
         event_type = (event.get('event_type') or '').lower()
         for indicator in FORECLOSURE_EVENT_INDICATORS:

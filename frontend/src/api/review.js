@@ -57,6 +57,12 @@ export async function dismissSkippedCases(skippedIds) {
   return response.json();
 }
 
+export async function getFlaggedCases() {
+  const response = await fetch(`${API_BASE}/flagged`);
+  if (!response.ok) throw new Error('Failed to fetch flagged cases');
+  return response.json();
+}
+
 export async function getPendingCount() {
   const response = await fetch(`${API_BASE}/pending-count`);
   if (!response.ok) throw new Error('Failed to fetch pending count');

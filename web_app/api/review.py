@@ -344,6 +344,36 @@ def cleanup_old_skipped():
         })
 
 
+@review_bp.route('/flagged', methods=['GET'])
+def get_flagged_cases():
+    """Get all skipped cases flagged for re-review."""
+    with get_session() as session:
+        flagged = session.query(SkippedCase).filter(
+            SkippedCase.review_action == 'flagged_for_review'
+        ).all()
+
+        flagged_list = []
+        for case in flagged:
+            events = case.events_json if case.events_json else []
+            flagged_list.append({
+                'id': case.id,
+                'case_number': case.case_number,
+                'county_name': case.county_name,
+                'case_type': case.case_type,
+                'style': case.style,
+                'file_date': case.file_date.strftime('%Y-%m-%d') if case.file_date else None,
+                'case_url': case.case_url,
+                'skip_reason': case.skip_reason,
+                'scrape_date': case.scrape_date.strftime('%Y-%m-%d') if case.scrape_date else None,
+                'events': events
+            })
+
+        return jsonify({
+            'flagged': flagged_list,
+            'count': len(flagged_list)
+        })
+
+
 @review_bp.route('/pending-count', methods=['GET'])
 def get_pending_count():
     """Get count of cases pending review (for badge)."""
