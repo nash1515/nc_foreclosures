@@ -10,7 +10,15 @@ NC Foreclosures - Foreclosure tracking system for 6 NC counties with upset bid o
 source venv/bin/activate
 export PYTHONPATH=$(pwd)
 sudo service postgresql start
+
+# Start dev servers (run in background)
+PYTHONPATH=$(pwd) venv/bin/python -c "from web_app.app import create_app; create_app().run(port=5001)" &
+cd frontend && npm run dev -- --host &
 ```
+
+**Always start both servers at session start so user can test UI changes.**
+- Frontend: http://localhost:5173
+- API: http://localhost:5001
 
 ## Current Status (Dec 8, 2025)
 
