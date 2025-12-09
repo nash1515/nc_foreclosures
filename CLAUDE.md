@@ -17,7 +17,7 @@ sudo service postgresql start
 - **1,731 cases** across 6 counties (Wake, Durham, Harnett, Lee, Orange, Chatham)
 - **17 active upset_bid** cases with deadlines
 - **Scheduler running** 5 AM Mon-Fri
-- **Frontend:** React + Flask API (Dashboard complete, needs OAuth testing)
+- **Frontend:** React + Flask API (Dashboard with county filtering)
 
 ### Classifications
 | Status | Count | Description |
@@ -84,11 +84,15 @@ npm install && npm run dev -- --port 5174
 ```
 
 ## Next Priorities
-1. Test Dashboard with OAuth login
-2. Build Case Detail page
-3. Build Case List page with filtering
-4. Enrichment module (Zillow, tax records)
-5. Analyze closed_sold cases for bidding patterns
+1. Build Case Detail page
+2. Build Case List page with filtering
+3. Enrichment module (Zillow, tax records)
+4. Analyze closed_sold cases for bidding patterns
+
+## Session Commands
+- **"Wrap up session"** - Update CLAUDE.md + commit/push + review todos + give handoff
+- **"Update docs"** - Update CLAUDE.md + commit/push only
+- **"Continue NC Foreclosures"** - Start new session (reads CLAUDE.md automatically)
 
 ## Session Handoff Format
 
