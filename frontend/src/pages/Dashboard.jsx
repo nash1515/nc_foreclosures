@@ -152,7 +152,8 @@ function Dashboard() {
               {getUrgencyIcon(record.urgency)}
               <Text strong style={{ color: colors.text }}>
                 {record.days_remaining === null ? 'No deadline' :
-                 record.days_remaining <= 0 ? 'EXPIRED' :
+                 record.urgency === 'expired' ? 'EXPIRED' :
+                 record.days_remaining === 0 ? 'TODAY' :
                  record.days_remaining === 1 ? '1 day' :
                  `${record.days_remaining} days`}
               </Text>

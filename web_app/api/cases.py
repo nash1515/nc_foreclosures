@@ -5,7 +5,7 @@ from flask_dance.contrib.google import google
 from sqlalchemy import or_, func
 from database.connection import get_session
 from database.models import Case, Party, Watchlist, User
-from datetime import datetime, date
+from datetime import datetime, date, time
 
 cases_bp = Blueprint('cases', __name__)
 
@@ -360,13 +360,25 @@ def get_stats():
             Case.next_bid_deadline != None
         )
 
-        urgent_count = upset_query.filter(
-            Case.next_bid_deadline <= today
-        ).count()
+        # NC courts close at 5 PM - only count as urgent if past 5 PM on deadline date
+        now = datetime.now()
+        urgent_count = 0
+        upcoming_count = 0
 
-        upcoming_deadlines = upset_query.filter(
-            Case.next_bid_deadline > today
-        ).count()
+        for case in upset_query.all():
+            deadline_date = case.next_bid_deadline.date() if hasattr(case.next_bid_deadline, 'date') else case.next_bid_deadline
+            deadline_datetime = datetime.combine(deadline_date, time(17, 0))  # 5 PM on deadline date
+            time_remaining = deadline_datetime - now
+            delta = (deadline_date - today).days
+
+            # Count as urgent if deadline is within 3 days (but not expired)
+            if time_remaining.total_seconds() <= 0:
+                # Expired - don't count in urgent or upcoming
+                pass
+            elif delta <= 2:
+                urgent_count += 1
+            else:
+                upcoming_count += 1
 
         # Total cases
         total = base_query.count()
@@ -385,7 +397,7 @@ def get_stats():
             'upset_bid': {
                 'total': classifications.get('upset_bid', 0),
                 'urgent': urgent_count,
-                'upcoming': upcoming_deadlines
+                'upcoming': upcoming_count
             },
             'recent_filings': recent_filings
         })
@@ -439,14 +451,25 @@ def get_upset_bids():
             if case.next_bid_deadline:
                 # Handle both date and datetime types
                 deadline_date = case.next_bid_deadline.date() if hasattr(case.next_bid_deadline, 'date') else case.next_bid_deadline
+
+                # NC courts close at 5 PM - deadline is valid until 5 PM on deadline date
+                now = datetime.now()
+                deadline_datetime = datetime.combine(deadline_date, time(17, 0))  # 5 PM on deadline date
+
+                # Calculate time remaining
+                time_remaining = deadline_datetime - now
                 delta = (deadline_date - today).days
                 days_remaining = delta
-                if delta <= 0:
-                    urgency = 'expired'
+
+                # Determine urgency based on time remaining
+                if time_remaining.total_seconds() <= 0:
+                    urgency = 'expired'  # Past 5 PM on deadline date
+                elif delta == 0:
+                    urgency = 'critical'  # Today but before 5 PM
                 elif delta <= 2:
-                    urgency = 'critical'
+                    urgency = 'critical'  # 1-2 days
                 elif delta <= 5:
-                    urgency = 'warning'
+                    urgency = 'warning'   # 3-5 days
 
             result.append({
                 'id': case.id,
