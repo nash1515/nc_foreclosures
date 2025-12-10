@@ -20,9 +20,11 @@ cd frontend && npm run dev -- --host &
 - Frontend: http://localhost:5173
 - API: http://localhost:5001
 
-## Current Status (Dec 9, 2025)
+## Current Status (Dec 10, 2025)
 
 - **1,731 cases** across 6 counties (Wake, Durham, Harnett, Lee, Orange, Chatham)
+- **4,136 documents** in system
+- **1,073 cases with addresses** (61.6%) / **670 cases missing addresses**
 - **17 active upset_bid** cases with deadlines
 - **Scheduler running** 5 AM Mon-Fri (3-day lookback on Mondays)
 - **Frontend:** React + Flask API (Dashboard with county filtering)
@@ -49,6 +51,9 @@ cd frontend && npm run dev -- --host &
 # Monitor specific cases
 PYTHONPATH=$(pwd) venv/bin/python scraper/case_monitor.py --classification upset_bid
 
+# Download missing documents
+PYTHONPATH=$(pwd) venv/bin/python scripts/download_missing_documents.py
+
 # Database queries
 PGPASSWORD=nc_password psql -U nc_user -d nc_foreclosures -h localhost
 ```
@@ -71,6 +76,9 @@ PGPASSWORD=nc_password psql -U nc_user -d nc_foreclosures -h localhost
 - `extraction/classifier.py` - Case status classification
 - `common/business_days.py` - NC court holiday calendar for deadline calculation
 - `scripts/reevaluate_skipped.py` - Re-check skipped cases against updated indicators
+- `scripts/download_missing_documents.py` - Downloads docs for cases with 0 documents
+- `scripts/backfill_document_events.py` - Links existing docs to events
+- `scripts/cleanup_documents.py` - Removes duplicate document entries
 
 ### Database Tables
 `cases`, `case_events`, `parties`, `hearings`, `documents`, `scrape_logs`, `scheduler_config`, `users`
@@ -81,6 +89,8 @@ PGPASSWORD=nc_password psql -U nc_user -d nc_foreclosures -h localhost
 2. **NC G.S. 45-21.27** - If 10th day falls on weekend/holiday, extends to next business day
 3. **PDF extraction** - Only used for bid amounts, NOT deadlines
 4. **Headless=False** - Angular pages fail in headless mode
+5. **Documents linked to events** - `documents.event_id` foreign key ties PDFs to case_events
+6. **Address extraction patterns** - Comma-optional patterns for OCR text (handles variations)
 
 ## Environment Variables (.env)
 `DATABASE_URL`, `CAPSOLVER_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `FLASK_SECRET_KEY`
