@@ -57,8 +57,16 @@ ADDRESS_PATTERNS = [
     # Pattern 13: "lien upon ADDRESS" (alternative lien foreclosure format)
     (r'lien\s+upon\s+(\d+\s+[A-Za-z]+(?:\s+[A-Za-z]+)*\s+(?:Street|St|Road|Rd|Drive|Dr|Lane|Ln|Court|Ct|Circle|Cir|Way|Avenue|Ave|Boulevard|Blvd|Place|Pl|Terrace|Ter)[,\s]+[A-Z][A-Za-z\s]+,?\s*NC,?\s*\d{5})', 'lien_upon'),
 
+    # LOW PRIORITY: Natural language patterns (affidavits, comma-optional formats)
+    # Pattern 14: Affidavit-style natural language "account for [name] at [address]"
+    (r'(?:account\s+for\s+[^.]+\s+at|familiar\s+with[^.]+\s+at)\s+(\d+\s+[A-Za-z]+(?:\s+[A-Za-z]+)*\s+(?:Street|St|Road|Rd|Drive|Dr|Lane|Ln|Court|Ct|Circle|Cir|Way|Avenue|Ave|Boulevard|Blvd|Place|Pl|Terrace|Ter))\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\s+(?:NC|North\s+Carolina)\s+\d{5}(?:-\d{4})?)', 'affidavit_at'),
+    # Pattern 15: Comma-optional with "North Carolina" spelled out
+    (r'(\d+\s+[A-Za-z]+(?:\s+[A-Za-z]+)*\s+(?:Street|St|Road|Rd|Drive|Dr|Lane|Ln|Court|Ct|Circle|Cir|Way|Avenue|Ave|Boulevard|Blvd|Place|Pl|Terrace|Ter))[,.\s]+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\s+North\s+Carolina\s+\d{5}(?:-\d{4})?)', 'north_carolina_spelled'),
+    # Pattern 16: More flexible comma-optional with NC abbreviation
+    (r'(\d+\s+[A-Za-z]+(?:\s+[A-Za-z]+)*\s+(?:Street|St|Road|Rd|Drive|Dr|Lane|Ln|Court|Ct|Circle|Cir|Way|Avenue|Ave|Boulevard|Blvd|Place|Pl|Terrace|Ter))\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\s+NC\s+\d{5}(?:-\d{4})?)', 'flexible_nc'),
+
     # LOWEST PRIORITY: Generic street address pattern (use only as fallback)
-    # Pattern 14: Street address followed by City, NC ZIP on same/next line
+    # Pattern 17: Street address followed by City, NC ZIP on same/next line
     (r'(\d+\s+[A-Za-z]+(?:\s+[A-Za-z]+)*\s+(?:Street|St|Road|Rd|Drive|Dr|Lane|Ln|Court|Ct|Circle|Cir|Way|Avenue|Ave|Boulevard|Blvd|Place|Pl|Terrace|Ter)[,.]?)\s*[,\n]\s*([A-Z][A-Za-z\s]+,\s*NC\s*\d{5})', 'generic_street'),
 ]
 

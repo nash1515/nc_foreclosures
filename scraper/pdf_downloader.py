@@ -17,9 +17,57 @@ from playwright.sync_api import Page, Download
 from common.config import config
 from common.logger import setup_logger
 from database.connection import get_session
-from database.models import Document
+from database.models import Document, CaseEvent
 
 logger = setup_logger(__name__)
+
+
+def find_matching_event(session, case_id: int, event_date_str: str, event_type: str):
+    """
+    Find the CaseEvent that matches the given date and type.
+
+    Args:
+        session: Database session
+        case_id: Database ID of the case
+        event_date_str: Event date string in MM/DD/YYYY format
+        event_type: Event type string (e.g., "Report of Sale Filed")
+
+    Returns:
+        CaseEvent object if found, None otherwise
+    """
+    if not event_date_str or not event_type:
+        return None
+
+    try:
+        # Convert date string to date object
+        event_date_obj = datetime.strptime(event_date_str, '%m/%d/%Y').date()
+
+        # Try exact match first
+        event = session.query(CaseEvent).filter(
+            CaseEvent.case_id == case_id,
+            CaseEvent.event_date == event_date_obj,
+            CaseEvent.event_type == event_type
+        ).first()
+
+        if event:
+            return event
+
+        # If no exact match, try partial match on event_type
+        # (event_type might have slight variations)
+        event = session.query(CaseEvent).filter(
+            CaseEvent.case_id == case_id,
+            CaseEvent.event_date == event_date_obj,
+            CaseEvent.event_type.ilike(f"%{event_type[:20]}%")
+        ).first()
+
+        return event
+
+    except ValueError as e:
+        logger.debug(f"Invalid date format '{event_date_str}': {e}")
+        return None
+    except Exception as e:
+        logger.warning(f"Error finding matching event: {e}")
+        return None
 
 
 def handle_document_selector_popup(page: Page, download_path: Path, base_filename: str = None):
@@ -421,6 +469,7 @@ def download_case_documents(page: Page, case_id: int, county: str, case_number: 
     for doc_info in doc_buttons:
         button_index = doc_info.get('buttonIndex', 0)
         event_date = doc_info.get('eventDate', '')
+        event_type = doc_info.get('eventType', '')
 
         # Try to download
         file_path = click_document_button_and_download(
@@ -441,8 +490,12 @@ def download_case_documents(page: Page, case_id: int, county: str, case_number: 
             # Create database record
             try:
                 with get_session() as session:
+                    # Find matching event if we have both date and type
+                    event = find_matching_event(session, case_id, event_date, event_type) if event_type else None
+
                     document = Document(
                         case_id=case_id,
+                        event_id=event.id if event else None,
                         document_name=Path(file_path).name,
                         file_path=file_path,
                         document_date=doc_date
@@ -538,8 +591,12 @@ def download_documents_for_event(page: Page, case_id: int, county: str, case_num
                 pass
 
         with get_session() as session:
+            # Find matching event if we have both date and type
+            event = find_matching_event(session, case_id, event_date, event_type) if event_type else None
+
             document = Document(
                 case_id=case_id,
+                event_id=event.id if event else None,
                 document_name=filename,
                 file_path=str(file_path),
                 document_date=doc_date
@@ -694,8 +751,12 @@ def download_upset_bid_documents(page: Page, case_id: int, county: str, case_num
                     for file_path in popup_files:
                         filename = Path(file_path).name
                         with get_session() as session:
+                            # Find matching event
+                            event = find_matching_event(session, case_id, event_date, event_type)
+
                             document = Document(
                                 case_id=case_id,
+                                event_id=event.id if event else None,
                                 document_name=filename,
                                 file_path=str(file_path),
                                 document_date=doc_date
@@ -743,8 +804,12 @@ def download_upset_bid_documents(page: Page, case_id: int, county: str, case_num
                                 pass
 
                         with get_session() as session:
+                            # Find matching event
+                            event = find_matching_event(session, case_id, event_date, event_type)
+
                             document = Document(
                                 case_id=case_id,
+                                event_id=event.id if event else None,
                                 document_name=filename,
                                 file_path=str(file_path),
                                 document_date=doc_date
@@ -959,8 +1024,12 @@ def download_all_case_documents(page: Page, case_id: int, county: str, case_numb
                         filename = Path(file_path).name
                         # Create database record for each
                         with get_session() as session:
+                            # Find matching event
+                            event = find_matching_event(session, case_id, event_date, event_type)
+
                             document = Document(
                                 case_id=case_id,
+                                event_id=event.id if event else None,
                                 document_name=filename,
                                 file_path=str(file_path),
                                 document_date=doc_date
@@ -1021,8 +1090,12 @@ def download_all_case_documents(page: Page, case_id: int, county: str, case_numb
                                 pass
 
                         with get_session() as session:
+                            # Find matching event
+                            event = find_matching_event(session, case_id, event_date, event_type)
+
                             document = Document(
                                 case_id=case_id,
+                                event_id=event.id if event else None,
                                 document_name=filename,
                                 file_path=str(file_path),
                                 document_date=doc_date

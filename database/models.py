@@ -151,14 +151,16 @@ class Document(Base):
 
     id = Column(Integer, primary_key=True)
     case_id = Column(Integer, ForeignKey('cases.id', ondelete='CASCADE'), nullable=False)
+    event_id = Column(Integer, ForeignKey('case_events.id', ondelete='SET NULL'), nullable=True)
     document_name = Column(String(255))
     file_path = Column(Text)
     ocr_text = Column(Text)
     document_date = Column(Date)
     created_at = Column(TIMESTAMP, server_default=func.current_timestamp())
 
-    # Relationship
+    # Relationships
     case = relationship("Case", back_populates="documents")
+    event = relationship("CaseEvent")
 
     def __repr__(self):
         return f"<Document(case_id={self.case_id}, name='{self.document_name}')>"
