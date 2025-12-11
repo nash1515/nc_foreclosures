@@ -20,7 +20,8 @@ This system scrapes foreclosure data from the North Carolina Online Courts Porta
 ### Phase 2 - PDF & OCR (✅ Complete)
 - PDF downloading from case detail pages
 - OCR text extraction (pdftotext + Tesseract fallback)
-- Batch scrape script with monthly/quarterly strategies
+- Unified scraper architecture with configurable chunking
+- Sequential and parallel batch scraping modes
 
 ### Phase 2.5 - Data Extraction (✅ Complete)
 - Regex-based structured data extraction from OCR text
@@ -82,9 +83,12 @@ PYTHONPATH=$(pwd) venv/bin/python tests/test_phase1_integration.py
 
 ```
 nc_foreclosures/
-├── common/          # Shared utilities (config, logging, county codes)
+├── common/          # Shared utilities (config, logging, county codes, date chunking)
 ├── database/        # PostgreSQL models and connection management
 ├── scraper/         # Web scraping (VPN, CAPTCHA, Playwright, PDF download)
+│   ├── date_range_scrape.py   - Single date range search (core)
+│   ├── batch_scrape.py         - Sequential batch scraping
+│   └── parallel_scrape.py      - Parallel batch scraping
 ├── scheduler/       # Automated job scheduling (API-configurable)
 ├── ocr/             # PDF processing and text extraction
 ├── extraction/      # Structured data extraction and classification

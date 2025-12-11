@@ -135,6 +135,18 @@ The scraper supports three modes for different use cases:
 PYTHONPATH=$(pwd) venv/bin/python scraper/date_range_scrape.py \
   --start 2024-01-01 \
   --end 2024-01-31
+
+# Skip existing cases (default behavior)
+PYTHONPATH=$(pwd) venv/bin/python scraper/date_range_scrape.py \
+  --start 2024-01-01 \
+  --end 2024-01-31 \
+  --skip-existing
+
+# Re-process existing cases
+PYTHONPATH=$(pwd) venv/bin/python scraper/date_range_scrape.py \
+  --start 2024-01-01 \
+  --end 2024-01-31 \
+  --refresh-existing
 ```
 
 ### Batch Sequential Scraping
@@ -144,6 +156,19 @@ PYTHONPATH=$(pwd) venv/bin/python scraper/batch_scrape.py \
   --start 2024-01-01 \
   --end 2024-12-31 \
   --chunk monthly
+
+# Chunk options: daily, weekly, monthly, quarterly, yearly
+PYTHONPATH=$(pwd) venv/bin/python scraper/batch_scrape.py \
+  --start 2024-01-01 \
+  --end 2024-12-31 \
+  --chunk quarterly
+
+# Search each county separately (avoids portal result limits)
+PYTHONPATH=$(pwd) venv/bin/python scraper/batch_scrape.py \
+  --start 2024-01-01 \
+  --end 2024-12-31 \
+  --chunk monthly \
+  --per-county
 ```
 
 ### Batch Parallel Scraping
@@ -154,7 +179,29 @@ PYTHONPATH=$(pwd) venv/bin/python scraper/parallel_scrape.py \
   --end 2024-12-31 \
   --chunk monthly \
   --workers 3
+
+# Historical backfill example (per-county to avoid limits)
+PYTHONPATH=$(pwd) venv/bin/python scraper/parallel_scrape.py \
+  --start 2020-01-01 \
+  --end 2025-11-24 \
+  --chunk monthly \
+  --per-county \
+  --workers 3
 ```
+
+### Scraper Architecture
+
+All scrapers use `DateRangeScraper` as the core engine:
+
+- **date_range_scrape.py** - Single search across all counties (1 CAPTCHA)
+- **batch_scrape.py** - Sequential batch processing with configurable chunking
+- **parallel_scrape.py** - Parallel batch processing with worker pools
+
+**Key Features:**
+- Default `--skip-existing` behavior prevents duplicate processing
+- `--per-county` flag searches one county at a time (avoids portal limits)
+- Date chunking utility supports daily/weekly/monthly/quarterly/yearly
+- Automatic skipped case logging for transparency
 
 ## Troubleshooting
 

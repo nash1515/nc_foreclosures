@@ -15,11 +15,12 @@ All core components have been implemented:
 
 ### 📋 Implementation Details
 
-**Files Updated:**
-- `scraper/date_range_scrape.py` - Direct date range scraping with portal interactions
-- `scraper/batch_scrape.py` - Sequential batch scraping with chunking
-- `scraper/parallel_scrape.py` - Parallel batch scraping for faster processing
-- `scraper/page_parser.py` - Implemented HTML parsing functions
+**Files:**
+- `scraper/date_range_scrape.py` - Core scraper (single date range search)
+- `scraper/batch_scrape.py` - Sequential batch scraping with configurable chunking
+- `scraper/parallel_scrape.py` - Parallel batch scraping with worker pools
+- `scraper/page_parser.py` - HTML parsing and foreclosure detection
+- `common/date_utils.py` - Date chunking utility (daily/weekly/monthly/quarterly/yearly)
 
 **Portal Integration:**
 - Form filling with county, date range, and search criteria
@@ -45,7 +46,7 @@ Before testing, ensure:
 3. **CapSolver has credits** (check balance at capsolver.com)
 4. **Environment variables set** (`.env` file configured)
 
-### Quick Test Command
+### Quick Test Commands
 
 ```bash
 # Activate environment
@@ -64,13 +65,43 @@ PYTHONPATH=$(pwd) venv/bin/python scraper/batch_scrape.py \
   --end 2024-03-31 \
   --chunk monthly
 
-# Test with parallel scraping (3 workers)
+# Test with parallel scraping (3 workers, monthly chunks)
 PYTHONPATH=$(pwd) venv/bin/python scraper/parallel_scrape.py \
   --start 2024-01-01 \
   --end 2024-03-31 \
   --chunk monthly \
   --workers 3
+
+# Test per-county mode (avoids portal result limits)
+PYTHONPATH=$(pwd) venv/bin/python scraper/batch_scrape.py \
+  --start 2024-01-01 \
+  --end 2024-03-31 \
+  --chunk monthly \
+  --per-county
+
+# Test skip-existing (default) vs refresh-existing
+PYTHONPATH=$(pwd) venv/bin/python scraper/date_range_scrape.py \
+  --start 2024-01-01 \
+  --end 2024-01-31 \
+  --skip-existing
+
+PYTHONPATH=$(pwd) venv/bin/python scraper/date_range_scrape.py \
+  --start 2024-01-01 \
+  --end 2024-01-31 \
+  --refresh-existing
 ```
+
+### Scraper CLI Flags
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--start` | Start date (YYYY-MM-DD) | Required |
+| `--end` | End date (YYYY-MM-DD) | Required |
+| `--chunk` | Chunk size: daily, weekly, monthly, quarterly, yearly | Required for batch/parallel |
+| `--workers` | Number of parallel workers | 3 (parallel_scrape.py only) |
+| `--per-county` | Search each county separately | False (searches all counties) |
+| `--skip-existing` | Skip cases already in database | True (default) |
+| `--refresh-existing` | Re-process existing cases | False |
 
 ### What to Watch For
 

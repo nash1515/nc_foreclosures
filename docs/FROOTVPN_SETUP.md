@@ -137,11 +137,19 @@ PYTHONPATH=$(pwd) venv/bin/python scraper/date_range_scrape.py \
   --start 2024-01-01 \
   --end 2024-01-31
 
-# Or use batch scraping
+# Or use batch scraping (sequential chunks)
 PYTHONPATH=$(pwd) venv/bin/python scraper/batch_scrape.py \
   --start 2024-01-01 \
   --end 2024-03-31 \
   --chunk monthly
+
+# Or use parallel scraping (concurrent chunks)
+PYTHONPATH=$(pwd) venv/bin/python scraper/parallel_scrape.py \
+  --start 2024-01-01 \
+  --end 2024-12-31 \
+  --chunk monthly \
+  --workers 3 \
+  --per-county
 ```
 
 ## Tips

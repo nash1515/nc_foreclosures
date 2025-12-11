@@ -1,7 +1,7 @@
 # Unified Scraper Design
 
 **Date:** 2025-12-11
-**Status:** Approved
+**Status:** Implemented ✅
 
 ## Overview
 
@@ -155,10 +155,23 @@ scraper.run()
 5. Update documentation
 6. Single commit with all changes
 
+## Implementation Summary
+
+All changes completed on 2025-12-11:
+
+1. **Created** `common/date_utils.py` with `generate_date_chunks()` utility
+2. **Created** `scraper/batch_scrape.py` (sequential batch scraping)
+3. **Created** `scraper/parallel_scrape.py` (parallel batch scraping)
+4. **Updated** `scraper/date_range_scrape.py` with `--skip-existing` and `--refresh-existing` flags
+5. **Deleted** `scraper/initial_scrape.py`, `scraper/batch_initial_scrape.py`, `scraper/parallel_batch_scrape.py`
+6. **Updated** all documentation files
+
 ## Post-Implementation
 
-Run historical backfill:
+Ready to run historical backfill:
 ```bash
 PYTHONPATH=$(pwd) venv/bin/python scraper/parallel_scrape.py \
-  --start 2024-01-01 --end 2025-11-24 --chunk monthly --workers 3
+  --start 2020-01-01 --end 2025-11-24 --chunk monthly --per-county --workers 3
 ```
+
+Expected: 426 chunks (71 months × 6 counties), existing cases auto-skipped
