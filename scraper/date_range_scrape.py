@@ -41,7 +41,7 @@ TARGET_COUNTIES = ['wake', 'durham', 'orange', 'chatham', 'lee', 'harnett']
 class DateRangeScraper:
     """Scraper for multi-county date range searches."""
 
-    def __init__(self, start_date, end_date, counties=None, test_mode=False, limit=None):
+    def __init__(self, start_date, end_date, counties=None, test_mode=False, limit=None, skip_existing=True):
         """
         Initialize scraper.
 
@@ -51,12 +51,14 @@ class DateRangeScraper:
             counties: List of county names (default: all 6 target counties)
             test_mode: If True, limit scraping for testing
             limit: Maximum number of cases to process (for testing)
+            skip_existing: If True, skip cases already in DB (default: True)
         """
         self.start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
         self.end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
         self.counties = counties or TARGET_COUNTIES
         self.test_mode = test_mode
         self.limit = limit
+        self.skip_existing = skip_existing
         self.scrape_log_id = None
 
         # Validate counties
@@ -67,6 +69,10 @@ class DateRangeScraper:
         logger.info(f"DateRangeScraper initialized")
         logger.info(f"  Date range: {self.start_date} to {self.end_date}")
         logger.info(f"  Counties: {', '.join(self.counties)}")
+        if self.skip_existing:
+            logger.info("  Mode: Skip existing cases (use --refresh-existing to re-process)")
+        else:
+            logger.info("  Mode: Refresh existing cases")
         if test_mode:
             logger.info(f"  TEST MODE - Limit: {limit} cases")
 
@@ -223,6 +229,14 @@ class DateRangeScraper:
         case_number = case_info['case_number']
         case_url = case_info.get('case_url')
         location = case_info.get('location', '')
+
+        # Skip existing cases if configured (default behavior)
+        if self.skip_existing:
+            with get_session() as session:
+                existing = session.query(Case).filter_by(case_number=case_number).first()
+                if existing:
+                    logger.debug(f"  Skipping existing case {case_number}")
+                    return False
 
         logger.info(f"Processing case: {case_number} ({location})")
 
@@ -460,6 +474,8 @@ if __name__ == '__main__':
     parser.add_argument('--county', help='Specific county (optional, default: all)')
     parser.add_argument('--dry-run', action='store_true', help='Show what would be done')
     parser.add_argument('--limit', type=int, help='Limit cases to process')
+    parser.add_argument('--refresh-existing', action='store_true',
+                        help='Re-process cases that already exist in DB (default: skip existing)')
 
     args = parser.parse_args()
 
@@ -472,7 +488,8 @@ if __name__ == '__main__':
             start_date=args.start,
             end_date=args.end,
             counties=counties,
-            limit=args.limit
+            limit=args.limit,
+            skip_existing=not args.refresh_existing  # Default True, False if --refresh-existing
         )
         result = scraper.run()
 
