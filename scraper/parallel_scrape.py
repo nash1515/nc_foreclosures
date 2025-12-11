@@ -65,20 +65,22 @@ def run_chunk_scrape(chunk_num, total_chunks, chunk_start, chunk_end, county, li
         dry_run: If True, just show what would be done
 
     Returns:
-        dict: Result with chunk_num, success, cases, error
+        dict: Result with chunk_num, success, cases, error, county
     """
+    county_str = county if county else "all counties"
     chunk_id = f"Chunk {chunk_num}/{total_chunks}"
 
     with log_lock:
-        logger.info(f"[{chunk_id}] Starting: {chunk_start} to {chunk_end}")
+        logger.info(f"[{chunk_id}] Starting: {chunk_start} to {chunk_end} ({county_str})")
 
     if dry_run:
         with log_lock:
-            logger.info(f"[{chunk_id}] [DRY RUN] Would process {county or 'all counties'}")
+            logger.info(f"[{chunk_id}] [DRY RUN] Would process {county_str}")
         return {
             'chunk_num': chunk_num,
             'start_date': chunk_start,
             'end_date': chunk_end,
+            'county': county,
             'success': True,
             'cases': 0,
             'error': None
@@ -113,6 +115,7 @@ def run_chunk_scrape(chunk_num, total_chunks, chunk_start, chunk_end, county, li
             'chunk_num': chunk_num,
             'start_date': chunk_start,
             'end_date': chunk_end,
+            'county': county,
             'success': success,
             'cases': cases_processed,
             'error': error_message
@@ -126,13 +129,14 @@ def run_chunk_scrape(chunk_num, total_chunks, chunk_start, chunk_end, county, li
             'chunk_num': chunk_num,
             'start_date': chunk_start,
             'end_date': chunk_end,
+            'county': county,
             'success': False,
             'cases': 0,
             'error': str(e)
         }
 
 
-def run_parallel_scrape(start_date, end_date, chunk_size, county=None, limit=None, dry_run=False, workers=3):
+def run_parallel_scrape(start_date, end_date, chunk_size, county=None, limit=None, dry_run=False, workers=3, per_county=False):
     """
     Run parallel batch scrape with configurable date chunking.
 
@@ -144,12 +148,25 @@ def run_parallel_scrape(start_date, end_date, chunk_size, county=None, limit=Non
         limit: Limit cases per chunk for testing (optional)
         dry_run: If True, show chunks without running
         workers: Number of parallel workers
+        per_county: If True, search each county separately (recommended for backfills)
 
     Returns:
         dict: Summary of parallel scrape results
     """
-    # Generate chunks
-    chunks = generate_date_chunks(start_date, end_date, chunk_size)
+    # Generate base date chunks
+    date_chunks = generate_date_chunks(start_date, end_date, chunk_size)
+
+    # Expand chunks to include county if per_county mode
+    if per_county:
+        chunks = []
+        for chunk_start, chunk_end in date_chunks:
+            for cnty in TARGET_COUNTIES:
+                chunks.append((chunk_start, chunk_end, cnty))
+        logger.info(f"Per-county mode: {len(date_chunks)} date chunks × {len(TARGET_COUNTIES)} counties = {len(chunks)} total searches")
+    else:
+        # Original behavior: just date chunks, all counties at once
+        chunks = [(chunk_start, chunk_end, county) for chunk_start, chunk_end in date_chunks]
+
     total_chunks = len(chunks)
 
     logger.info("=" * 60)
@@ -159,7 +176,10 @@ def run_parallel_scrape(start_date, end_date, chunk_size, county=None, limit=Non
     logger.info(f"Chunk size: {chunk_size}")
     logger.info(f"Total chunks: {total_chunks}")
     logger.info(f"Parallel workers: {workers}")
-    logger.info(f"Counties: {county or 'all 6 counties'}")
+    if per_county:
+        logger.info(f"Mode: Per-county (each county searched separately)")
+    else:
+        logger.info(f"Counties: {county or 'all 6 counties'}")
     if limit:
         logger.info(f"Limit: {limit} cases per chunk")
     if dry_run:
@@ -169,8 +189,9 @@ def run_parallel_scrape(start_date, end_date, chunk_size, county=None, limit=Non
     # Dry run: just show chunks
     if dry_run:
         logger.info("\nChunks to process in parallel:")
-        for i, (chunk_start, chunk_end) in enumerate(chunks, 1):
-            logger.info(f"  Chunk {i}/{total_chunks}: {chunk_start} to {chunk_end}")
+        for i, (chunk_start, chunk_end, cnty) in enumerate(chunks, 1):
+            county_str = cnty if cnty else "all counties"
+            logger.info(f"  Chunk {i}/{total_chunks}: {chunk_start} to {chunk_end} ({county_str})")
         logger.info("=" * 60)
         return {
             'total_chunks': total_chunks,
@@ -202,11 +223,11 @@ def run_parallel_scrape(start_date, end_date, chunk_size, county=None, limit=Non
                 total_chunks,
                 chunk_start,
                 chunk_end,
-                county,
+                cnty,
                 limit,
                 dry_run
             ): i
-            for i, (chunk_start, chunk_end) in enumerate(chunks, 1)
+            for i, (chunk_start, chunk_end, cnty) in enumerate(chunks, 1)
         }
 
         # Collect results as they complete
@@ -225,6 +246,7 @@ def run_parallel_scrape(start_date, end_date, chunk_size, county=None, limit=Non
                         'chunk_num': result['chunk_num'],
                         'start_date': result['start_date'],
                         'end_date': result['end_date'],
+                        'county': result.get('county'),
                         'error': result['error']
                     })
 
@@ -257,7 +279,8 @@ def run_parallel_scrape(start_date, end_date, chunk_size, county=None, limit=Non
     if results['failed_chunks']:
         logger.warning("\nFailed chunks:")
         for failed in results['failed_chunks']:
-            logger.warning(f"  Chunk {failed['chunk_num']}: {failed['start_date']} to {failed['end_date']}")
+            county_info = f" ({failed['county']})" if failed.get('county') else ""
+            logger.warning(f"  Chunk {failed['chunk_num']}: {failed['start_date']} to {failed['end_date']}{county_info}")
             logger.warning(f"    Error: {failed['error']}")
 
     logger.info("=" * 60)
@@ -290,6 +313,8 @@ def main():
     parser.add_argument('--limit', type=int, help='Limit cases per chunk for testing')
     parser.add_argument('--dry-run', action='store_true', help='Show chunks without running')
     parser.add_argument('--workers', type=int, default=3, help='Number of parallel workers (default: 3)')
+    parser.add_argument('--per-county', action='store_true',
+                        help='Search each county separately to avoid result limits (recommended for backfills)')
 
     args = parser.parse_args()
 
@@ -332,7 +357,8 @@ def main():
         county=county,
         limit=args.limit,
         dry_run=args.dry_run,
-        workers=args.workers
+        workers=args.workers,
+        per_county=args.per_county
     )
 
     # Exit with appropriate code

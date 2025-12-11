@@ -36,7 +36,7 @@ logger = setup_logger(__name__)
 TARGET_COUNTIES = ['wake', 'durham', 'orange', 'chatham', 'lee', 'harnett']
 
 
-def run_batch_scrape(start_date, end_date, chunk_size, county=None, limit=None, dry_run=False):
+def run_batch_scrape(start_date, end_date, chunk_size, county=None, limit=None, dry_run=False, per_county=False):
     """
     Run batch scrape with configurable date chunking.
 
@@ -47,12 +47,25 @@ def run_batch_scrape(start_date, end_date, chunk_size, county=None, limit=None, 
         county: Single county name (optional, default: all 6 counties)
         limit: Limit cases per chunk for testing (optional)
         dry_run: If True, show chunks without running
+        per_county: If True, search each county separately (recommended for backfills)
 
     Returns:
         dict: Summary of batch scrape results
     """
-    # Generate chunks
-    chunks = generate_date_chunks(start_date, end_date, chunk_size)
+    # Generate base date chunks
+    date_chunks = generate_date_chunks(start_date, end_date, chunk_size)
+
+    # Expand chunks to include county if per_county mode
+    if per_county:
+        chunks = []
+        for chunk_start, chunk_end in date_chunks:
+            for cnty in TARGET_COUNTIES:
+                chunks.append((chunk_start, chunk_end, cnty))
+        logger.info(f"Per-county mode: {len(date_chunks)} date chunks × {len(TARGET_COUNTIES)} counties = {len(chunks)} total searches")
+    else:
+        # Original behavior: just date chunks, all counties at once
+        chunks = [(chunk_start, chunk_end, county) for chunk_start, chunk_end in date_chunks]
+
     total_chunks = len(chunks)
 
     logger.info("=" * 60)
@@ -61,21 +74,22 @@ def run_batch_scrape(start_date, end_date, chunk_size, county=None, limit=None, 
     logger.info(f"Date range: {start_date} to {end_date}")
     logger.info(f"Chunk size: {chunk_size}")
     logger.info(f"Total chunks: {total_chunks}")
-    logger.info(f"Counties: {county or 'all 6 counties'}")
+    if per_county:
+        logger.info(f"Mode: Per-county (each county searched separately)")
+    else:
+        logger.info(f"Counties: {county or 'all 6 counties'}")
     if limit:
         logger.info(f"Limit: {limit} cases per chunk")
     if dry_run:
         logger.info("DRY RUN MODE - No actual scraping")
     logger.info("=" * 60)
 
-    # Prepare counties list
-    counties = [county] if county else None
-
     # Dry run: just show chunks
     if dry_run:
         logger.info("\nChunks to process:")
-        for i, (chunk_start, chunk_end) in enumerate(chunks, 1):
-            logger.info(f"  Chunk {i}/{total_chunks}: {chunk_start} to {chunk_end}")
+        for i, (chunk_start, chunk_end, cnty) in enumerate(chunks, 1):
+            county_str = cnty if cnty else "all counties"
+            logger.info(f"  Chunk {i}/{total_chunks}: {chunk_start} to {chunk_end} ({county_str})")
         logger.info("=" * 60)
         return {
             'total_chunks': total_chunks,
@@ -94,11 +108,15 @@ def run_batch_scrape(start_date, end_date, chunk_size, county=None, limit=None, 
         'failed_chunks': []
     }
 
-    for i, (chunk_start, chunk_end) in enumerate(chunks, 1):
-        logger.info(f"\nProcessing chunk {i} of {total_chunks}: {chunk_start} to {chunk_end}")
+    for i, (chunk_start, chunk_end, cnty) in enumerate(chunks, 1):
+        county_str = cnty if cnty else "all counties"
+        logger.info(f"\nProcessing chunk {i} of {total_chunks}: {chunk_start} to {chunk_end} ({county_str})")
         logger.info("-" * 60)
 
         try:
+            # Prepare counties list for DateRangeScraper
+            counties = [cnty] if cnty else None
+
             scraper = DateRangeScraper(
                 start_date=chunk_start.strftime('%Y-%m-%d'),
                 end_date=chunk_end.strftime('%Y-%m-%d'),
@@ -120,6 +138,7 @@ def run_batch_scrape(start_date, end_date, chunk_size, county=None, limit=None, 
                     'chunk_num': i,
                     'start_date': chunk_start,
                     'end_date': chunk_end,
+                    'county': cnty,
                     'error': result.get('error', 'Unknown error')
                 })
                 logger.error(f"✗ Chunk {i} failed: {result.get('error', 'Unknown error')}")
@@ -131,6 +150,7 @@ def run_batch_scrape(start_date, end_date, chunk_size, county=None, limit=None, 
                 'chunk_num': i,
                 'start_date': chunk_start,
                 'end_date': chunk_end,
+                'county': cnty,
                 'error': str(e)
             })
             logger.error(f"✗ Chunk {i} failed with exception: {e}")
@@ -149,7 +169,8 @@ def run_batch_scrape(start_date, end_date, chunk_size, county=None, limit=None, 
     if results['failed_chunks']:
         logger.warning("\nFailed chunks:")
         for failed in results['failed_chunks']:
-            logger.warning(f"  Chunk {failed['chunk_num']}: {failed['start_date']} to {failed['end_date']}")
+            county_info = f" ({failed['county']})" if failed.get('county') else ""
+            logger.warning(f"  Chunk {failed['chunk_num']}: {failed['start_date']} to {failed['end_date']}{county_info}")
             logger.warning(f"    Error: {failed['error']}")
 
     logger.info("=" * 60)
@@ -181,6 +202,8 @@ def main():
     parser.add_argument('--county', help='Single county override (default: all 6 counties)')
     parser.add_argument('--limit', type=int, help='Limit cases per chunk for testing')
     parser.add_argument('--dry-run', action='store_true', help='Show chunks without running')
+    parser.add_argument('--per-county', action='store_true',
+                        help='Search each county separately to avoid result limits (recommended for backfills)')
 
     args = parser.parse_args()
 
@@ -214,7 +237,8 @@ def main():
         chunk_size=args.chunk,
         county=county,
         limit=args.limit,
-        dry_run=args.dry_run
+        dry_run=args.dry_run,
+        per_county=args.per_county
     )
 
     # Exit with appropriate code
