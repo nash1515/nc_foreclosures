@@ -125,20 +125,23 @@ curl ifconfig.me
 
 ## Step 6: Run the Scraper
 
-With VPN connected:
+With VPN connected (if needed):
 
 ```bash
-cd /home/ahn/projects/nc_foreclosures/.worktrees/phase1-foundation
+cd /home/ahn/projects/nc_foreclosures
 source venv/bin/activate
 export PYTHONPATH=$(pwd)
 
-# Test scraper
-PYTHONPATH=$(pwd) venv/bin/python scraper/initial_scrape.py \
-  --county wake \
+# Test scraper with single date range
+PYTHONPATH=$(pwd) venv/bin/python scraper/date_range_scrape.py \
   --start 2024-01-01 \
-  --end 2024-01-31 \
-  --test \
-  --limit 5
+  --end 2024-01-31
+
+# Or use batch scraping
+PYTHONPATH=$(pwd) venv/bin/python scraper/batch_scrape.py \
+  --start 2024-01-01 \
+  --end 2024-03-31 \
+  --chunk monthly
 ```
 
 ## Tips

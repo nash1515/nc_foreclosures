@@ -127,16 +127,33 @@ Should show: ✓ CapSolver initialized successfully
 
 ## Running the Scraper
 
-**Note:** The scraper framework is complete, but portal-specific implementation requires exploring the actual NC Courts Portal structure. The placeholders in `page_parser.py` and `initial_scrape.py` need to be filled in with actual HTML selectors.
+The scraper supports three modes for different use cases:
 
-Example command (once portal parsing is implemented):
+### Single Date Range (Direct Scraping)
 ```bash
-PYTHONPATH=$(pwd) venv/bin/python scraper/initial_scrape.py \
-  --county wake \
+# Scrape a specific date range across all counties
+PYTHONPATH=$(pwd) venv/bin/python scraper/date_range_scrape.py \
   --start 2024-01-01 \
-  --end 2024-01-31 \
-  --test \
-  --limit 10
+  --end 2024-01-31
+```
+
+### Batch Sequential Scraping
+```bash
+# Break large date ranges into chunks, process sequentially
+PYTHONPATH=$(pwd) venv/bin/python scraper/batch_scrape.py \
+  --start 2024-01-01 \
+  --end 2024-12-31 \
+  --chunk monthly
+```
+
+### Batch Parallel Scraping
+```bash
+# Process chunks in parallel for faster scraping
+PYTHONPATH=$(pwd) venv/bin/python scraper/parallel_scrape.py \
+  --start 2024-01-01 \
+  --end 2024-12-31 \
+  --chunk monthly \
+  --workers 3
 ```
 
 ## Troubleshooting
@@ -174,9 +191,9 @@ curl ifconfig.me
 ## Next Steps
 
 1. **Explore NC Courts Portal** - Use Playwright to interactively explore the portal and identify HTML selectors
-2. **Implement Portal Parsing** - Fill in the TODO sections in `page_parser.py` and `initial_scrape.py`
-3. **Test with Small Sample** - Run scraper with `--test --limit 5` on a small date range
-4. **Expand to Full Scraping** - Once verified, run larger scrapes
+2. **Implement Portal Parsing** - Fill in the TODO sections in `page_parser.py` and the scraper modules
+3. **Test with Small Sample** - Run scraper on a small date range (1-2 months)
+4. **Expand to Full Scraping** - Once verified, run larger scrapes with batch or parallel modes
 
 ## Project Structure
 

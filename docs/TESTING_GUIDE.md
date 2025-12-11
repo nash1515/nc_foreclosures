@@ -16,7 +16,9 @@ All core components have been implemented:
 ### 📋 Implementation Details
 
 **Files Updated:**
-- `scraper/initial_scrape.py` - Integrated portal interactions
+- `scraper/date_range_scrape.py` - Direct date range scraping with portal interactions
+- `scraper/batch_scrape.py` - Sequential batch scraping with chunking
+- `scraper/parallel_scrape.py` - Parallel batch scraping for faster processing
 - `scraper/page_parser.py` - Implemented HTML parsing functions
 
 **Portal Integration:**
@@ -47,17 +49,27 @@ Before testing, ensure:
 
 ```bash
 # Activate environment
-cd /home/ahn/projects/nc_foreclosures/.worktrees/phase1-foundation
+cd /home/ahn/projects/nc_foreclosures
 source venv/bin/activate
 export PYTHONPATH=$(pwd)
 
-# Test with 5 cases from Wake County in January 2024
-PYTHONPATH=$(pwd) venv/bin/python scraper/initial_scrape.py \
-  --county wake \
+# Test with single date range (January 2024)
+PYTHONPATH=$(pwd) venv/bin/python scraper/date_range_scrape.py \
   --start 2024-01-01 \
-  --end 2024-01-31 \
-  --test \
-  --limit 5
+  --end 2024-01-31
+
+# Test with batch scraping (monthly chunks)
+PYTHONPATH=$(pwd) venv/bin/python scraper/batch_scrape.py \
+  --start 2024-01-01 \
+  --end 2024-03-31 \
+  --chunk monthly
+
+# Test with parallel scraping (3 workers)
+PYTHONPATH=$(pwd) venv/bin/python scraper/parallel_scrape.py \
+  --start 2024-01-01 \
+  --end 2024-03-31 \
+  --chunk monthly \
+  --workers 3
 ```
 
 ### What to Watch For

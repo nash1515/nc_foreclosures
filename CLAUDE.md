@@ -70,6 +70,18 @@ cd frontend && npm run dev -- --host &
 # Monitor specific cases
 PYTHONPATH=$(pwd) venv/bin/python scraper/case_monitor.py --classification upset_bid
 
+# Date range scraping (single search)
+PYTHONPATH=$(pwd) venv/bin/python scraper/date_range_scrape.py \
+  --start 2024-01-01 --end 2024-01-31
+
+# Batch scraping (sequential chunks)
+PYTHONPATH=$(pwd) venv/bin/python scraper/batch_scrape.py \
+  --start 2024-01-01 --end 2024-12-31 --chunk monthly
+
+# Parallel scraping (concurrent chunks)
+PYTHONPATH=$(pwd) venv/bin/python scraper/parallel_scrape.py \
+  --start 2024-01-01 --end 2024-12-31 --chunk monthly --workers 3
+
 # Download missing documents
 PYTHONPATH=$(pwd) venv/bin/python scripts/download_missing_documents.py
 
@@ -81,6 +93,11 @@ PGPASSWORD=nc_password psql -U nc_user -d nc_foreclosures -h localhost
 
 ### Modules
 - `scraper/` - Playwright scraper with CAPTCHA solving (CapSolver)
+  - `date_range_scrape.py` - Direct date range scraping
+  - `batch_scrape.py` - Sequential batch scraping with chunking
+  - `parallel_scrape.py` - Parallel batch scraping for performance
+  - `case_monitor.py` - Monitor existing cases (no CAPTCHA)
+  - `daily_scrape.py` - Daily automation orchestrator
 - `extraction/` - Regex extraction + classification from OCR text
 - `scheduler/` - Daily scrape automation (5 AM Mon-Fri)
 - `web_app/` - Flask API with Google OAuth
