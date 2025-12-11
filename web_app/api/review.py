@@ -1,5 +1,6 @@
 """Review Queue API endpoints."""
 
+import json
 from datetime import datetime, date, timedelta
 from flask import Blueprint, request, jsonify
 from sqlalchemy import func
@@ -258,8 +259,17 @@ def add_skipped_cases():
             session.add(case)
             session.flush()
 
-            # Add events from JSON
-            events = skipped.events_json if skipped.events_json else []
+            # Add events from JSON (handle double-encoded JSON from scraper)
+            events_raw = skipped.events_json if skipped.events_json else []
+            # If it's a string (double-encoded), parse it
+            if isinstance(events_raw, str):
+                try:
+                    events = json.loads(events_raw)
+                except json.JSONDecodeError:
+                    events = []
+            else:
+                events = events_raw if events_raw else []
+
             for event_data in events:
                 event = CaseEvent(
                     case_id=case.id,

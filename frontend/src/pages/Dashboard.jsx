@@ -244,18 +244,8 @@ function Dashboard() {
 
   return (
     <div style={{ padding: 24 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+      <div style={{ marginBottom: 24 }}>
         <Title level={2} style={{ margin: 0 }}>Upset Bid Dashboard</Title>
-        <Space>
-          <Text style={{ marginRight: 8 }}>Filter by County:</Text>
-          <Select
-            value={selectedCounty}
-            onChange={setSelectedCounty}
-            options={COUNTIES}
-            style={{ width: 160 }}
-            loading={loading}
-          />
-        </Space>
       </div>
 
       {/* Stats Cards */}
@@ -300,8 +290,52 @@ function Dashboard() {
         </Col>
       </Row>
 
+      {/* Upset Bid Cases Table */}
+      <Card
+        title={
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>
+              <DollarOutlined style={{ marginRight: 8, color: '#fa541c' }} />
+              Active Upset Bid Opportunities ({upsetBids.length})
+            </span>
+            <Space>
+              <Text style={{ marginRight: 8 }}>Filter by County:</Text>
+              <Select
+                value={selectedCounty}
+                onChange={setSelectedCounty}
+                options={COUNTIES}
+                style={{ width: 160 }}
+                loading={loading}
+              />
+            </Space>
+          </div>
+        }
+      >
+        {upsetBids.length === 0 ? (
+          <Alert
+            type="info"
+            message="No Active Upset Bids"
+            description="There are currently no cases in the upset bid period. Check back later for new opportunities."
+            showIcon
+          />
+        ) : (
+          <Table
+            dataSource={upsetBids}
+            columns={columns}
+            rowKey="id"
+            pagination={false}
+            size="middle"
+            rowClassName={(record) => {
+              if (record.urgency === 'expired') return 'row-expired';
+              if (record.urgency === 'critical') return 'row-critical';
+              return '';
+            }}
+          />
+        )}
+      </Card>
+
       {/* Classification Breakdown */}
-      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+      <Row gutter={[16, 16]} style={{ marginTop: 24 }}>
         <Col xs={24} lg={12}>
           <Card title="Case Classifications" size="small">
             <Space direction="vertical" style={{ width: '100%' }}>
@@ -356,38 +390,6 @@ function Dashboard() {
           </Card>
         </Col>
       </Row>
-
-      {/* Upset Bid Cases Table */}
-      <Card
-        title={
-          <span>
-            <DollarOutlined style={{ marginRight: 8, color: '#fa541c' }} />
-            Active Upset Bid Opportunities ({upsetBids.length})
-          </span>
-        }
-      >
-        {upsetBids.length === 0 ? (
-          <Alert
-            type="info"
-            message="No Active Upset Bids"
-            description="There are currently no cases in the upset bid period. Check back later for new opportunities."
-            showIcon
-          />
-        ) : (
-          <Table
-            dataSource={upsetBids}
-            columns={columns}
-            rowKey="id"
-            pagination={false}
-            size="middle"
-            rowClassName={(record) => {
-              if (record.urgency === 'expired') return 'row-expired';
-              if (record.urgency === 'critical') return 'row-critical';
-              return '';
-            }}
-          />
-        )}
-      </Card>
 
       <style>{`
         .row-expired {

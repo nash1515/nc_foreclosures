@@ -4,6 +4,19 @@ NC Foreclosures - Foreclosure tracking system for 6 NC counties with upset bid o
 
 **Repo:** https://github.com/nash1515/nc_foreclosures | **Branch:** main
 
+## ⚠️ CRITICAL: Subagent-First Architecture
+
+**ALWAYS use subagents (Task tool) for all work.** The terminal window is the **orchestrator** - it thinks, plans, and delegates. Subagents do the actual work.
+
+**Why:** Maximum context window conservation. Direct tool calls consume context rapidly. Subagents execute in isolation and return only results.
+
+**Rules:**
+1. **Never run Bash/Read/Edit directly** for multi-step tasks - spawn a subagent
+2. **Never explore code directly** - use `subagent_type=Explore`
+3. **Never debug directly** - use `subagent_type=general-purpose` with clear instructions
+4. **Orchestrator role:** Plan → Delegate → Synthesize results → Report to user
+5. **Exception:** Simple single-command operations (starting servers, quick status checks)
+
 ## Quick Start
 
 ```bash
@@ -26,8 +39,15 @@ cd frontend && npm run dev -- --host &
 - **1,075 cases with addresses** (61.4%) / **675 cases missing addresses**
 - **25 active upset_bid** cases with deadlines
 - **Scheduler running** 5 AM Mon-Fri (3-day lookback on Mondays)
-- **Frontend:** React + Flask API (Dashboard with county filtering)
-- **Review Queue:** Approve/Reject buttons + Flagged for Re-review section
+- **Frontend:** React + Flask API (Dashboard with county filtering, improved layout)
+- **Review Queue:** Fixed +Add button (JSON encoding), Approve/Reject working
+
+### Recent Session Fixes (Dec 11)
+- Fixed double-encoded JSON bug in Review Queue +Add button
+- Added SCRA and "petition for sale" as foreclosure indicators
+- Implemented priority-based address extraction (searches multiple documents)
+- Fixed OCR pipeline to persist extracted text to database
+- Rearranged Dashboard layout (filter next to heading, stats at bottom)
 
 ### Classifications
 | Status | Count | Description |

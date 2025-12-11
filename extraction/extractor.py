@@ -113,6 +113,26 @@ FORM_ARTIFACTS = [
     'yes  no',  # Extra space variant
 ]
 
+# Document Priority for Address Extraction
+# When searching multiple documents for property address, try these types first
+# Keywords matched against file_path (case-insensitive)
+ADDRESS_DOCUMENT_PRIORITY = [
+    # Highest priority - initial filings usually have labeled property address
+    'foreclosure',
+    'special proceeding',
+    'notice of hearing',
+    # Sale documents
+    'notice of sale',
+    'report of foreclosure sale',
+    'report of sale',
+    # Service documents often list property address for posting
+    'affidavit of service',
+    'return of service',
+    # Other affidavits
+    'affidavit',
+    # Any other document (lowest priority)
+]
+
 # Bid Amount patterns (from Report of Foreclosure Sale)
 BID_AMOUNT_PATTERNS = [
     r'Amount\s+Bid[:\s]*\$?\s*([\d,]+\.?\d*)',
@@ -937,11 +957,58 @@ def extract_from_document(ocr_text: str) -> Dict[str, Any]:
     }
 
 
+def _get_document_priority(file_path: str) -> int:
+    """
+    Get priority score for a document based on filename.
+    Lower score = higher priority for address extraction.
+    """
+    if not file_path:
+        return len(ADDRESS_DOCUMENT_PRIORITY)
+
+    filename_lower = file_path.lower()
+    for i, keyword in enumerate(ADDRESS_DOCUMENT_PRIORITY):
+        if keyword in filename_lower:
+            return i
+    return len(ADDRESS_DOCUMENT_PRIORITY)  # Lowest priority
+
+
+def _find_address_in_documents(documents: list) -> Optional[str]:
+    """
+    Search documents in priority order for property address.
+
+    Tries each document until a valid property address is found.
+    Documents are sorted by type priority (foreclosure notices first,
+    then sale docs, then affidavits, then others).
+
+    Args:
+        documents: List of Document objects with ocr_text
+
+    Returns:
+        Property address string or None if not found in any document
+    """
+    # Sort documents by priority (foreclosure notices first)
+    sorted_docs = sorted(documents, key=lambda d: _get_document_priority(d.file_path))
+
+    # Try each document until we find an address
+    for doc in sorted_docs:
+        if not doc.ocr_text:
+            continue
+
+        address = extract_property_address(doc.ocr_text)
+        if address:
+            logger.info(f"  Found address in {doc.file_path}: {address}")
+            return address
+
+    return None
+
+
 def extract_all_from_case(case_id: int) -> Dict[str, Any]:
     """
     Extract all available data from all documents for a case.
 
     Combines data from all documents, preferring non-null values.
+    For property addresses, searches ALL documents in priority order
+    until a valid address is found.
 
     Args:
         case_id: Database ID of the case
@@ -964,14 +1031,20 @@ def extract_all_from_case(case_id: int) -> Dict[str, Any]:
     with get_session() as session:
         documents = session.query(Document).filter_by(case_id=case_id).all()
 
+        # For property_address: search ALL documents in priority order
+        result['property_address'] = _find_address_in_documents(documents)
+
+        # For other fields: use first non-null value from any document
         for doc in documents:
             if not doc.ocr_text:
                 continue
 
             doc_data = extract_from_document(doc.ocr_text)
 
-            # Merge data, preferring non-null values
+            # Merge data, preferring non-null values (skip property_address - handled above)
             for key, value in doc_data.items():
+                if key == 'property_address':
+                    continue  # Already handled with priority search
                 if value is not None and result[key] is None:
                     result[key] = value
 

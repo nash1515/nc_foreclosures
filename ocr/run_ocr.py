@@ -22,9 +22,10 @@ Usage:
 
 import argparse
 import sys
+from pathlib import Path
 
 # Add project root to path
-sys.path.insert(0, '/home/ahn/projects/nc_foreclosures/.worktrees/phase1-foundation')
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from common.logger import setup_logger
 from database.connection import get_session

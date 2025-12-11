@@ -405,6 +405,19 @@ class CaseMonitor:
                 logger.warning(f"    No text extracted from {file_path}")
                 continue
 
+            # Save OCR text to database
+            doc_id = doc_info.get('document_id')
+            if doc_id and ocr_text:
+                with get_session() as sess:
+                    from database.models import Document
+                    doc_record = sess.query(Document).filter_by(id=doc_id).first()
+                    if doc_record and not doc_record.ocr_text:
+                        doc_record.ocr_text = ocr_text
+                        sess.commit()
+                        logger.debug(f"    Saved {len(ocr_text)} chars of OCR text to database")
+                    elif doc_record and doc_record.ocr_text:
+                        logger.debug(f"    OCR text already exists in database")
+
             # Check if this is a Report of Sale document (AOC-SP-301)
             # This contains the INITIAL bid from the auction
             if is_report_of_sale_document(ocr_text):

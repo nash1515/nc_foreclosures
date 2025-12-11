@@ -373,6 +373,21 @@ def run_daily_tasks(
             logger.error(f"Task 2 failed: {e}")
             results['errors'].append(f"case_monitoring: {e}")
 
+    # Task 2.5: OCR documents downloaded during monitoring
+    if monitor_existing and not dry_run:
+        try:
+            from ocr.processor import process_unprocessed_documents
+            ocr_count = process_unprocessed_documents()
+            if ocr_count > 0:
+                logger.info(f"OCR processed {ocr_count} documents from monitoring")
+                if results.get('ocr_processed'):
+                    results['ocr_processed'] += ocr_count
+                else:
+                    results['ocr_processed'] = ocr_count
+        except Exception as e:
+            logger.error(f"Task 2.5 failed: {e}")
+            results['errors'].append(f"ocr_processing_monitoring: {e}")
+
     # Task 3: Validate upset_bid data completeness (always run)
     try:
         results['upset_bid_validation'] = validate_upset_bid_data(dry_run)

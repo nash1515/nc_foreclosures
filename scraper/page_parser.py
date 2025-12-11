@@ -15,7 +15,11 @@ FORECLOSURE_EVENT_INDICATORS = [
     'foreclosure case initiated',
     'report of foreclosure sale (chapter 45)',
     'notice of sale/resale',
-    'upset bid filed'
+    'upset bid filed',
+    # Servicemember Civil Relief Act affidavit is required in foreclosure proceedings
+    # to verify military service status - strong foreclosure indicator
+    'servicemember civil relief act',
+    'scra',
 ]
 
 # Event types that indicate an upset bid opportunity (includes non-foreclosure sales like partitions)
@@ -31,6 +35,7 @@ UPSET_BID_OPPORTUNITY_INDICATORS = [
 # These are checked against document titles (not event types) for day-1 detection
 SALE_DOCUMENT_INDICATORS = [
     'petition to sell',
+    'petition for sale',  # Matches "PETITION FOR THE SALE OF REAL PROPERTY"
     'petition to lease',
     'petition to mortgage',
     'petition for partition',  # Partition of real property - leads to sale
@@ -39,6 +44,7 @@ SALE_DOCUMENT_INDICATORS = [
     "minor's estate",
     "decedent's estate",
     'sell real property',
+    'sale of real property',  # Matches "PETITION FOR THE SALE OF REAL PROPERTY"
     'tax lien foreclosure',
     'tax foreclosure',
     'delinquent tax',
