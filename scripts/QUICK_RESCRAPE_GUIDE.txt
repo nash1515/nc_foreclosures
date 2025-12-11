@@ -1,0 +1,147 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                    NC FORECLOSURES - RESCRAPE QUICK GUIDE                    ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ SETUP (Run First)                                                            │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+  source venv/bin/activate
+  export PYTHONPATH=/home/ahn/projects/nc_foreclosures
+  ./scripts/vpn_status.sh || ./scripts/vpn_start.sh
+
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ CHECK STATISTICS                                                             │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+  # Overall stats
+  python scripts/check_document_stats.py
+
+  # Show duplicates and missing
+  python scripts/check_document_stats.py --show-duplicates --show-missing
+
+  # Stats for upcoming cases only
+  python scripts/check_document_stats.py --classification upcoming --show-missing
+
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ FIX SINGLE CASE (e.g., 25SP001706-910 with 28 duplicates)                   │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+  # Preview what will be done
+  python scripts/rescrape_case.py 25SP001706-910 --dry-run
+
+  # Execute (DELETES and re-downloads)
+  python scripts/rescrape_case.py 25SP001706-910
+
+  # Keep PDF files on disk (just refresh DB)
+  python scripts/rescrape_case.py 25SP001706-910 --keep-files
+
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ RESCRAPE ALL UPCOMING CASES (1,360 cases, 3-5 hours)                        │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+  # Test with 5 cases first
+  python scripts/rescrape_upcoming.py --limit 5 --dry-run
+
+  # Run in background (SAFE - only adds missing docs)
+  mkdir -p logs
+  nohup python scripts/rescrape_upcoming.py > logs/rescrape_$(date +%Y%m%d).log 2>&1 &
+
+  # Monitor progress
+  tail -f logs/rescrape_*.log
+
+  # Check results
+  python scripts/check_document_stats.py --classification upcoming
+
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ DATABASE QUERIES                                                             │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+  # Count total documents
+  PGPASSWORD=nc_password psql -U nc_user -d nc_foreclosures -h localhost \
+    -c "SELECT COUNT(*) FROM documents;"
+
+  # Find duplicates for specific case
+  PGPASSWORD=nc_password psql -U nc_user -d nc_foreclosures -h localhost \
+    -c "SELECT document_name, COUNT(*) FROM documents WHERE case_id=1598 GROUP BY document_name HAVING COUNT(*) > 1;"
+
+  # Cases without documents
+  PGPASSWORD=nc_password psql -U nc_user -d nc_foreclosures -h localhost \
+    -c "SELECT case_number FROM cases c WHERE NOT EXISTS (SELECT 1 FROM documents WHERE case_id=c.id) LIMIT 20;"
+
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ CURRENT STATE (Dec 9, 2025)                                                 │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+  Total cases: 1,743
+  Total documents: 19,770
+  Cases with documents: 1,440 (82.6%)
+  Cases WITHOUT documents: 303 (17.4%)
+
+  By Classification:
+    upcoming:          1,360 cases, 11,291 docs (80.4% have docs)
+    upset_bid:            23 cases,  1,627 docs (100% have docs)
+    blocked:              70 cases,    741 docs (80.0% have docs)
+    closed_sold:         221 cases,  4,911 docs (91.9% have docs)
+    closed_dismissed:     58 cases,  1,053 docs (98.3% have docs)
+
+  Top Duplicate Cases:
+    24SP001109-180 (Chatham): 100 duplicates
+    24SP001073-180 (Chatham): 98 duplicates
+    24SP001061-180 (Chatham): 88 duplicates
+    25SP001706-910 (Wake):    28 duplicates
+
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ SAFETY NOTES                                                                 │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+  rescrape_case.py:       DESTRUCTIVE - deletes documents first
+                          Use --dry-run before running
+                          Use --keep-files to preserve PDFs
+
+  rescrape_upcoming.py:   SAFE - only adds missing documents
+                          Never deletes anything
+                          Idempotent - safe to run multiple times
+
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ TROUBLESHOOTING                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+  "VPN not connected"
+    → ./scripts/vpn_start.sh
+    → Wait 15 seconds, then ./scripts/vpn_status.sh
+
+  "PYTHONPATH not set"
+    → export PYTHONPATH=/home/ahn/projects/nc_foreclosures
+
+  "Failed to fetch page"
+    → Check VPN: ./scripts/vpn_status.sh
+    → Try fewer workers: --workers 4
+
+  Check if rescrape is running:
+    → ps aux | grep rescrape_upcoming
+    → tail -f logs/rescrape_*.log
+
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ FILES                                                                        │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+  scripts/rescrape_case.py           - Single case rescraper
+  scripts/rescrape_upcoming.py       - Bulk rescraper (all upcoming)
+  scripts/check_document_stats.py    - Statistics and analysis
+  scripts/RESCRAPE_README.md         - Complete documentation
+  scripts/RESCRAPE_SUMMARY.md        - Implementation summary
+  scripts/QUICK_RESCRAPE_GUIDE.txt   - This file
+
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║ For full documentation, see: scripts/RESCRAPE_README.md                     ║
+╚══════════════════════════════════════════════════════════════════════════════╝

@@ -13,11 +13,12 @@ This script:
 4. Tracks progress and reports results
 
 Usage:
-    PYTHONPATH=/home/ahn/projects/nc_foreclosures venv/bin/python scripts/download_missing_documents.py
+    PYTHONPATH=/home/ahn/projects/nc_foreclosures venv/bin/python scripts/download_missing_documents.py [--yes]
 """
 import sys
 sys.path.insert(0, '/home/ahn/projects/nc_foreclosures')
 
+import argparse
 import time
 from playwright.sync_api import sync_playwright
 from sqlalchemy import text
@@ -53,6 +54,10 @@ def main():
     """
     Main function to download missing documents.
     """
+    parser = argparse.ArgumentParser(description='Download documents for cases with 0 documents')
+    parser.add_argument('--yes', '-y', action='store_true', help='Skip confirmation prompt')
+    args = parser.parse_args()
+
     print("=" * 60)
     print("NC Foreclosures - Download Missing Documents")
     print("=" * 60)
@@ -78,11 +83,12 @@ def main():
         print(f"  {county}: {count}")
     print()
 
-    # Ask for confirmation
-    response = input(f"Download documents for all {len(case_data)} cases? (y/n): ")
-    if response.lower() not in ['y', 'yes']:
-        print("Aborted.")
-        return
+    # Ask for confirmation unless --yes flag is used
+    if not args.yes:
+        response = input(f"Download documents for all {len(case_data)} cases? (y/n): ")
+        if response.lower() not in ['y', 'yes']:
+            print("Aborted.")
+            return
 
     print()
     logger.info("Starting document download process...")

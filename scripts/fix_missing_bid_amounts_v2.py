@@ -34,10 +34,15 @@ def extract_minimum_next_upset_from_report(ocr_text):
     if not ocr_text:
         return None
 
-    # Pattern for "Minimum Amount Of Next Upset Bid"
+    # Pattern for "Minimum Amount of Next Upset Bid"
+    # The OCR text often has lots of whitespace/newlines between the label and value
     patterns = [
-        r'Minimum\s+Amount\s+Of\s+Next\s+Upset\s+Bid[\s\S]{0,100}?\$\s*([\d,]+\.?\d*)',
-        r'Minimum\s+Amount[\s\S]{0,50}?Next[\s\S]{0,50}?Upset[\s\S]{0,50}?\$\s*([\d,]+\.?\d*)',
+        # Literal match with flexible whitespace (most reliable)
+        r'Minimum Amount of Next Upset Bid[\s\S]{0,200}?\$\s*([\d,]+\.?\d*)',
+        # Case-insensitive with word boundaries
+        r'Minimum\s+Amount\s+of\s+Next\s+Upset\s+Bid[\s\S]{0,200}?\$\s*([\d,]+\.?\d*)',
+        # Original patterns with more flexible matching
+        r'Minimum\s+Amount[\s\S]{0,100}?Next[\s\S]{0,100}?Upset[\s\S]{0,100}?Bid[\s\S]{0,100}?\$\s*([\d,]+\.?\d*)',
     ]
 
     for pattern in patterns:

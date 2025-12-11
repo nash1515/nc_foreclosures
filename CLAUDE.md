@@ -20,12 +20,11 @@ cd frontend && npm run dev -- --host &
 - Frontend: http://localhost:5173
 - API: http://localhost:5001
 
-## Current Status (Dec 10, 2025)
+## Current Status (Dec 11, 2025)
 
-- **1,731 cases** across 6 counties (Wake, Durham, Harnett, Lee, Orange, Chatham)
-- **4,136 documents** in system
-- **1,073 cases with addresses** (61.6%) / **670 cases missing addresses**
-- **17 active upset_bid** cases with deadlines
+- **1,750 cases** across 6 counties (Wake, Durham, Harnett, Lee, Orange, Chatham)
+- **1,075 cases with addresses** (61.4%) / **675 cases missing addresses**
+- **25 active upset_bid** cases with deadlines
 - **Scheduler running** 5 AM Mon-Fri (3-day lookback on Mondays)
 - **Frontend:** React + Flask API (Dashboard with county filtering)
 - **Review Queue:** Approve/Reject buttons + Flagged for Re-review section
