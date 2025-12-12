@@ -719,16 +719,21 @@ class CaseMonitor:
                     result['bid_updated'] = True
                     logger.info(f"  Extracted missing bid amount: ${bid_amount}")
 
-            # Check if this case has upset bid activity (either classified or has events)
+            # Check if this case has upset bid or sale activity (either classified or has events)
             has_upset_events = any(
                 self.is_upset_bid_event(e.get('event_type', ''))
                 for e in case_data.get('events', [])
             )
+            has_sale_events = any(
+                self.is_sale_event(e.get('event_type', ''))
+                for e in case_data.get('events', [])
+            )
 
-            # For upset_bid cases OR cases with upset bid events, try to extract bid data from PDF documents
-            # PDFs (AOC-SP-403 forms) contain more accurate/complete bid information
+            # For upset_bid cases OR cases with upset bid/sale events, try to extract bid data from PDF documents
+            # PDFs (AOC-SP-403 and AOC-SP-301 forms) contain more accurate/complete bid information
+            # Report of Sale (AOC-SP-301) contains initial bid - must download to get bid amount
             # This ensures misclassified cases still get their PDFs processed for accurate deadlines
-            if case.classification == 'upset_bid' or has_upset_events:
+            if case.classification == 'upset_bid' or has_upset_events or has_sale_events:
                 # Get HTML bid for verification
                 html_bid = self.extract_bid_amount(html) if not case.current_bid_amount else case.current_bid_amount
 
