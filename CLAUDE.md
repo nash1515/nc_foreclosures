@@ -35,14 +35,19 @@ cd frontend && npm run dev -- --host &
 
 ## Current Status (Dec 12, 2025)
 
-- **2,123 cases** across 6 counties (Wake, Durham, Harnett, Lee, Orange, Chatham)
-- **Addresses:** TBD (pending count update after backfill)
-- **Active upset_bid cases:** TBD (pending classification after backfill)
+- **2,125 cases** across 6 counties (Wake, Durham, Harnett, Lee, Orange, Chatham)
+- **Active upset_bid cases:** 37
 - **Scheduler running** 5 AM Mon-Fri (3-day lookback on Mondays)
 - **Frontend:** React + Flask API (Dashboard with county filtering, improved layout)
 - **Review Queue:** Fixed skipped cases filter (7-day lookback), Approve/Reject working
 
-### Recent Session Changes (Dec 12)
+### Recent Session Changes (Dec 12 - Session 2)
+- **Classifier defense-in-depth:** Added `SALE_CONFIRMED_EVENTS` patterns (Order Confirming Sale, Confirmation of Sale, etc.)
+  - Now logs "high confidence" when BOTH time passed AND confirmation event present
+  - 118 of 355 closed_sold cases have dual verification
+  - Added exclusions for reversed confirmations (set aside, vacated, denied)
+
+### Previous Session Changes (Dec 12 - Session 1)
 - **Historical backfill completed:** 2020-01-01 to 2025-11-24 (426 chunks, 71 months × 6 counties)
   - Added 353 new cases (1,770 → 2,123 total)
   - Manually added case 17SP003010-910 (2017 Wake County active upset bid)
@@ -60,11 +65,11 @@ cd frontend && npm run dev -- --host &
 ### Classifications
 | Status | Count | Description |
 |--------|-------|-------------|
-| upcoming | ~1,345 | Foreclosure initiated, no sale |
-| upset_bid | ~17 | Sale occurred, within 10-day bid period |
-| blocked | ~70 | Bankruptcy/stay in effect |
-| closed_sold | ~226 | Past upset period |
-| closed_dismissed | ~56 | Case dismissed |
+| upcoming | 1,451 | Foreclosure initiated, no sale |
+| upset_bid | 37 | Sale occurred, within 10-day bid period |
+| blocked | 70 | Bankruptcy/stay in effect |
+| closed_sold | 355 | Past upset period |
+| closed_dismissed | 67 | Case dismissed |
 
 ## Key Commands
 
