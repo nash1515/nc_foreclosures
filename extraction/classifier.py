@@ -31,6 +31,33 @@ SALE_REPORT_EVENTS = [
     'report of foreclosure sale (chapter 45)',
 ]
 
+# Events indicating sale has been CONFIRMED by the court
+# An "Order Confirming Sale" or "Confirmation of Sale" means the court has
+# finalized the sale after the upset bid period passed with no valid bids.
+# NOTE: This is used as ADDITIONAL confirmation, not sole indicator.
+# Classification requires BOTH time-based check AND confirmation event.
+# Variations include multiline portal display (e.g., "Order" + "of Confirmation of Sale")
+# NOTE: Standalone "Confirmation" is included because in foreclosure context
+# (when combined with sale report), it indicates sale confirmation
+SALE_CONFIRMED_EVENTS = [
+    'confirming sale',
+    'confirmation of sale',
+    'confirmation',  # Standalone - in foreclosure context means sale confirmation
+    'order confirm sale',
+    'order for confirmation',
+    'order of confirmation',
+    'order on confirmation',
+    'order to confirm sale',
+]
+
+# Exclusions for sale confirmation - these indicate confirmation was reversed/rejected
+SALE_CONFIRMED_EXCLUSIONS = [
+    'set aside',
+    'setting aside',
+    'vacated',
+    'denied',
+]
+
 # Events that BLOCK the foreclosure (bankruptcy stay - may resume later)
 # Note: We check for these BUT exclude "resolved", "relief", "dismissal of bankruptcy"
 BANKRUPTCY_EVENTS = [
@@ -443,11 +470,28 @@ def classify_case(case_id: int) -> Optional[str]:
                 logger.debug(f"  Case {case_id}: Within upset period (from {reference_source} on {reference_date}, deadline {adjusted_deadline}) -> 'upset_bid'")
                 return 'upset_bid'
             else:
-                logger.debug(f"  Case {case_id}: Past deadline (from {reference_source} on {reference_date}, deadline {adjusted_deadline}) -> 'closed_sold'")
+                # Past deadline - verify with confirmation event for extra confidence
+                # Defense in depth: require BOTH time passed AND confirmation event
+                has_confirmation = has_event_type(
+                    events, SALE_CONFIRMED_EVENTS, exclusions=SALE_CONFIRMED_EXCLUSIONS
+                )
+                if has_confirmation:
+                    logger.debug(f"  Case {case_id}: Past deadline + has confirmation event -> 'closed_sold' (high confidence)")
+                else:
+                    logger.debug(f"  Case {case_id}: Past deadline (from {reference_source} on {reference_date}, deadline {adjusted_deadline}) -> 'closed_sold'")
                 return 'closed_sold'
 
-        # Has sale but can't determine deadline - assume closed
-        logger.debug(f"  Case {case_id}: Has sale, unknown deadline -> 'closed_sold'")
+        # Has sale but can't determine deadline - check for confirmation event
+        # If we have both a sale AND a confirmation, it's definitely closed
+        has_confirmation = has_event_type(
+            events, SALE_CONFIRMED_EVENTS, exclusions=SALE_CONFIRMED_EXCLUSIONS
+        )
+        if has_confirmation:
+            logger.debug(f"  Case {case_id}: Has sale + confirmation event, unknown deadline -> 'closed_sold'")
+            return 'closed_sold'
+
+        # Has sale but no confirmation and no deadline - assume closed (legacy behavior)
+        logger.debug(f"  Case {case_id}: Has sale, unknown deadline, no confirmation -> 'closed_sold'")
         return 'closed_sold'
 
     # Step 4: No sale yet - check for bankruptcy/stay (case blocked, may resume)
