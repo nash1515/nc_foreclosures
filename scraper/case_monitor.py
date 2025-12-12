@@ -35,7 +35,8 @@ from extraction.classifier import (
 )
 from extraction.extractor import (
     extract_upset_bid_data, is_upset_bid_document,
-    extract_report_of_sale_data, is_report_of_sale_document
+    extract_report_of_sale_data, is_report_of_sale_document,
+    update_case_with_extracted_data
 )
 from ocr.processor import extract_text_from_pdf
 from common.logger import setup_logger
@@ -748,6 +749,12 @@ class CaseMonitor:
             # This prevents losing existing classifications due to parsing issues
             old_classification = case.classification
             new_classification = update_case_classification(case.id)
+
+            # Run full extraction to populate any missing fields from new documents
+            extraction_updated = update_case_with_extracted_data(case.id)
+            if extraction_updated:
+                logger.info(f"  Extraction updated case data")
+                result['extraction_updated'] = True
 
             if new_classification and old_classification != new_classification:
                 logger.info(f"  Classification changed: {old_classification} -> {new_classification}")

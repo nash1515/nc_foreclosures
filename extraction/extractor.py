@@ -152,12 +152,18 @@ BID_AMOUNT_PATTERNS = [
 REPORT_OF_SALE_BID_PATTERNS = [
     # Field 5: "Highest Bid Amount" in AOC-SP-301
     r'[Hh]ighest\s*[Bb]id\s*[Aa]mount[\s:]*\$?\s*([\d,]+\.?\d*)',
+    # "Amount Bid" field with multiline gap (common in AOC forms) - check early
+    r'[Aa]mount\s+[Bb]id[\s\S]{0,100}?\$([\d,]+\.?\d*)',
     # Alternative wording
     r'[Aa]mount\s*[Oo]f\s*[Ss]uccessful\s*[Bb]id[\s:]*\$?\s*([\d,]+\.?\d*)',
     r'[Pp]roperty\s*[Ss]old\s*[Ff]or[\s:]*\$?\s*([\d,]+\.?\d*)',
     r'[Ww]inning\s*[Bb]id[\s:]*\$?\s*([\d,]+\.?\d*)',
     # Field with OCR artifacts - "Highest Bid" followed by amount on next line
     r'[Hh]ighest\s*[Bb]id[\s\S]{1,50}?\$?\s*(\d[\d,\.\s]+\.\d{2})',
+    # Partition sale format: "for the sum of $X"
+    r'for\s+the\s+sum\s+of\s*\$\s*([\d,]+\.?\d*)',
+    # Offer to purchase format (least specific - check last)
+    r'offer\s+to\s+purchase[^$]*\$\s*([\d,]+\.?\d*)',
 ]
 
 # Date of sale patterns for Report of Sale
@@ -724,6 +730,8 @@ def is_report_of_sale_document(ocr_text: str) -> bool:
         'AOC-SP-301',
         'REPORT OF FORECLOSURE SALE',
         'Report of Foreclosure Sale',
+        'REPORT OF SALE',  # Partition sales also use this format
+        'Report of Sale',
     ]
 
     for indicator in strong_indicators:
@@ -944,9 +952,33 @@ def extract_from_document(ocr_text: str) -> Dict[str, Any]:
     """
     attorney_info = extract_attorney_info(ocr_text)
 
+    # Prioritized bid extraction:
+    # 1. Check if this is an Upset Bid document (AOC-SP-403) - highest priority
+    # 2. Check if this is a Report of Sale document (AOC-SP-301) - medium priority
+    # 3. Fall back to generic bid extraction - lowest priority
+    bid_amount = None
+
+    if is_upset_bid_document(ocr_text):
+        # Extract from upset bid document - use current_bid field
+        upset_data = extract_upset_bid_data(ocr_text)
+        bid_amount = upset_data.get('current_bid')
+        logger.debug(f"  Extracted bid from upset bid document: {bid_amount}")
+
+    if not bid_amount and is_report_of_sale_document(ocr_text):
+        # Extract from report of sale - use initial_bid field
+        sale_data = extract_report_of_sale_data(ocr_text)
+        bid_amount = sale_data.get('initial_bid')
+        logger.debug(f"  Extracted bid from report of sale: {bid_amount}")
+
+    if not bid_amount:
+        # Fall back to generic extraction
+        bid_amount = extract_bid_amount(ocr_text)
+        if bid_amount:
+            logger.debug(f"  Extracted bid from generic pattern: {bid_amount}")
+
     return {
         'property_address': extract_property_address(ocr_text),
-        'current_bid_amount': extract_bid_amount(ocr_text),
+        'current_bid_amount': bid_amount,
         'next_bid_deadline': extract_upset_deadline(ocr_text),
         'sale_date': extract_sale_date(ocr_text),
         'legal_description': extract_legal_description(ocr_text),
@@ -1083,12 +1115,20 @@ def update_case_with_extracted_data(case_id: int) -> bool:
                 case.property_address = extracted['property_address']
                 updated_fields.append('property_address')
 
-            if extracted['current_bid_amount'] and not case.current_bid_amount:
+            if extracted['current_bid_amount'] and (
+                not case.current_bid_amount or
+                extracted['current_bid_amount'] > case.current_bid_amount
+            ):
+                old_amount = case.current_bid_amount
                 case.current_bid_amount = extracted['current_bid_amount']
                 # NC law: minimum next bid is 5% higher than current bid
                 case.minimum_next_bid = round(extracted['current_bid_amount'] * Decimal('1.05'), 2)
-                updated_fields.append('current_bid_amount')
-                updated_fields.append('minimum_next_bid')
+                if old_amount:
+                    updated_fields.append(f'current_bid_amount (updated: ${old_amount} -> ${extracted["current_bid_amount"]})')
+                    updated_fields.append(f'minimum_next_bid (updated: ${round(old_amount * Decimal("1.05"), 2)} -> ${case.minimum_next_bid})')
+                else:
+                    updated_fields.append('current_bid_amount')
+                    updated_fields.append('minimum_next_bid')
 
             if extracted['next_bid_deadline'] and not case.next_bid_deadline:
                 case.next_bid_deadline = extracted['next_bid_deadline']
