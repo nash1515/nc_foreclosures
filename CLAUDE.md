@@ -36,12 +36,28 @@ cd frontend && npm run dev -- --host &
 ## Current Status (Dec 12, 2025)
 
 - **2,125 cases** across 6 counties (Wake, Durham, Harnett, Lee, Orange, Chatham)
-- **Active upset_bid cases:** 37
+- **Active upset_bid cases:** 37 (all with complete data)
 - **Scheduler running** 5 AM Mon-Fri (3-day lookback on Mondays)
 - **Frontend:** React + Flask API (Dashboard with county filtering, improved layout)
 - **Review Queue:** Fixed skipped cases filter (7-day lookback), Approve/Reject working
 
-### Recent Session Changes (Dec 12 - Session 2)
+### Recent Session Changes (Dec 12 - Session 3)
+- **Fixed extraction pipeline for monitored cases:**
+  - Root cause: `case_monitor.py` wasn't calling full extraction after updates
+  - Root cause: Documents only downloaded for upset_bid events, not sale events
+  - Added `update_case_with_extracted_data()` call after monitoring
+  - Added `has_sale_events` check to trigger document downloads
+  - Now downloads Report of Sale PDFs as soon as sale events are detected
+- **Fixed bid amount extraction:**
+  - Allow bid updates when new amount is higher (required for upset bids)
+  - Added "REPORT OF SALE" detection (was only matching "REPORT OF FORECLOSURE SALE")
+  - Added multiline "Amount Bid" pattern for OCR with field label on separate line
+  - Added back-calculation from "Minimum Amount of Next Upset Bid" when direct bid is missing
+    - Handles credit bid scenarios where bank buys back property
+    - `current_bid = minimum_next_bid / 1.05`
+- **Result:** All 37 upset_bid cases now have complete address + bid data (was 27/37)
+
+### Previous Session Changes (Dec 12 - Session 2)
 - **Classifier defense-in-depth:** Added `SALE_CONFIRMED_EVENTS` patterns (Order Confirming Sale, Confirmation of Sale, etc.)
   - Now logs "high confidence" when BOTH time passed AND confirmation event present
   - 118 of 355 closed_sold cases have dual verification
@@ -154,10 +170,10 @@ npm install && npm run dev -- --port 5174
 ```
 
 ## Next Priorities
-1. Build Case Detail page
-2. Build Case List page with filtering
-3. Enrichment module (Zillow, tax records)
-4. Update classification counts after backfill
+1. Design self-diagnosis system (check dashboard data completeness after scrapes)
+2. Build Case Detail page
+3. Build Case List page with filtering
+4. Enrichment module (Zillow, tax records)
 
 ## Session Commands
 - **"Wrap up session"** - Update CLAUDE.md + commit/push + review todos + give handoff
