@@ -811,6 +811,18 @@ def extract_report_of_sale_data(ocr_text: str) -> Dict[str, Any]:
                 logger.debug(f"  Found initial bid amount: ${amount}")
                 break
 
+    # Fallback: If no direct bid amount found, try to extract "Minimum Amount of Next Upset Bid"
+    # and back-calculate the current bid (current_bid = minimum_next_bid / 1.05)
+    if result['initial_bid'] is None:
+        minimum_next_pattern = r'Minimum\s+Amount.*?(?:of\s+)?Next\s+Upset\s+Bid[\s\S]{0,100}?\$?\s*(\d[\d,\.\s]+\.\d{2})'
+        match = re.search(minimum_next_pattern, ocr_text, re.IGNORECASE | re.DOTALL)
+        if match:
+            minimum_next_bid = clean_amount(match.group(1))
+            if minimum_next_bid:
+                # Back-calculate current bid: current_bid = minimum_next_bid / 1.05
+                result['initial_bid'] = round(minimum_next_bid / Decimal('1.05'), 2)
+                logger.debug(f"  No direct bid found, back-calculated from minimum next bid ${minimum_next_bid}: ${result['initial_bid']}")
+
     # Extract the date of sale
     for pattern in REPORT_OF_SALE_DATE_PATTERNS:
         match = re.search(pattern, ocr_text, re.IGNORECASE)
