@@ -676,6 +676,12 @@ def extract_upset_bid_data(ocr_text: str) -> Dict[str, Any]:
     if result['next_deadline'] is None:
         result['next_deadline'] = extract_upset_deadline(ocr_text)
 
+    # Fallback: If no current_bid but we have minimum_next_bid, back-calculate
+    # NC law requires minimum next bid = current bid * 1.05
+    if result['current_bid'] is None and result['minimum_next_bid'] is not None:
+        result['current_bid'] = round(result['minimum_next_bid'] / Decimal('1.05'), 2)
+        logger.debug(f"  Back-calculated current bid from minimum next: ${result['current_bid']}")
+
     return result
 
 
