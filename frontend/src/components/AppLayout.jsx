@@ -6,22 +6,25 @@ import {
   SettingOutlined,
   LogoutOutlined,
   UserOutlined,
-  AuditOutlined
+  AuditOutlined,
+  HistoryOutlined
 } from '@ant-design/icons';
 import { Link, Outlet, useLocation } from 'react-router-dom';
+import { useReview } from '../contexts/ReviewContext';
 
 const { Header, Content } = Layout;
 
 function AppLayout({ user }) {
   const location = useLocation();
   const [pendingCount, setPendingCount] = useState(0);
+  const { refreshTrigger } = useReview();
 
   useEffect(() => {
     fetch('/api/review/pending-count')
       .then(res => res.json())
       .then(data => setPendingCount(data.total || 0))
       .catch(() => {});
-  }, []);
+  }, [refreshTrigger]);
 
   const menuItems = [
     {
@@ -38,6 +41,11 @@ function AppLayout({ user }) {
       key: '/review',
       icon: <Badge count={pendingCount} size="small"><AuditOutlined /></Badge>,
       label: <Link to="/review">Review Queue</Link>,
+    },
+    {
+      key: '/scrapes',
+      icon: <HistoryOutlined />,
+      label: <Link to="/scrapes">Daily Scrapes</Link>,
     },
     {
       key: '/settings',
@@ -79,7 +87,7 @@ function AppLayout({ user }) {
             mode="horizontal"
             selectedKeys={[location.pathname]}
             items={menuItems}
-            style={{ flex: 1, minWidth: 0 }}
+            style={{ minWidth: 500, border: 'none' }}
           />
         </div>
         <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">

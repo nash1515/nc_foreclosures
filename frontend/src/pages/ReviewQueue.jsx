@@ -28,6 +28,7 @@ import {
   addSkippedCases,
   dismissSkippedCases
 } from '../api/review';
+import { useReview } from '../contexts/ReviewContext';
 
 const { Title, Text } = Typography;
 
@@ -37,6 +38,7 @@ export default function ReviewQueue() {
   const [loading, setLoading] = useState(true);
   const [selectedForeclosures, setSelectedForeclosures] = useState([]);
   const [selectedSkipped, setSelectedSkipped] = useState([]);
+  const { triggerRefresh } = useReview();
 
   const fetchData = async () => {
     setLoading(true);
@@ -61,6 +63,7 @@ export default function ReviewQueue() {
       const result = await approveAllForeclosures(date.format('YYYY-MM-DD'));
       message.success(`Approved ${result.approved} foreclosure(s)`);
       fetchData();
+      triggerRefresh();
     } catch (error) {
       message.error('Failed to approve all foreclosures');
     }
@@ -72,6 +75,7 @@ export default function ReviewQueue() {
       const result = await approveForeclosures(selectedForeclosures);
       message.success(`Approved ${result.approved} case(s)`);
       fetchData();
+      triggerRefresh();
     } catch (error) {
       message.error('Failed to approve cases');
     }
@@ -83,6 +87,7 @@ export default function ReviewQueue() {
       await rejectForeclosures(selectedForeclosures);
       message.success(`Rejected ${selectedForeclosures.length} case(s)`);
       fetchData();
+      triggerRefresh();
     } catch (error) {
       message.error('Failed to reject cases');
     }
@@ -94,6 +99,7 @@ export default function ReviewQueue() {
       const result = await addSkippedCases(selectedSkipped);
       message.success(`Added ${result.added} case(s)`);
       fetchData();
+      triggerRefresh();
     } catch (error) {
       message.error('Failed to add cases');
     }
@@ -105,6 +111,7 @@ export default function ReviewQueue() {
       await dismissSkippedCases(selectedSkipped);
       message.success(`Dismissed ${selectedSkipped.length} case(s)`);
       fetchData();
+      triggerRefresh();
     } catch (error) {
       message.error('Failed to dismiss cases');
     }
@@ -117,6 +124,7 @@ export default function ReviewQueue() {
       await dismissSkippedCases(allIds);
       message.success(`Dismissed all ${allIds.length} skipped case(s)`);
       fetchData();
+      triggerRefresh();
     } catch (error) {
       message.error('Failed to dismiss cases');
     }
@@ -169,6 +177,7 @@ export default function ReviewQueue() {
                 await approveForeclosures([record.id]);
                 message.success('Case approved');
                 fetchData();
+                triggerRefresh();
               } catch (error) {
                 message.error('Failed to approve case');
               }
@@ -184,6 +193,7 @@ export default function ReviewQueue() {
                 await rejectForeclosures([record.id]);
                 message.success('Case rejected');
                 fetchData();
+                triggerRefresh();
               } catch (error) {
                 message.error('Failed to reject case');
               }
@@ -241,6 +251,7 @@ export default function ReviewQueue() {
                 await addSkippedCases([record.id]);
                 message.success('Case added');
                 fetchData();
+                triggerRefresh();
               } catch (error) {
                 message.error('Failed to add case');
               }
@@ -256,6 +267,7 @@ export default function ReviewQueue() {
                 await dismissSkippedCases([record.id]);
                 message.success('Case dismissed');
                 fetchData();
+                triggerRefresh();
               } catch (error) {
                 message.error('Failed to dismiss case');
               }

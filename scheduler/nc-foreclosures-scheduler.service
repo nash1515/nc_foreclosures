@@ -7,7 +7,8 @@ Type=simple
 User=ahn
 WorkingDirectory=/home/ahn/projects/nc_foreclosures
 Environment=PYTHONPATH=/home/ahn/projects/nc_foreclosures
-ExecStart=/home/ahn/projects/nc_foreclosures/venv/bin/python /home/ahn/projects/nc_foreclosures/scheduler/scheduler_service.py
+# Use xvfb-run to provide virtual display for headed Playwright browser
+ExecStart=/usr/bin/xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" /home/ahn/projects/nc_foreclosures/venv/bin/python /home/ahn/projects/nc_foreclosures/scheduler/scheduler_service.py
 Restart=on-failure
 RestartSec=30
 StandardOutput=append:/var/log/nc-foreclosures-scheduler.log

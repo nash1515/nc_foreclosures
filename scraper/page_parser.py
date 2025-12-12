@@ -16,10 +16,8 @@ FORECLOSURE_EVENT_INDICATORS = [
     'report of foreclosure sale (chapter 45)',
     'notice of sale/resale',
     'upset bid filed',
-    # Servicemember Civil Relief Act affidavit is required in foreclosure proceedings
-    # to verify military service status - strong foreclosure indicator
-    'servicemember civil relief act',
-    'scra',
+    # NOTE: SCRA removed - it's required in many non-foreclosure proceedings
+    # (incompetency, guardianship, adoption, etc.) and causes false positives
 ]
 
 # Event types that indicate an upset bid opportunity (includes non-foreclosure sales like partitions)
@@ -92,8 +90,16 @@ def is_foreclosure_case(case_data):
     """
     # Get events for checking
     events = case_data.get('events') or []
+    case_type = (case_data.get('case_type') or '').lower()
 
-    # Check for non-property indicators FIRST (exclusions)
+    # Check case_type for non-property indicators FIRST (exclusions)
+    # This catches cases like "Incompetency" before checking events
+    for indicator in NON_PROPERTY_INDICATORS:
+        if indicator in case_type:
+            logger.debug(f"Non-property case identified by case type: {case_type}")
+            return False
+
+    # Check events for non-property indicators (exclusions)
     for event in events:
         event_type = (event.get('event_type') or '').lower()
         for indicator in NON_PROPERTY_INDICATORS:
@@ -102,7 +108,6 @@ def is_foreclosure_case(case_data):
                 return False
 
     # Check case type - must contain "foreclosure"
-    case_type = (case_data.get('case_type') or '').lower()
     if 'foreclosure' in case_type:
         logger.debug(f"Foreclosure identified by case type: {case_type}")
         return True

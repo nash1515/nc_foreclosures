@@ -119,6 +119,13 @@ function Dashboard() {
 
   const columns = [
     {
+      title: '#',
+      key: 'rowNumber',
+      width: 50,
+      align: 'center',
+      render: (_, record, index) => index + 1
+    },
+    {
       title: '',
       key: 'watchlist',
       width: 40,

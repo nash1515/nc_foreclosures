@@ -72,10 +72,11 @@ def get_daily_review():
                 'events': event_list
             })
 
-        # Get skipped cases for this date
+        # Get pending skipped cases from last 7 days (daily scrapes only, not historical backfill)
+        seven_days_ago = review_date - timedelta(days=7)
         skipped = session.query(SkippedCase).filter(
-            SkippedCase.scrape_date == review_date,
-            SkippedCase.review_action.is_(None)  # Only pending review
+            SkippedCase.review_action.is_(None),  # Only pending review
+            SkippedCase.scrape_date >= seven_days_ago  # Only recent daily scrapes
         ).all()
 
         skipped_list = []
@@ -365,9 +366,11 @@ def get_pending_count():
             Case.reviewed_at.is_(None)
         ).count()
 
-        # Count pending skipped cases (any date)
+        # Count pending skipped cases from last 7 days (daily scrapes only)
+        seven_days_ago = today - timedelta(days=7)
         skipped_count = session.query(SkippedCase).filter(
-            SkippedCase.review_action.is_(None)
+            SkippedCase.review_action.is_(None),
+            SkippedCase.scrape_date >= seven_days_ago
         ).count()
 
         return jsonify({

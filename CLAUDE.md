@@ -33,16 +33,23 @@ cd frontend && npm run dev -- --host &
 - Frontend: http://localhost:5173
 - API: http://localhost:5001
 
-## Current Status (Dec 11, 2025)
+## Current Status (Dec 12, 2025)
 
-- **1,770 cases** across 6 counties (Wake, Durham, Harnett, Lee, Orange, Chatham)
-- **1,075 cases with addresses** (61.4%) / **675 cases missing addresses**
-- **25 active upset_bid** cases with deadlines
+- **2,123 cases** across 6 counties (Wake, Durham, Harnett, Lee, Orange, Chatham)
+- **Addresses:** TBD (pending count update after backfill)
+- **Active upset_bid cases:** TBD (pending classification after backfill)
 - **Scheduler running** 5 AM Mon-Fri (3-day lookback on Mondays)
 - **Frontend:** React + Flask API (Dashboard with county filtering, improved layout)
-- **Review Queue:** Fixed +Add button (JSON encoding), Approve/Reject working
+- **Review Queue:** Fixed skipped cases filter (7-day lookback), Approve/Reject working
 
-### Recent Session Changes (Dec 11)
+### Recent Session Changes (Dec 12)
+- **Historical backfill completed:** 2020-01-01 to 2025-11-24 (426 chunks, 71 months × 6 counties)
+  - Added 353 new cases (1,770 → 2,123 total)
+  - Manually added case 17SP003010-910 (2017 Wake County active upset bid)
+  - Dismissed 3,182 skipped cases from backfill to clean up review queue
+- **Review Queue bug fix:** Skipped cases filter now uses 7-day lookback on `scrape_date` (was showing 0 due to date field mismatch)
+
+### Previous Session Changes (Dec 11)
 - **Unified scraper architecture:** Deleted `initial_scrape.py`, `batch_initial_scrape.py`, `parallel_batch_scrape.py`
 - **New scrapers:** `batch_scrape.py` and `parallel_scrape.py` with configurable chunking (daily/weekly/monthly/quarterly/yearly)
 - **Skip-existing:** Default behavior skips cases already in DB (use `--refresh-existing` to override)
@@ -142,15 +149,10 @@ npm install && npm run dev -- --port 5174
 ```
 
 ## Next Priorities
-1. **Run historical backfill** (ready to execute):
-   ```bash
-   PYTHONPATH=/home/ahn/projects/nc_foreclosures venv/bin/python scraper/parallel_scrape.py \
-     --start 2020-01-01 --end 2025-11-24 --chunk monthly --per-county --workers 3
-   ```
-   (426 chunks = 71 months × 6 counties, existing cases auto-skipped)
-2. Build Case Detail page
-3. Build Case List page with filtering
-4. Enrichment module (Zillow, tax records)
+1. Build Case Detail page
+2. Build Case List page with filtering
+3. Enrichment module (Zillow, tax records)
+4. Update classification counts after backfill
 
 ## Session Commands
 - **"Wrap up session"** - Update CLAUDE.md + commit/push + review todos + give handoff
