@@ -3,7 +3,6 @@ import {
   Card,
   Table,
   Button,
-  DatePicker,
   Space,
   Typography,
   Tag,
@@ -19,7 +18,6 @@ import {
   DeleteOutlined,
   DownOutlined
 } from '@ant-design/icons';
-import dayjs from 'dayjs';
 import {
   getDailyReview,
   approveAllForeclosures,
@@ -33,7 +31,6 @@ import { useReview } from '../contexts/ReviewContext';
 const { Title, Text } = Typography;
 
 export default function ReviewQueue() {
-  const [date, setDate] = useState(dayjs());
   const [data, setData] = useState({ foreclosures: [], skipped: [], counts: {} });
   const [loading, setLoading] = useState(true);
   const [selectedForeclosures, setSelectedForeclosures] = useState([]);
@@ -43,7 +40,7 @@ export default function ReviewQueue() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const result = await getDailyReview(date.format('YYYY-MM-DD'));
+      const result = await getDailyReview();
       setData(result);
       setSelectedForeclosures([]);
       setSelectedSkipped([]);
@@ -56,11 +53,11 @@ export default function ReviewQueue() {
 
   useEffect(() => {
     fetchData();
-  }, [date]);
+  }, []);
 
   const handleApproveAll = async () => {
     try {
-      const result = await approveAllForeclosures(date.format('YYYY-MM-DD'));
+      const result = await approveAllForeclosures();
       message.success(`Approved ${result.approved} foreclosure(s)`);
       fetchData();
       triggerRefresh();
@@ -422,13 +419,8 @@ export default function ReviewQueue() {
 
   return (
     <div>
-      <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div style={{ marginBottom: 16 }}>
         <Title level={2} style={{ margin: 0 }}>Review Queue</Title>
-        <DatePicker
-          value={date}
-          onChange={(d) => d && setDate(d)}
-          allowClear={false}
-        />
       </div>
 
       <Collapse defaultActiveKey={['foreclosures', 'skipped']} items={collapseItems} />
