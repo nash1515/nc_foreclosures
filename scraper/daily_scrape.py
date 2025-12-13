@@ -452,6 +452,20 @@ def run_daily_tasks(
         reclassified = results['stale_reclassification'].get('reclassified', 0)
         logger.info(f"Stale cases reclassified: {reclassified}")
 
+    if results['self_diagnosis']:
+        diag = results['self_diagnosis']
+        if 'error' in diag:
+            logger.error(f"Self-diagnosis failed: {diag['error']}")
+        else:
+            checked = diag.get('cases_checked', 0)
+            incomplete = diag.get('cases_incomplete', 0)
+            healed = diag.get('cases_healed', 0)
+            unresolved = len(diag.get('cases_unresolved', []))
+            if incomplete == 0:
+                logger.info(f"Self-diagnosis: All {checked} upset_bid cases complete")
+            else:
+                logger.info(f"Self-diagnosis: {incomplete} incomplete, {healed} healed, {unresolved} unresolved")
+
     if results['errors']:
         logger.warning(f"Errors: {len(results['errors'])}")
         for error in results['errors']:
