@@ -52,6 +52,7 @@ cd frontend && npm run dev -- --host &
   - `/api/admin/users` CRUD endpoints
   - `/api/admin/scrape` endpoint for manual scraping
   - `party_name` parameter added to DateRangeScraper
+- **Review Queue cleanup:** Removed unused date selector
 
 ### Previous Session Changes (Dec 13 - Session 1)
 - **Self-diagnosis system for upset_bid cases:**
