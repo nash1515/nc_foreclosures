@@ -34,7 +34,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Dict, Optional
 
 from database.connection import get_session
-from database.models import Case
+from database.models import Case, ScrapeLogTask
 from scraper.date_range_scrape import DateRangeScraper
 from scraper.case_monitor import CaseMonitor, monitor_cases
 from extraction.classifier import reclassify_stale_cases
@@ -42,6 +42,51 @@ from scraper.self_diagnosis import diagnose_and_heal_upset_bids
 from common.logger import setup_logger
 
 logger = setup_logger(__name__)
+
+
+class TaskLogger:
+    """Helper to log task-level details to scrape_log_tasks table."""
+
+    def __init__(self, scrape_log_id: Optional[int] = None):
+        self.scrape_log_id = scrape_log_id
+        self.task_order = 0
+
+    def start_task(self, task_name: str) -> Optional[int]:
+        """Create a task entry and return its ID."""
+        if not self.scrape_log_id:
+            return None
+        self.task_order += 1
+        with get_session() as session:
+            task = ScrapeLogTask(
+                scrape_log_id=self.scrape_log_id,
+                task_name=task_name,
+                task_order=self.task_order,
+                status='in_progress'
+            )
+            session.add(task)
+            session.commit()
+            return task.id
+
+    def complete_task(self, task_id: Optional[int], status: str = 'success',
+                      items_checked: int = None, items_found: int = None,
+                      items_processed: int = None, error_message: str = None):
+        """Update task with completion details."""
+        if not task_id:
+            return
+        with get_session() as session:
+            task = session.query(ScrapeLogTask).filter_by(id=task_id).first()
+            if task:
+                task.status = status
+                task.completed_at = datetime.now()
+                if items_checked is not None:
+                    task.items_checked = items_checked
+                if items_found is not None:
+                    task.items_found = items_found
+                if items_processed is not None:
+                    task.items_processed = items_processed
+                if error_message:
+                    task.error_message = error_message
+                session.commit()
 
 # Target counties
 TARGET_COUNTIES = ['wake', 'durham', 'orange', 'chatham', 'lee', 'harnett']
@@ -343,16 +388,32 @@ def run_daily_tasks(
         'errors': []
     }
 
+    # Task logger - will be initialized once we have a scrape_log_id
+    task_logger = TaskLogger()
+
     # Task 1: Search for new cases
     if search_new:
         try:
             results['new_case_search'] = run_new_case_search(target_date, dry_run)
+            # Get scrape_log_id from the search result to log subsequent tasks
+            scrape_log_id = results['new_case_search'].get('scrape_log_id')
+            if scrape_log_id:
+                task_logger.scrape_log_id = scrape_log_id
+                # Log Task 1 retroactively (it was already run by DateRangeScraper)
+                task_id = task_logger.start_task('new_case_search')
+                task_logger.complete_task(
+                    task_id,
+                    status='success' if not results['new_case_search'].get('error') else 'failed',
+                    items_found=results['new_case_search'].get('cases_processed', 0),
+                    items_processed=results['new_case_search'].get('cases_processed', 0)
+                )
         except Exception as e:
             logger.error(f"Task 1 failed: {e}")
             results['errors'].append(f"new_case_search: {e}")
 
     # Task 1.5: OCR and extraction for newly downloaded documents
     if search_new and not dry_run and results.get('new_case_search', {}).get('cases_processed', 0) > 0:
+        task_id = task_logger.start_task('ocr_after_search')
         try:
             logger.info("=" * 60)
             logger.info("TASK 1.5: OCR and extraction for new documents")
@@ -363,20 +424,31 @@ def run_daily_tasks(
 
             results['ocr_processed'] = ocr_count
             logger.info(f"OCR processed {ocr_count} documents (extraction auto-triggered)")
+            task_logger.complete_task(task_id, items_processed=ocr_count)
         except Exception as e:
             logger.error(f"Task 1.5 failed: {e}")
             results['errors'].append(f"ocr_processing: {e}")
+            task_logger.complete_task(task_id, status='failed', error_message=str(e))
 
     # Task 2: Monitor existing cases
     if monitor_existing:
+        task_id = task_logger.start_task('case_monitoring')
         try:
             results['case_monitoring'] = run_case_monitoring(dry_run)
+            task_logger.complete_task(
+                task_id,
+                items_checked=results['case_monitoring'].get('cases_checked', 0),
+                items_found=results['case_monitoring'].get('events_added', 0),
+                items_processed=results['case_monitoring'].get('classifications_changed', 0)
+            )
         except Exception as e:
             logger.error(f"Task 2 failed: {e}")
             results['errors'].append(f"case_monitoring: {e}")
+            task_logger.complete_task(task_id, status='failed', error_message=str(e))
 
     # Task 2.5: OCR documents downloaded during monitoring
     if monitor_existing and not dry_run:
+        task_id = task_logger.start_task('ocr_after_monitoring')
         try:
             from ocr.processor import process_unprocessed_documents
             ocr_count = process_unprocessed_documents()
@@ -386,34 +458,59 @@ def run_daily_tasks(
                     results['ocr_processed'] += ocr_count
                 else:
                     results['ocr_processed'] = ocr_count
+            task_logger.complete_task(task_id, items_processed=ocr_count)
         except Exception as e:
             logger.error(f"Task 2.5 failed: {e}")
             results['errors'].append(f"ocr_processing_monitoring: {e}")
+            task_logger.complete_task(task_id, status='failed', error_message=str(e))
 
     # Task 3: Validate upset_bid data completeness (always run)
+    task_id = task_logger.start_task('upset_bid_validation')
     try:
         results['upset_bid_validation'] = validate_upset_bid_data(dry_run)
+        task_logger.complete_task(
+            task_id,
+            items_checked=results['upset_bid_validation'].get('total_upset_bid', 0),
+            items_found=results['upset_bid_validation'].get('total_issues', 0)
+        )
     except Exception as e:
         logger.error(f"Task 3 failed: {e}")
         results['errors'].append(f"upset_bid_validation: {e}")
+        task_logger.complete_task(task_id, status='failed', error_message=str(e))
 
     # Task 4: Reclassify stale cases (always run)
+    task_id = task_logger.start_task('stale_reclassification')
     try:
         results['stale_reclassification'] = run_stale_reclassification(dry_run)
+        task_logger.complete_task(
+            task_id,
+            items_checked=results['stale_reclassification'].get('stale_count', 0),
+            items_processed=results['stale_reclassification'].get('reclassified', 0)
+        )
     except Exception as e:
         logger.error(f"Task 4 failed: {e}")
         results['errors'].append(f"stale_reclassification: {e}")
+        task_logger.complete_task(task_id, status='failed', error_message=str(e))
 
     # Task 5: Self-diagnosis and healing
     logger.info("=" * 60)
     logger.info("TASK 5: Self-diagnosis for upset_bid cases")
     logger.info("=" * 60)
+    task_id = task_logger.start_task('self_diagnosis')
     try:
         results['self_diagnosis'] = diagnose_and_heal_upset_bids(dry_run)
+        diag = results['self_diagnosis']
+        task_logger.complete_task(
+            task_id,
+            items_checked=diag.get('cases_checked', 0),
+            items_found=diag.get('cases_incomplete', 0),
+            items_processed=diag.get('cases_healed', 0)
+        )
     except Exception as e:
         logger.error(f"Task 5 (self-diagnosis) failed: {e}")
         results['errors'].append(f"self_diagnosis: {e}")
         results['self_diagnosis'] = {'error': str(e)}
+        task_logger.complete_task(task_id, status='failed', error_message=str(e))
 
     # Summary
     end_time = datetime.now()

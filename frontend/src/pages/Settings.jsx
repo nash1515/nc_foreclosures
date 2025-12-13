@@ -214,7 +214,7 @@ export default function Settings() {
 
   return (
     <div style={{ padding: 24 }}>
-      <Title level={2}>Settings</Title>
+      <Title level={2}>Admin</Title>
 
       {/* Manual Scrape Section */}
       <Card title="Manual Scrape" style={{ marginBottom: 24 }}>

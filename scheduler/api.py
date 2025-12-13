@@ -11,7 +11,7 @@ from datetime import datetime
 from flask import Blueprint, jsonify, request
 
 from database.connection import get_session
-from database.models import SchedulerConfig, ScrapeLog
+from database.models import SchedulerConfig, ScrapeLog, ScrapeLogTask
 
 scheduler_api = Blueprint('scheduler', __name__, url_prefix='/api/scheduler')
 
@@ -152,8 +152,14 @@ def get_scrape_history():
 
         logs = query.limit(limit).all()
 
-        return jsonify({
-            'history': [{
+        history = []
+        for log in logs:
+            # Get tasks for this log
+            tasks = session.query(ScrapeLogTask).filter_by(
+                scrape_log_id=log.id
+            ).order_by(ScrapeLogTask.task_order).all()
+
+            history.append({
                 'id': log.id,
                 'scrape_type': log.scrape_type,
                 'county_code': log.county_code,
@@ -164,9 +170,22 @@ def get_scrape_history():
                 'status': log.status,
                 'error_message': log.error_message,
                 'started_at': log.started_at.isoformat() if log.started_at else None,
-                'completed_at': log.completed_at.isoformat() if log.completed_at else None
-            } for log in logs]
-        })
+                'completed_at': log.completed_at.isoformat() if log.completed_at else None,
+                'tasks': [{
+                    'id': task.id,
+                    'task_name': task.task_name,
+                    'task_order': task.task_order,
+                    'items_checked': task.items_checked,
+                    'items_found': task.items_found,
+                    'items_processed': task.items_processed,
+                    'started_at': task.started_at.isoformat() if task.started_at else None,
+                    'completed_at': task.completed_at.isoformat() if task.completed_at else None,
+                    'status': task.status,
+                    'error_message': task.error_message
+                } for task in tasks]
+            })
+
+        return jsonify({'history': history})
 
 
 @scheduler_api.route('/run/<job_name>', methods=['POST'])

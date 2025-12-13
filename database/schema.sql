@@ -87,6 +87,21 @@ CREATE TABLE IF NOT EXISTS scrape_logs (
     completed_at TIMESTAMP
 );
 
+-- Scrape log tasks table - Track individual tasks within a scrape
+CREATE TABLE IF NOT EXISTS scrape_log_tasks (
+    id SERIAL PRIMARY KEY,
+    scrape_log_id INTEGER REFERENCES scrape_logs(id) ON DELETE CASCADE,
+    task_name VARCHAR(50) NOT NULL,  -- 'new_case_search', 'case_monitoring', 'ocr_processing', etc.
+    task_order INTEGER,              -- Order of task execution (1, 2, 3...)
+    items_checked INTEGER,           -- Cases/documents checked
+    items_found INTEGER,             -- New items found (cases, events, etc.)
+    items_processed INTEGER,         -- Items successfully processed
+    started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    completed_at TIMESTAMP,
+    status VARCHAR(20),              -- 'success', 'failed', 'skipped'
+    error_message TEXT
+);
+
 -- User notes table - Annotations from web app
 CREATE TABLE IF NOT EXISTS user_notes (
     id SERIAL PRIMARY KEY,

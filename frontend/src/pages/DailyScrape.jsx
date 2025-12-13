@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import {
-  Typography, Card, Table, Tag, Spin, Alert, Space, Button, Collapse
+  Typography, Card, Table, Tag, Spin, Alert, Space, Button, Collapse, Progress
 } from 'antd';
 import {
   CheckCircleOutlined, CloseCircleOutlined, ClockCircleOutlined,
-  ReloadOutlined, ExclamationCircleOutlined
+  ReloadOutlined, ExclamationCircleOutlined, DownOutlined, RightOutlined
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
@@ -12,6 +12,17 @@ import relativeTime from 'dayjs/plugin/relativeTime';
 dayjs.extend(relativeTime);
 
 const { Title, Text } = Typography;
+
+// Human-readable task names
+const TASK_LABELS = {
+  'new_case_search': 'New Case Search',
+  'ocr_after_search': 'OCR Processing (Search)',
+  'case_monitoring': 'Case Monitoring',
+  'ocr_after_monitoring': 'OCR Processing (Monitor)',
+  'upset_bid_validation': 'Upset Bid Validation',
+  'stale_reclassification': 'Stale Reclassification',
+  'self_diagnosis': 'Self-Diagnosis'
+};
 
 function DailyScrape() {
   const [history, setHistory] = useState([]);
@@ -50,10 +61,93 @@ function DailyScrape() {
     const diffSeconds = end.diff(start, 'second');
     const hours = Math.floor(diffSeconds / 3600);
     const minutes = Math.floor((diffSeconds % 3600) / 60);
+    const seconds = diffSeconds % 60;
     if (hours > 0) {
       return `${hours}h ${minutes}m`;
     }
-    return `${minutes}m`;
+    if (minutes > 0) {
+      return `${minutes}m ${seconds}s`;
+    }
+    return `${seconds}s`;
+  };
+
+  // Render task breakdown for expandable row
+  const renderTaskBreakdown = (record) => {
+    const tasks = record.tasks || [];
+    if (tasks.length === 0) {
+      return <Text type="secondary">No task details available</Text>;
+    }
+
+    return (
+      <div style={{ padding: '8px 16px', background: '#fafafa' }}>
+        <Text strong style={{ marginBottom: 12, display: 'block' }}>Task Breakdown</Text>
+        <div style={{ display: 'grid', gap: 8 }}>
+          {tasks.map((task) => {
+            const taskLabel = TASK_LABELS[task.task_name] || task.task_name;
+            const duration = formatDuration(task.started_at, task.completed_at);
+            const statusColor = task.status === 'success' ? '#52c41a' :
+              task.status === 'failed' ? '#ff4d4f' : '#faad14';
+
+            return (
+              <div
+                key={task.id}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  padding: '8px 12px',
+                  background: '#fff',
+                  borderRadius: 4,
+                  borderLeft: `3px solid ${statusColor}`
+                }}
+              >
+                <div style={{ flex: 1 }}>
+                  <Text strong>{taskLabel}</Text>
+                </div>
+                <div style={{ textAlign: 'right', minWidth: 100 }}>
+                  {task.items_checked != null && (
+                    <Text type="secondary" style={{ marginRight: 16 }}>
+                      Checked: {task.items_checked}
+                    </Text>
+                  )}
+                  {task.items_found != null && task.items_found > 0 && (
+                    <Text type="secondary" style={{ marginRight: 16 }}>
+                      Found: {task.items_found}
+                    </Text>
+                  )}
+                  {task.items_processed != null && task.items_processed > 0 && (
+                    <Text style={{ color: '#1890ff', marginRight: 16 }}>
+                      Processed: {task.items_processed}
+                    </Text>
+                  )}
+                </div>
+                <div style={{ minWidth: 60, textAlign: 'right' }}>
+                  <Text type="secondary">{duration}</Text>
+                </div>
+                <div style={{ minWidth: 20 }}>
+                  {task.status === 'success' ? (
+                    <CheckCircleOutlined style={{ color: '#52c41a' }} />
+                  ) : task.status === 'failed' ? (
+                    <CloseCircleOutlined style={{ color: '#ff4d4f' }} />
+                  ) : (
+                    <ClockCircleOutlined style={{ color: '#faad14' }} />
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        {tasks.some(t => t.error_message) && (
+          <div style={{ marginTop: 12 }}>
+            {tasks.filter(t => t.error_message).map(t => (
+              <Text key={t.id} type="danger" style={{ display: 'block', fontSize: 12 }}>
+                {TASK_LABELS[t.task_name]}: {t.error_message}
+              </Text>
+            ))}
+          </div>
+        )}
+      </div>
+    );
   };
 
   const handleRetry = async (targetDate) => {
@@ -277,6 +371,26 @@ function DailyScrape() {
           rowKey="id"
           pagination={{ pageSize: 14, showSizeChanger: false }}
           size="middle"
+          expandable={{
+            expandedRowRender: renderTaskBreakdown,
+            rowExpandable: (record) => record.tasks && record.tasks.length > 0,
+            expandIcon: ({ expanded, onExpand, record }) => {
+              if (!record.tasks || record.tasks.length === 0) {
+                return <span style={{ width: 24, display: 'inline-block' }} />;
+              }
+              return expanded ? (
+                <DownOutlined
+                  style={{ cursor: 'pointer', color: '#1890ff' }}
+                  onClick={(e) => onExpand(record, e)}
+                />
+              ) : (
+                <RightOutlined
+                  style={{ cursor: 'pointer', color: '#1890ff' }}
+                  onClick={(e) => onExpand(record, e)}
+                />
+              );
+            }
+          }}
           rowClassName={(record) => {
             if (record.status === 'failed') return 'row-failed';
             if (record.status === 'partial') return 'row-partial';

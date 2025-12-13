@@ -38,11 +38,25 @@ cd frontend && npm run dev -- --host &
 - **2,135 cases** across 6 counties (Wake, Durham, Harnett, Lee, Orange, Chatham)
 - **Active upset_bid cases:** 37 (all with complete data)
 - **Scheduler running** 5 AM Mon-Fri (3-day lookback on Mondays)
-- **Frontend:** React + Flask API (Dashboard, Settings tab for admins)
+- **Frontend:** React + Flask API (Dashboard, Admin tab for admins)
 - **Review Queue:** Fixed skipped cases filter (7-day lookback), Approve/Reject working
 
-### Recent Session Changes (Dec 13 - Session 2)
-- **Settings Tab implemented (admin only):**
+### Recent Session Changes (Dec 13 - Session 3)
+- **Fixed Daily Scrape duration bug:**
+  - Root cause: Timezone mismatch - `started_at` used PostgreSQL local time, `completed_at` used Python UTC
+  - Was showing 5h duration for 15min scrapes due to EST/UTC offset
+  - Fix: Changed `datetime.utcnow()` to `datetime.now()` in `date_range_scrape.py`
+- **Added task-level tracking for daily scrapes:**
+  - New `scrape_log_tasks` table tracks individual tasks within each scrape
+  - Tasks logged: new_case_search, ocr_after_search, case_monitoring, ocr_after_monitoring, upset_bid_validation, stale_reclassification, self_diagnosis
+  - Each task records: items_checked, items_found, items_processed, duration, status
+  - `TaskLogger` class in `daily_scrape.py` handles logging
+  - API `/api/scheduler/history` now returns `tasks` array for each log
+  - Frontend Daily Scrape tab has expandable rows showing task breakdown
+- **UI cleanup:** Renamed "Settings" tab to "Admin"
+
+### Previous Session Changes (Dec 13 - Session 2)
+- **Admin Tab implemented (admin only):**
   - Manual Scrape section: date range picker, county checkboxes, party name filter
   - User Management section: add/edit/delete users, role-based access (Admin/User)
   - Whitelist auth: users must be added before they can log in
@@ -169,7 +183,7 @@ PGPASSWORD=nc_password psql -U nc_user -d nc_foreclosures -h localhost
 - `scripts/download_missing_documents.py` - Downloads docs for cases with 0 documents
 
 ### Database Tables
-`cases`, `case_events`, `parties`, `hearings`, `documents`, `scrape_logs`, `scheduler_config`, `users`
+`cases`, `case_events`, `parties`, `hearings`, `documents`, `scrape_logs`, `scrape_log_tasks`, `scheduler_config`, `users`
 
 ## Critical Design Decisions
 
@@ -193,9 +207,9 @@ npm install && npm run dev -- --port 5174
 ```
 
 ## Next Priorities
-1. Test Settings page in production (login as admin, test manual scrape)
-2. Build Case Detail page
-3. Build Case List page with filtering
+1. Build Case Detail page
+2. Build Case List page with filtering
+3. Test Admin page manual scrape in production
 4. Enrichment module (Zillow, tax records)
 
 ## Session Commands

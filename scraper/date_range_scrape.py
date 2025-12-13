@@ -123,7 +123,8 @@ class DateRangeScraper:
         return {
             'cases_processed': cases_processed,
             'status': status,
-            'error': error_message
+            'error': error_message,
+            'scrape_log_id': self.scrape_log_id
         }
 
     def _create_scrape_log(self):
@@ -148,7 +149,7 @@ class DateRangeScraper:
                 log.status = status
                 log.cases_processed = cases_processed
                 log.error_message = error_message
-                log.completed_at = datetime.utcnow()
+                log.completed_at = datetime.now()  # Use local time to match started_at
                 session.commit()
 
     def _scrape_cases(self, page, context):

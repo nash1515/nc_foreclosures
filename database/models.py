@@ -184,8 +184,33 @@ class ScrapeLog(Base):
     started_at = Column(TIMESTAMP, server_default=func.current_timestamp())
     completed_at = Column(TIMESTAMP)
 
+    tasks = relationship('ScrapeLogTask', back_populates='scrape_log', cascade='all, delete-orphan')
+
     def __repr__(self):
         return f"<ScrapeLog(type='{self.scrape_type}', county='{self.county_code}', status='{self.status}')>"
+
+
+class ScrapeLogTask(Base):
+    """Track individual tasks within a scrape operation."""
+
+    __tablename__ = 'scrape_log_tasks'
+
+    id = Column(Integer, primary_key=True)
+    scrape_log_id = Column(Integer, ForeignKey('scrape_logs.id', ondelete='CASCADE'))
+    task_name = Column(String(50), nullable=False)
+    task_order = Column(Integer)
+    items_checked = Column(Integer)
+    items_found = Column(Integer)
+    items_processed = Column(Integer)
+    started_at = Column(TIMESTAMP, server_default=func.current_timestamp())
+    completed_at = Column(TIMESTAMP)
+    status = Column(String(20))
+    error_message = Column(Text)
+
+    scrape_log = relationship('ScrapeLog', back_populates='tasks')
+
+    def __repr__(self):
+        return f"<ScrapeLogTask(name='{self.task_name}', status='{self.status}')>"
 
 
 class UserNote(Base):

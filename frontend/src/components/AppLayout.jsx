@@ -47,11 +47,11 @@ function AppLayout({ user }) {
       icon: <HistoryOutlined />,
       label: <Link to="/scrapes">Daily Scrapes</Link>,
     },
-    // Only show Settings for admin users
+    // Only show Admin for admin users
     ...(user?.role === 'admin' ? [{
       key: '/settings',
       icon: <SettingOutlined />,
-      label: <Link to="/settings">Settings</Link>,
+      label: <Link to="/settings">Admin</Link>,
     }] : []),
   ];
 
