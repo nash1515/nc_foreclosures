@@ -18,11 +18,12 @@ class User(Base):
     email = Column(String(255), unique=True, nullable=False)
     display_name = Column(String(255))
     avatar_url = Column(Text)
+    role = Column(String(20), nullable=False, default='user')  # 'admin' or 'user'
     created_at = Column(TIMESTAMP, server_default=func.current_timestamp())
     last_login_at = Column(TIMESTAMP)
 
     def __repr__(self):
-        return f"<User(email='{self.email}', display_name='{self.display_name}')>"
+        return f"<User(email='{self.email}', role='{self.role}')>"
 
 
 class Watchlist(Base):
