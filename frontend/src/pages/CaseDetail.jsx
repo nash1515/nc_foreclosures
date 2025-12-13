@@ -2,11 +2,11 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
   Typography, Card, Row, Col, Tag, Button, Descriptions, Timeline, Table,
-  Spin, Alert, Space, Divider, message, Image, InputNumber
+  Spin, Alert, Space, Divider, message, InputNumber
 } from 'antd';
 import {
   ArrowLeftOutlined, StarOutlined, StarFilled,
-  LinkOutlined, FileTextOutlined, PictureOutlined,
+  LinkOutlined, FileTextOutlined,
   LoadingOutlined, CheckCircleOutlined
 } from '@ant-design/icons';
 import { fetchCase, addToWatchlist, removeFromWatchlist, updateCase } from '../api/cases';
@@ -195,115 +195,60 @@ function CaseDetail() {
         </Button>
       </Space>
 
-      {/* Case Title and Status */}
+      {/* Case Title, Status, and Property Info */}
       <Card style={{ marginBottom: 16 }}>
-        <Title level={4} style={{ marginTop: 0 }}>{c.style || c.case_number}</Title>
-        <Space>
-          <Text type="secondary">{c.county_name} County</Text>
-          <Text type="secondary">|</Text>
-          <Text type="secondary">Filed: {c.file_date ? dayjs(c.file_date).format('MM/DD/YYYY') : '-'}</Text>
-          <Text type="secondary">|</Text>
-          <Text type="secondary">Status: {c.case_status || '-'}</Text>
-        </Space>
-        <div style={{ marginTop: 8 }}>
-          <Tag color={CLASSIFICATION_COLORS[c.classification] || 'default'}>
-            {c.classification?.replace('_', ' ').toUpperCase() || 'UNKNOWN'}
-          </Tag>
-          {daysUntilDeadline !== null && daysUntilDeadline >= 0 && (
-            <Tag color={daysUntilDeadline <= 3 ? 'red' : 'orange'}>
-              Bid Deadline: {dayjs(c.next_bid_deadline).format('MMM D')} ({daysUntilDeadline} days)
-            </Tag>
-          )}
-        </div>
-      </Card>
+        <Row gutter={24}>
+          <Col xs={24} lg={16}>
+            <Title level={4} style={{ marginTop: 0, marginBottom: 4 }}>{c.style || c.case_number}</Title>
+            <div>
+              <Text>{c.property_address || 'No address on record'}</Text>
+              <Text type="secondary"> • {c.county_name} County</Text>
+              {daysUntilDeadline !== null && daysUntilDeadline >= 0 && (
+                <Text strong style={{ color: daysUntilDeadline <= 3 ? '#ff4d4f' : '#fa8c16', marginLeft: 8 }}>
+                  Deadline: {dayjs(c.next_bid_deadline).format('MMM D')} ({daysUntilDeadline}d)
+                </Text>
+              )}
+            </div>
+            {c.legal_description && (
+              <div style={{ marginTop: 4 }}>
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  Legal: {c.legal_description}
+                </Text>
+              </div>
+            )}
+          </Col>
 
-      <Row gutter={16}>
-        {/* Left Column - Property & Photo */}
-        <Col xs={24} lg={12}>
-          <Card title="Property" style={{ marginBottom: 16 }}>
-            <Row gutter={16}>
-              <Col span={c.photo_url ? 16 : 24}>
-                <Descriptions column={1} size="small">
-                  <Descriptions.Item label="Address">
-                    {c.property_address || '-'}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="Legal Description">
-                    <Text ellipsis={{ tooltip: c.legal_description }}>
-                      {c.legal_description || '-'}
-                    </Text>
-                  </Descriptions.Item>
-                </Descriptions>
-
-                {/* Enrichment Links */}
-                <Divider style={{ margin: '12px 0' }} />
-                <Space wrap>
+          {/* Enrichment Links */}
+          <Col xs={24} lg={8}>
+            <div style={{ marginTop: { xs: 12, lg: 0 } }}>
+              <Text type="secondary" style={{ fontSize: 12 }}>Quick Links</Text>
+              <div style={{ marginTop: 8 }}>
+                <Space wrap size="small">
                   {c.case_url && (
                     <a href={c.case_url} target="_blank" rel="noopener noreferrer">
                       <Button size="small" icon={<LinkOutlined />}>
-                        NC Courts Portal
+                        NC Courts
                       </Button>
                     </a>
                   )}
-                  <Button size="small" icon={<LinkOutlined />} disabled>
-                    Zillow
-                  </Button>
-                  <Button size="small" icon={<LinkOutlined />} disabled>
-                    Propwire
-                  </Button>
-                  <Button size="small" icon={<LinkOutlined />} disabled>
-                    County Records
-                  </Button>
-                  <Button size="small" icon={<FileTextOutlined />} disabled>
-                    Deed
-                  </Button>
+                  <Button size="small" icon={<LinkOutlined />} disabled>Zillow</Button>
+                  <Button size="small" icon={<LinkOutlined />} disabled>Propwire</Button>
+                  <Button size="small" icon={<FileTextOutlined />} disabled>Deed</Button>
                 </Space>
-                <div style={{ marginTop: 8 }}>
-                  <Text type="secondary" style={{ fontSize: 12 }}>
-                    Additional enrichment links coming in Phase 5
-                  </Text>
-                </div>
-              </Col>
-              {/* Photo placeholder */}
-              <Col span={c.photo_url ? 8 : 0}>
-                {c.photo_url ? (
-                  <Image src={c.photo_url} alt="Property" style={{ maxWidth: '100%' }} />
-                ) : (
-                  <div style={{
-                    width: 120, height: 90, background: '#f5f5f5',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    border: '1px dashed #d9d9d9', borderRadius: 4
-                  }}>
-                    <PictureOutlined style={{ fontSize: 24, color: '#bfbfbf' }} />
-                  </div>
-                )}
-              </Col>
-            </Row>
-          </Card>
+              </div>
+            </div>
+          </Col>
+        </Row>
+      </Card>
 
-          {/* Bid Information - Moved from right column */}
-          <Card title="Bid Information" style={{ marginBottom: 16 }}>
-            <Descriptions column={1} size="small">
-              <Descriptions.Item label="Current Bid">
-                <Text strong style={{ fontSize: 16 }}>
-                  {c.current_bid_amount ? `$${c.current_bid_amount.toLocaleString()}` : '-'}
-                </Text>
-              </Descriptions.Item>
-              <Descriptions.Item label="Minimum Next Bid">
-                {c.minimum_next_bid ? `$${c.minimum_next_bid.toLocaleString()}` : '-'}
-              </Descriptions.Item>
-              <Descriptions.Item label="Sale Date">
-                {c.sale_date ? dayjs(c.sale_date).format('MM/DD/YYYY') : '-'}
-              </Descriptions.Item>
-              <Descriptions.Item label="Bid Deadline">
-                {c.next_bid_deadline ? dayjs(c.next_bid_deadline).format('MM/DD/YYYY h:mm A') : '-'}
-              </Descriptions.Item>
-            </Descriptions>
-
-            <Divider style={{ margin: '12px 0' }} />
-
-            {/* Bid Ladder Editable */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Title level={5} style={{ margin: 0 }}>Your Bid Ladder</Title>
+      <Row gutter={16}>
+        {/* Left Column - Bid Info & Parties */}
+        <Col xs={24} lg={12}>
+          {/* Bid Information - Top Left */}
+          <Card
+            title="Bid Information"
+            style={{ marginBottom: 16 }}
+            extra={
               <Space size={4}>
                 {bidCardSaveState === 'saving' && (
                   <>
@@ -318,60 +263,100 @@ function CaseDetail() {
                   </>
                 )}
               </Space>
-            </div>
-
-            <div style={{ marginTop: 12 }}>
-              <Space direction="vertical" style={{ width: '100%' }} size="small">
+            }
+          >
+            <Row gutter={16}>
+              {/* Column 1: Current Bid & Min Next */}
+              <Col xs={8}>
+                <div style={{ marginBottom: 12 }}>
+                  <Text type="secondary" style={{ fontSize: 11 }}>Current Bid</Text>
+                  <div>
+                    <Text strong style={{ fontSize: 18 }}>
+                      {c.current_bid_amount ? `$${c.current_bid_amount.toLocaleString()}` : '-'}
+                    </Text>
+                  </div>
+                </div>
                 <div>
-                  <Text type="secondary" style={{ fontSize: 12 }}>Our Initial Bid</Text>
+                  <Text type="secondary" style={{ fontSize: 11 }}>Min Next Bid</Text>
+                  <div>
+                    <Text strong>
+                      {c.minimum_next_bid ? `$${c.minimum_next_bid.toLocaleString()}` : '-'}
+                    </Text>
+                  </div>
+                </div>
+              </Col>
+              {/* Column 2: Sale Date & Deadline */}
+              <Col xs={8}>
+                <div style={{ marginBottom: 12 }}>
+                  <Text type="secondary" style={{ fontSize: 11 }}>Sale Date</Text>
+                  <div>
+                    <Text strong>{c.sale_date ? dayjs(c.sale_date).format('MMM D, YYYY') : '-'}</Text>
+                  </div>
+                </div>
+                <div>
+                  <Text type="secondary" style={{ fontSize: 11 }}>Bid Deadline</Text>
+                  <div>
+                    <Text strong style={{ color: daysUntilDeadline !== null && daysUntilDeadline <= 3 ? '#ff4d4f' : undefined }}>
+                      {c.next_bid_deadline ? dayjs(c.next_bid_deadline).format('MMM D h:mm A') : '-'}
+                    </Text>
+                  </div>
+                </div>
+              </Col>
+              {/* Column 3: Your Bid Ladder */}
+              <Col xs={8}>
+                <div style={{ marginBottom: 8 }}>
+                  <Text type="secondary" style={{ fontSize: 11 }}>Our Initial</Text>
                   <InputNumber
                     value={ourInitialBid}
                     onChange={setOurInitialBid}
                     formatter={value => `$${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
                     parser={value => value.replace(/\$\s?|(,*)/g, '')}
-                    style={{ width: '100%', marginTop: 4 }}
+                    style={{ width: '100%' }}
+                    size="small"
                     min={0}
                     step={100}
-                    placeholder="Enter initial bid"
+                    placeholder="Initial"
                   />
                 </div>
-                <div>
-                  <Text type="secondary" style={{ fontSize: 12 }}>Our 2nd Bid</Text>
+                <div style={{ marginBottom: 8 }}>
+                  <Text type="secondary" style={{ fontSize: 11 }}>Our 2nd</Text>
                   <InputNumber
                     value={ourSecondBid}
                     onChange={setOurSecondBid}
                     formatter={value => `$${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
                     parser={value => value.replace(/\$\s?|(,*)/g, '')}
-                    style={{ width: '100%', marginTop: 4 }}
+                    style={{ width: '100%' }}
+                    size="small"
                     min={0}
                     step={100}
-                    placeholder="Enter 2nd bid"
+                    placeholder="2nd"
                   />
                 </div>
                 <div>
-                  <Text type="secondary" style={{ fontSize: 12 }}>Our Max Bid</Text>
+                  <Text type="secondary" style={{ fontSize: 11 }}>Our Max</Text>
                   <InputNumber
                     value={ourMaxBid}
                     onChange={setOurMaxBid}
                     formatter={value => `$${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
                     parser={value => value.replace(/\$\s?|(,*)/g, '')}
-                    style={{ width: '100%', marginTop: 4 }}
+                    style={{ width: '100%' }}
+                    size="small"
                     min={0}
                     step={100}
-                    placeholder="Enter max bid"
+                    placeholder="Max"
                   />
                 </div>
-              </Space>
-
-              {bidValidationError && (
-                <Alert
-                  type="error"
-                  message={bidValidationError}
-                  showIcon
-                  style={{ marginTop: 12 }}
-                />
-              )}
-            </div>
+              </Col>
+            </Row>
+            {bidValidationError && (
+              <Alert
+                type="error"
+                message={bidValidationError}
+                showIcon
+                style={{ marginTop: 12 }}
+                size="small"
+              />
+            )}
           </Card>
 
           {/* Parties */}

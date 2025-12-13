@@ -38,10 +38,25 @@ cd frontend && npm run dev -- --host &
 - **2,135 cases** across 6 counties (Wake, Durham, Harnett, Lee, Orange, Chatham)
 - **Active upset_bid cases:** 37 (all with complete data)
 - **Scheduler running** 5 AM Mon-Fri (3-day lookback on Mondays)
-- **Frontend:** React + Flask API (Dashboard, Admin tab for admins)
+- **Frontend:** React + Flask API (Dashboard, Admin tab for admins, Case Detail with bid ladder)
 - **Review Queue:** Fixed skipped cases filter (7-day lookback), Approve/Reject working
 
-### Recent Session Changes (Dec 13 - Session 4)
+### Recent Session Changes (Dec 13 - Session 5)
+- **Phase 3: Collaboration Features implemented:**
+  - Team notes with auto-save (1.5s debounce)
+  - Bid ladder editing (Initial, 2nd, Max) with validation
+  - PATCH /api/cases/<id> endpoint for collaboration fields
+  - useAutoSave hook with save-on-unmount
+  - NotesCard component
+- **Case Detail page redesign:**
+  - Header: title, property address, county, deadline (compact single line)
+  - Bid Information: 3-column layout (Current/Min | Sale/Deadline | Our Bids)
+  - Notes card on right column
+  - Removed redundant Property card
+- **Database:** Added 4 columns to cases table (our_initial_bid, our_second_bid, our_max_bid, team_notes)
+- **Migration:** `migrations/add_collaboration_fields.sql`
+
+### Previous Session Changes (Dec 13 - Session 4)
 - **Root cause analysis of OCR/extraction incompleteness:**
   - Identified 6 root causes for incomplete OCR/extraction
   - 188 documents had file_path but no ocr_text (1.9% of total)
