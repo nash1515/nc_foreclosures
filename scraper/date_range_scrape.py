@@ -41,7 +41,7 @@ TARGET_COUNTIES = ['wake', 'durham', 'orange', 'chatham', 'lee', 'harnett']
 class DateRangeScraper:
     """Scraper for multi-county date range searches."""
 
-    def __init__(self, start_date, end_date, counties=None, test_mode=False, limit=None, skip_existing=True):
+    def __init__(self, start_date, end_date, counties=None, test_mode=False, limit=None, skip_existing=True, party_name=None):
         """
         Initialize scraper.
 
@@ -52,6 +52,7 @@ class DateRangeScraper:
             test_mode: If True, limit scraping for testing
             limit: Maximum number of cases to process (for testing)
             skip_existing: If True, skip cases already in DB (default: True)
+            party_name: Optional party name to filter search (default: None)
         """
         self.start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
         self.end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
@@ -59,6 +60,7 @@ class DateRangeScraper:
         self.test_mode = test_mode
         self.limit = limit
         self.skip_existing = skip_existing
+        self.party_name = party_name
         self.scrape_log_id = None
 
         # Validate counties
@@ -169,7 +171,8 @@ class DateRangeScraper:
             county_names=county_names,
             start_date=self.start_date,
             end_date=self.end_date,
-            search_text=search_text
+            search_text=search_text,
+            party_name=self.party_name
         )
 
         # Solve CAPTCHA and submit

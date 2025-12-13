@@ -19,6 +19,9 @@ SEARCH_CRITERIA_INPUT = '#caseCriteria_SearchCriteria'
 FILE_DATE_START = 'input[name="caseCriteria.FileDateStart"]'
 FILE_DATE_END = 'input[name="caseCriteria.FileDateEnd"]'
 
+# Party Name field (in Party Search Criteria section)
+PARTY_NAME_INPUT = 'input[name="caseCriteria.NameLast"]'
+
 # Location selection - uses CHECKBOXES not dropdown
 # "All Locations" checkbox must be unchecked first, then check desired county
 ALL_LOCATIONS_CHECKBOX = 'input[type="checkbox"][aria-label="All Locations"]'

@@ -16,7 +16,7 @@ def click_advanced_filter(page):
     logger.info("  ✓ Advanced filters opened")
 
 
-def fill_search_form(page, county_names, start_date, end_date, search_text):
+def fill_search_form(page, county_names, start_date, end_date, search_text, party_name=None):
     """
     Fill out the search form.
 
@@ -25,6 +25,7 @@ def fill_search_form(page, county_names, start_date, end_date, search_text):
     - Case Type/Status: Use Kendo ComboBox widgets (set via JavaScript).
     - Dates: Standard text inputs with MM/DD/YYYY format.
     - Search text: Required field at top.
+    - Party Name: Optional text input for filtering by party last name.
 
     Args:
         page: Playwright page object
@@ -32,6 +33,7 @@ def fill_search_form(page, county_names, start_date, end_date, search_text):
         start_date: Start date object
         end_date: End date object
         search_text: Search text (e.g., '24SP*')
+        party_name: Optional party name to filter search (default: None)
     """
     # Normalize county_names to a list
     if isinstance(county_names, str):
@@ -116,6 +118,15 @@ def fill_search_form(page, county_names, start_date, end_date, search_text):
         logger.info(f"    ✓ Selected status: {PENDING_STATUS}")
     except Exception as e:
         logger.warning(f"  Status selection failed: {e}")
+
+    # 6. Fill party name if provided
+    if party_name:
+        try:
+            logger.info(f"  Filtering by party name: {party_name}")
+            page.fill(PARTY_NAME_INPUT, party_name)
+            logger.info(f"    ✓ Party name filter applied")
+        except Exception as e:
+            logger.warning(f"  Party name filter failed: {e}")
 
     logger.info("  ✓ Form filled")
 
