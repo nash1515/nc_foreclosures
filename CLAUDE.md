@@ -35,19 +35,30 @@ cd frontend && npm run dev -- --host &
 
 ## Current Status (Dec 13, 2025)
 
-- **2,125 cases** across 6 counties (Wake, Durham, Harnett, Lee, Orange, Chatham)
+- **2,135 cases** across 6 counties (Wake, Durham, Harnett, Lee, Orange, Chatham)
 - **Active upset_bid cases:** 37 (all with complete data)
 - **Scheduler running** 5 AM Mon-Fri (3-day lookback on Mondays)
-- **Frontend:** React + Flask API (Dashboard with county filtering, improved layout)
+- **Frontend:** React + Flask API (Dashboard, Settings tab for admins)
 - **Review Queue:** Fixed skipped cases filter (7-day lookback), Approve/Reject working
 
-### Recent Session Changes (Dec 13)
-- **Implemented self-diagnosis system for upset_bid cases:**
+### Recent Session Changes (Dec 13 - Session 2)
+- **Settings Tab implemented (admin only):**
+  - Manual Scrape section: date range picker, county checkboxes, party name filter
+  - User Management section: add/edit/delete users, role-based access (Admin/User)
+  - Whitelist auth: users must be added before they can log in
+  - `ADMIN_EMAIL` env var seeds first admin on startup
+- **Backend changes:**
+  - `role` column added to users table
+  - `/api/admin/users` CRUD endpoints
+  - `/api/admin/scrape` endpoint for manual scraping
+  - `party_name` parameter added to DateRangeScraper
+
+### Previous Session Changes (Dec 13 - Session 1)
+- **Self-diagnosis system for upset_bid cases:**
   - Three-tier healing approach: re-extract → re-OCR → re-scrape
   - Runs as Task 5 in `daily_scrape.py` after all scraping/monitoring
   - Detects missing critical fields: sale_date, upset_deadline, property_address, current_bid
   - Successfully healed 2 cases with missing sale_date on first run
-  - Dry-run mode available for testing (`dry_run=True`)
 
 ### Previous Session Changes (Dec 12 - Session 3)
 - **Fixed extraction pipeline for monitored cases:**
@@ -152,10 +163,9 @@ PGPASSWORD=nc_password psql -U nc_user -d nc_foreclosures -h localhost
 - `scraper/page_parser.py` - Day-1 detection indicators + exclusions
 - `extraction/classifier.py` - Case status classification
 - `common/business_days.py` - NC court holiday calendar for deadline calculation
+- `web_app/api/admin.py` - Admin endpoints for user management and manual scraping
 - `scripts/reevaluate_skipped.py` - Re-check skipped cases against updated indicators
 - `scripts/download_missing_documents.py` - Downloads docs for cases with 0 documents
-- `scripts/backfill_document_events.py` - Links existing docs to events
-- `scripts/cleanup_documents.py` - Removes duplicate document entries
 
 ### Database Tables
 `cases`, `case_events`, `parties`, `hearings`, `documents`, `scrape_logs`, `scheduler_config`, `users`
@@ -170,7 +180,7 @@ PGPASSWORD=nc_password psql -U nc_user -d nc_foreclosures -h localhost
 6. **Address extraction patterns** - Comma-optional patterns for OCR text (handles variations)
 
 ## Environment Variables (.env)
-`DATABASE_URL`, `CAPSOLVER_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `FLASK_SECRET_KEY`
+`DATABASE_URL`, `CAPSOLVER_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `FLASK_SECRET_KEY`, `ADMIN_EMAIL`
 
 ## Frontend Development
 
@@ -182,9 +192,10 @@ npm install && npm run dev -- --port 5174
 ```
 
 ## Next Priorities
-1. Build Case Detail page
-2. Build Case List page with filtering
-3. Enrichment module (Zillow, tax records)
+1. Test Settings page in production (login as admin, test manual scrape)
+2. Build Case Detail page
+3. Build Case List page with filtering
+4. Enrichment module (Zillow, tax records)
 
 ## Session Commands
 - **"Wrap up session"** - Update CLAUDE.md + commit/push + review todos + give handoff
