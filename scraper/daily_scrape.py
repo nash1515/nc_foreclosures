@@ -38,6 +38,7 @@ from database.models import Case
 from scraper.date_range_scrape import DateRangeScraper
 from scraper.case_monitor import CaseMonitor, monitor_cases
 from extraction.classifier import reclassify_stale_cases
+from scraper.self_diagnosis import diagnose_and_heal_upset_bids
 from common.logger import setup_logger
 
 logger = setup_logger(__name__)
@@ -338,6 +339,7 @@ def run_daily_tasks(
         'case_monitoring': None,
         'upset_bid_validation': None,
         'stale_reclassification': None,
+        'self_diagnosis': None,
         'errors': []
     }
 
@@ -401,6 +403,17 @@ def run_daily_tasks(
     except Exception as e:
         logger.error(f"Task 4 failed: {e}")
         results['errors'].append(f"stale_reclassification: {e}")
+
+    # Task 5: Self-diagnosis and healing
+    logger.info("=" * 60)
+    logger.info("TASK 5: Self-diagnosis for upset_bid cases")
+    logger.info("=" * 60)
+    try:
+        results['self_diagnosis'] = diagnose_and_heal_upset_bids(dry_run)
+    except Exception as e:
+        logger.error(f"Task 5 (self-diagnosis) failed: {e}")
+        results['errors'].append(f"self_diagnosis: {e}")
+        results['self_diagnosis'] = {'error': str(e)}
 
     # Summary
     end_time = datetime.now()
