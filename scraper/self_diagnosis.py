@@ -6,6 +6,7 @@ from database.models import Case, Document, CaseEvent
 from common.logger import setup_logger
 from extraction.extractor import update_case_with_extracted_data
 from ocr.processor import process_case_documents
+from scraper.case_monitor import CaseMonitor
 
 logger = setup_logger(__name__)
 
@@ -111,4 +112,37 @@ def _tier2_reocr(case: Case) -> bool:
         return True
     except Exception as e:
         logger.error(f"Case {case.case_number}: Tier 2 failed - {e}")
+        return False
+
+
+def _tier3_rescrape(case: Case) -> bool:
+    """
+    Tier 3: Full re-scrape via CaseMonitor.
+
+    Args:
+        case: Case to heal
+
+    Returns:
+        True if re-scrape was attempted
+    """
+    logger.info(f"Case {case.case_number}: Tier 3 (re-scrape) - attempting...")
+    try:
+        monitor = CaseMonitor(max_workers=1, headless=False, max_retries=2)
+        results = monitor.run(cases=[case])
+
+        logger.info(f"Case {case.case_number}: Tier 3 - re-scrape complete")
+
+        # OCR any new documents
+        processed = process_case_documents(case.id)
+        if processed:
+            logger.info(f"Case {case.case_number}: Tier 3 - processed {processed} new documents")
+
+        # Extract data
+        updated = update_case_with_extracted_data(case.id)
+        if updated:
+            logger.info(f"Case {case.case_number}: Tier 3 - extraction updated case")
+
+        return True
+    except Exception as e:
+        logger.error(f"Case {case.case_number}: Tier 3 failed - {e}")
         return False
