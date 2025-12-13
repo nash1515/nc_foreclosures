@@ -157,19 +157,21 @@ def process_document(document_id: int, run_extraction: bool = True) -> bool:
         # Extract text
         text, method = extract_text_from_pdf(document.file_path)
 
-        if text:
-            document.ocr_text = text
-            session.commit()
-            logger.info(f"  Extracted {len(text)} chars via {method}")
-
-            # Auto-trigger data extraction and classification
-            if run_extraction and case_id:
-                _run_extraction_for_case(case_id)
-
-            return True
-        else:
-            logger.warning(f"  No text extracted from {document.document_name}")
+        # Check if we got usable text (minimum 50 chars)
+        if not text or len(text.strip()) < 50:
+            logger.warning(f"  Insufficient text extracted from {document.document_name} ({len(text) if text else 0} chars) - will retry later")
             return False
+
+        # Save extracted text
+        document.ocr_text = text
+        session.commit()
+        logger.info(f"  Extracted {len(text)} chars via {method}")
+
+        # Auto-trigger data extraction and classification
+        if run_extraction and case_id:
+            _run_extraction_for_case(case_id)
+
+        return True
 
 
 def _run_extraction_for_case(case_id: int):
@@ -192,7 +194,7 @@ def _run_extraction_for_case(case_id: int):
     except ImportError:
         logger.debug("Extraction module not available")
     except Exception as e:
-        logger.warning(f"Extraction failed for case {case_id} (non-blocking): {e}")
+        logger.error(f"Extraction failed for case {case_id} (non-blocking): {e}")
 
 
 def process_case_documents(case_id: int) -> int:

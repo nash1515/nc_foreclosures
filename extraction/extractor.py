@@ -7,7 +7,7 @@ No LLM required - all data follows predictable formats in NC Court documents.
 import re
 from decimal import Decimal
 from datetime import datetime, date
-from typing import Optional, Dict, Any, Tuple
+from typing import Optional, Dict, Any, Tuple, List
 
 from datetime import timedelta
 from database.connection import get_session
@@ -386,7 +386,8 @@ def extract_bid_amount(ocr_text: str) -> Optional[Decimal]:
             amount_str = match.group(1).replace(',', '')
             try:
                 return Decimal(amount_str)
-            except:
+            except Exception as e:
+                logger.debug(f"Bid amount parse failed for '{amount_str}': {e}")
                 continue
 
     return None
@@ -472,7 +473,8 @@ def extract_upset_bid_data(ocr_text: str) -> Dict[str, Any]:
                 # Filter out unreasonable values (less than $100 or more than $100M)
                 if 100 <= amount <= 100000000:
                     return amount
-            except:
+            except Exception as e:
+                logger.debug(f"Amount conversion failed for '{amount_str}': {e}")
                 pass
         return None
 
@@ -803,7 +805,8 @@ def extract_report_of_sale_data(ocr_text: str) -> Dict[str, Any]:
                 # Filter out unreasonable values (less than $100 or more than $100M)
                 if 100 <= amount <= 100000000:
                     return amount
-            except:
+            except Exception as e:
+                logger.debug(f"Amount conversion failed for '{amount_str}': {e}")
                 pass
         return None
 
@@ -1179,14 +1182,51 @@ def update_case_with_extracted_data(case_id: int) -> bool:
             if updated_fields:
                 session.commit()
                 logger.info(f"  Updated case {case_id}: {', '.join(updated_fields)}")
-                return True
+                success = True
             else:
                 logger.debug(f"  No new data for case {case_id}")
-                return False
+                success = False
+
+        # Mark documents as extraction-attempted (success or failure)
+        with get_session() as session:
+            session.query(Document).filter(
+                Document.case_id == case_id,
+                Document.ocr_text.isnot(None),
+                Document.extraction_attempted_at.is_(None)
+            ).update({'extraction_attempted_at': datetime.now()})
+            session.commit()
+
+        return success
 
     except Exception as e:
         logger.error(f"  Error extracting data for case {case_id}: {e}")
+        # Still mark as attempted even on failure
+        try:
+            with get_session() as session:
+                session.query(Document).filter(
+                    Document.case_id == case_id,
+                    Document.ocr_text.isnot(None),
+                    Document.extraction_attempted_at.is_(None)
+                ).update({'extraction_attempted_at': datetime.now()})
+                session.commit()
+        except Exception as mark_error:
+            logger.error(f"  Failed to mark extraction attempt for case {case_id}: {mark_error}")
         return False
+
+
+def get_documents_needing_extraction() -> List[int]:
+    """
+    Find case IDs with OCR text but no extraction attempt.
+
+    Returns:
+        List of case IDs that need extraction processing
+    """
+    with get_session() as session:
+        case_ids = session.query(Document.case_id).filter(
+            Document.ocr_text.isnot(None),
+            Document.extraction_attempted_at.is_(None)
+        ).distinct().all()
+        return [c[0] for c in case_ids if c[0]]
 
 
 def process_unextracted_cases(limit: int = None) -> int:

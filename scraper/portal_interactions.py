@@ -188,7 +188,7 @@ def solve_and_submit_captcha(page):
                 if grid_row.is_visible(timeout=100):
                     logger.debug("    Grid rows found")
                     break
-            except:
+            except Exception:
                 pass
 
             # Check for Kendo "no records" indicator
@@ -197,7 +197,7 @@ def solve_and_submit_captcha(page):
                 if no_records.is_visible(timeout=100):
                     logger.info("  ✓ Search completed - No cases match the search criteria (grid no-records)")
                     return "no_results"
-            except:
+            except Exception:
                 pass
 
             time.sleep(poll_interval)
@@ -237,7 +237,7 @@ def check_for_error(page):
             error_text = error_elem.inner_text()
             logger.warning(f"Error detected: {error_text}")
             return True, error_text
-    except:
+    except Exception:
         pass
 
     return False, None

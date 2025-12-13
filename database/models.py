@@ -157,6 +157,7 @@ class Document(Base):
     file_path = Column(Text)
     ocr_text = Column(Text)
     document_date = Column(Date)
+    extraction_attempted_at = Column(TIMESTAMP)  # When extraction was last attempted
     created_at = Column(TIMESTAMP, server_default=func.current_timestamp())
 
     # Relationships

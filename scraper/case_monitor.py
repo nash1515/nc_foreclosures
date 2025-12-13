@@ -266,8 +266,8 @@ class CaseMonitor:
                         amount = Decimal(match.replace(',', ''))
                         if amount > 1000:  # Filter out small amounts
                             amounts.append(amount)
-                    except:
-                        pass
+                    except Exception as e:
+                        logger.debug(f"Amount parse failed for '{match}': {e}")
                 if amounts:
                     return max(amounts)
 
@@ -301,8 +301,8 @@ class CaseMonitor:
                         bid_date = datetime.strptime(event_date, '%m/%d/%Y').date()
                         adjusted_deadline = calculate_upset_bid_deadline(bid_date)
                         case.next_bid_deadline = datetime.combine(adjusted_deadline, datetime.min.time())
-                    except:
-                        pass
+                    except Exception as e:
+                        logger.warning(f"Deadline calculation failed for event_date={event_date}: {e}")
 
                 case.updated_at = datetime.utcnow()
                 session.commit()
@@ -384,21 +384,13 @@ class CaseMonitor:
 
         sorted_docs = sorted(downloaded, key=parse_event_date, reverse=True)
 
-        # Process documents for bid extraction (focus on upset bid/sale docs)
+        # Process documents for bid extraction (OCR all docs, extract from upset bid/sale only)
         for doc_info in sorted_docs:
-            # Skip if not a new download and we don't need to re-OCR
-            if not doc_info.get('is_new') and not doc_info.get('is_upset_bid') and not doc_info.get('is_sale'):
-                continue
-
             file_path = doc_info.get('file_path')
             if not file_path:
                 continue
 
-            # Only OCR upset bid and sale documents for bid extraction
-            if not (doc_info.get('is_upset_bid') or doc_info.get('is_sale')):
-                continue
-
-            # Run OCR on the document
+            # Run OCR on ALL documents (not just upset_bid/sale)
             logger.info(f"  OCR processing: {doc_info.get('event_type', 'document')}")
             ocr_text, method = extract_text_from_pdf(file_path)
 
@@ -418,6 +410,11 @@ class CaseMonitor:
                         logger.debug(f"    Saved {len(ocr_text)} chars of OCR text to database")
                     elif doc_record and doc_record.ocr_text:
                         logger.debug(f"    OCR text already exists in database")
+
+            # Only extract bid data from upset_bid or sale documents
+            if not (doc_info.get('is_upset_bid') or doc_info.get('is_sale')):
+                logger.debug(f"    Skipping bid extraction for non-upset_bid/sale document")
+                continue
 
             # Check if this is a Report of Sale document (AOC-SP-301)
             # This contains the INITIAL bid from the auction
@@ -586,8 +583,8 @@ class CaseMonitor:
                 if event_data.get('event_date'):
                     try:
                         event_date = datetime.strptime(event_data['event_date'], '%m/%d/%Y').date()
-                    except:
-                        pass
+                    except Exception as e:
+                        logger.warning(f"Event date parse failed for {event_data}: {e}")
 
                 event = CaseEvent(
                     case_id=case_id,

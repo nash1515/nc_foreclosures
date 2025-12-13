@@ -412,7 +412,7 @@ def run_daily_tasks(
             results['errors'].append(f"new_case_search: {e}")
 
     # Task 1.5: OCR and extraction for newly downloaded documents
-    if search_new and not dry_run and results.get('new_case_search', {}).get('cases_processed', 0) > 0:
+    if search_new and not dry_run:
         task_id = task_logger.start_task('ocr_after_search')
         try:
             logger.info("=" * 60)
