@@ -146,3 +146,107 @@ def _tier3_rescrape(case: Case) -> bool:
     except Exception as e:
         logger.error(f"Case {case.case_number}: Tier 3 failed - {e}")
         return False
+
+
+def diagnose_and_heal_upset_bids(dry_run: bool = False) -> Dict:
+    """
+    Check all upset_bid cases for completeness and attempt self-healing.
+
+    Args:
+        dry_run: If True, only check completeness without healing
+
+    Returns:
+        Dict with diagnosis results
+    """
+    results = {
+        'cases_checked': 0,
+        'cases_incomplete': 0,
+        'cases_healed': 0,
+        'cases_unresolved': [],
+        'healing_attempts': {
+            'tier1_reextract': {'attempted': 0, 'succeeded': 0},
+            'tier2_reocr': {'attempted': 0, 'succeeded': 0},
+            'tier3_rescrape': {'attempted': 0, 'succeeded': 0}
+        }
+    }
+
+    cases = _get_upset_bid_cases()
+    results['cases_checked'] = len(cases)
+    logger.info(f"Self-diagnosis: checking {len(cases)} upset_bid cases")
+
+    for case in cases:
+        missing = _check_completeness(case)
+
+        if not missing:
+            continue  # Already complete
+
+        results['cases_incomplete'] += 1
+        logger.info(f"Case {case.case_number}: missing {missing}")
+
+        if dry_run:
+            results['cases_unresolved'].append({
+                'case_id': case.id,
+                'case_number': case.case_number,
+                'missing_fields': missing
+            })
+            continue
+
+        # Tier 1: Re-extract
+        results['healing_attempts']['tier1_reextract']['attempted'] += 1
+        _tier1_reextract(case)
+
+        # Refresh case and check
+        with get_session() as session:
+            refreshed = session.query(Case).filter_by(id=case.id).first()
+            missing = _check_completeness(refreshed)
+            session.expunge(refreshed)
+
+        if not missing:
+            results['healing_attempts']['tier1_reextract']['succeeded'] += 1
+            results['cases_healed'] += 1
+            logger.info(f"Case {case.case_number}: Tier 1 - complete, all fields populated")
+            continue
+
+        # Tier 2: Re-OCR
+        results['healing_attempts']['tier2_reocr']['attempted'] += 1
+        _tier2_reocr(case)
+
+        with get_session() as session:
+            refreshed = session.query(Case).filter_by(id=case.id).first()
+            missing = _check_completeness(refreshed)
+            session.expunge(refreshed)
+
+        if not missing:
+            results['healing_attempts']['tier2_reocr']['succeeded'] += 1
+            results['cases_healed'] += 1
+            logger.info(f"Case {case.case_number}: Tier 2 - complete, all fields populated")
+            continue
+
+        # Tier 3: Full re-scrape
+        results['healing_attempts']['tier3_rescrape']['attempted'] += 1
+        _tier3_rescrape(case)
+
+        with get_session() as session:
+            refreshed = session.query(Case).filter_by(id=case.id).first()
+            missing = _check_completeness(refreshed)
+            session.expunge(refreshed)
+
+        if not missing:
+            results['healing_attempts']['tier3_rescrape']['succeeded'] += 1
+            results['cases_healed'] += 1
+            logger.info(f"Case {case.case_number}: Tier 3 - complete, all fields populated")
+            continue
+
+        # Still incomplete after all tiers
+        results['cases_unresolved'].append({
+            'case_id': case.id,
+            'case_number': case.case_number,
+            'missing_fields': missing
+        })
+        logger.warning(f"Case {case.case_number}: unresolved after all tiers, missing {missing}")
+
+    healed = results['cases_healed']
+    unresolved = len(results['cases_unresolved'])
+    logger.info(f"Self-diagnosis complete: {results['cases_incomplete']} incomplete, {healed} healed, {unresolved} unresolved")
+
+    return results
