@@ -5,6 +5,8 @@ from database.connection import get_session
 from database.models import Case, Document, CaseEvent
 from common.logger import setup_logger
 from extraction.extractor import update_case_with_extracted_data
+from ocr.processor import process_case_documents
+from scraper.document_downloader import download_case_documents
 
 logger = setup_logger(__name__)
 
@@ -66,4 +68,48 @@ def _tier1_reextract(case: Case) -> bool:
         return True
     except Exception as e:
         logger.error(f"Case {case.case_number}: Tier 1 failed - {e}")
+        return False
+
+
+def _tier2_redownload(case: Case) -> bool:
+    """
+    Tier 2: Re-download documents and extract.
+
+    Args:
+        case: Case to heal
+
+    Returns:
+        True if download was attempted
+    """
+    logger.info(f"Case {case.case_number}: Tier 2 (re-download) - attempting...")
+    try:
+        # Get events with document URLs
+        with get_session() as session:
+            events = session.query(CaseEvent).filter(
+                CaseEvent.case_id == case.id,
+                CaseEvent.document_url.isnot(None)
+            ).all()
+            event_count = len(events)
+            session.expunge_all()
+
+        if event_count == 0:
+            logger.info(f"Case {case.case_number}: Tier 2 - no document URLs found")
+            return False
+
+        # Re-download documents
+        downloaded = download_case_documents(case.id, force=True)
+        logger.info(f"Case {case.case_number}: Tier 2 - downloaded {downloaded} documents")
+
+        # OCR the documents
+        processed = process_case_documents(case.id)
+        logger.info(f"Case {case.case_number}: Tier 2 - processed {processed} documents")
+
+        # Re-extract
+        updated = update_case_with_extracted_data(case.id)
+        if updated:
+            logger.info(f"Case {case.case_number}: Tier 2 - extraction updated case")
+
+        return True
+    except Exception as e:
+        logger.error(f"Case {case.case_number}: Tier 2 failed - {e}")
         return False
