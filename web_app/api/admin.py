@@ -135,3 +135,62 @@ def delete_user(user_id):
         db_session.commit()
 
         return jsonify({'success': True})
+
+
+@admin_bp.route('/scrape', methods=['POST'])
+@require_admin
+def run_manual_scrape():
+    """Trigger a manual scrape with custom parameters."""
+    data = request.get_json() or {}
+
+    start_date = data.get('start_date')
+    end_date = data.get('end_date')
+    counties = data.get('counties')  # Optional list
+    party_name = data.get('party_name')  # Optional string (will be used in Task 6)
+
+    # Validate required fields
+    if not start_date or not end_date:
+        return jsonify({'error': 'start_date and end_date are required'}), 400
+
+    # Validate date format
+    import re
+    date_pattern = r'^\d{4}-\d{2}-\d{2}$'
+    if not re.match(date_pattern, start_date) or not re.match(date_pattern, end_date):
+        return jsonify({'error': 'Dates must be in YYYY-MM-DD format'}), 400
+
+    # Validate counties if provided
+    valid_counties = ['WAKE', 'DURHAM', 'HARNETT', 'LEE', 'ORANGE', 'CHATHAM']
+    if counties:
+        invalid = [c for c in counties if c.upper() not in valid_counties]
+        if invalid:
+            return jsonify({'error': f'Invalid counties: {invalid}'}), 400
+        # Convert to lowercase for scraper
+        counties = [c.lower() for c in counties]
+
+    try:
+        from scraper.date_range_scrape import DateRangeScraper
+
+        scraper = DateRangeScraper(
+            start_date=start_date,
+            end_date=end_date,
+            counties=counties,
+            skip_existing=True
+        )
+
+        # If party_name provided, set it on scraper (Task 6 will add support)
+        if party_name:
+            scraper.party_name = party_name
+
+        result = scraper.run()
+
+        return jsonify({
+            'status': result.get('status', 'unknown'),
+            'cases_processed': result.get('cases_processed', 0),
+            'cases_found': result.get('cases_found', 0),
+            'error': result.get('error')
+        })
+    except Exception as e:
+        return jsonify({
+            'status': 'failed',
+            'error': str(e)
+        }), 500
