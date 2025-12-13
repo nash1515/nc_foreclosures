@@ -70,6 +70,10 @@ def create_app():
     from web_app.api.review import review_bp
     app.register_blueprint(review_bp, url_prefix='/api/review')
 
+    # Register admin API
+    from web_app.api.admin import admin_bp
+    app.register_blueprint(admin_bp)
+
     # Seed admin user from environment
     seed_admin_user()
 
