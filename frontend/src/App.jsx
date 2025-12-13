@@ -24,7 +24,7 @@ function App() {
         throw new Error('Not authenticated');
       })
       .then(data => {
-        setUser(data);
+        setUser(data.user);
         setLoading(false);
       })
       .catch(() => {
