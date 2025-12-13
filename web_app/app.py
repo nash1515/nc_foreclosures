@@ -4,6 +4,31 @@ import os
 from flask import Flask, session
 from flask_cors import CORS
 
+from database.connection import Session
+from database.models import User
+
+
+def seed_admin_user():
+    """Ensure ADMIN_EMAIL user exists with admin role."""
+    admin_email = os.environ.get('ADMIN_EMAIL')
+    if not admin_email:
+        return
+
+    session = Session()
+    try:
+        user = session.query(User).filter_by(email=admin_email).first()
+        if not user:
+            user = User(email=admin_email, role='admin')
+            session.add(user)
+            session.commit()
+            print(f"Created admin user: {admin_email}")
+        elif user.role != 'admin':
+            user.role = 'admin'
+            session.commit()
+            print(f"Updated user to admin: {admin_email}")
+    finally:
+        session.close()
+
 
 def create_app():
     """Create and configure the Flask application."""
@@ -44,6 +69,9 @@ def create_app():
     # Register review API
     from web_app.api.review import review_bp
     app.register_blueprint(review_bp, url_prefix='/api/review')
+
+    # Seed admin user from environment
+    seed_admin_user()
 
     return app
 
