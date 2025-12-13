@@ -69,6 +69,13 @@ class Case(Base):
     attorney_name = Column(String(255))
     attorney_phone = Column(String(50))
     attorney_email = Column(String(255))
+
+    # Collaboration fields (Phase 3)
+    our_initial_bid = Column(DECIMAL(12, 2))
+    our_second_bid = Column(DECIMAL(12, 2))
+    our_max_bid = Column(DECIMAL(12, 2))
+    team_notes = Column(Text)
+
     reviewed_at = Column(TIMESTAMP)
     last_scraped_at = Column(TIMESTAMP)
     created_at = Column(TIMESTAMP, server_default=func.current_timestamp())

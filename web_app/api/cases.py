@@ -255,6 +255,10 @@ def get_case(case_id):
             'attorney_name': case.attorney_name,
             'attorney_phone': case.attorney_phone,
             'attorney_email': case.attorney_email,
+            'our_initial_bid': float(case.our_initial_bid) if case.our_initial_bid else None,
+            'our_second_bid': float(case.our_second_bid) if case.our_second_bid else None,
+            'our_max_bid': float(case.our_max_bid) if case.our_max_bid else None,
+            'team_notes': case.team_notes,
             'parties': parties,
             'events': events,
             'hearings': hearings,
@@ -489,4 +493,69 @@ def get_upset_bids():
         return jsonify({
             'cases': result,
             'total': len(result)
+        })
+
+
+@cases_bp.route('/<int:case_id>', methods=['PATCH'])
+def update_case(case_id):
+    """Update case collaboration fields.
+
+    Request body (all fields optional):
+    {
+        "our_initial_bid": 50000,
+        "our_second_bid": 55000,
+        "our_max_bid": 60000,
+        "team_notes": "Property looks good. Needs roof work (~15k)."
+    }
+    """
+    if not google.authorized:
+        return jsonify({'error': 'Not authenticated'}), 401
+
+    # Parse request body
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
+
+    # Extract allowed fields
+    our_initial_bid = data.get('our_initial_bid')
+    our_second_bid = data.get('our_second_bid')
+    our_max_bid = data.get('our_max_bid')
+    team_notes = data.get('team_notes')
+
+    with get_session() as db_session:
+        # Fetch case first to get current values
+        case = db_session.query(Case).filter_by(id=case_id).first()
+        if not case:
+            return jsonify({'error': 'Case not found'}), 404
+
+        # Merge current DB values with incoming request values
+        merged_initial = float(our_initial_bid) if our_initial_bid is not None else (float(case.our_initial_bid) if case.our_initial_bid is not None else None)
+        merged_second = float(our_second_bid) if our_second_bid is not None else (float(case.our_second_bid) if case.our_second_bid is not None else None)
+        merged_max = float(our_max_bid) if our_max_bid is not None else (float(case.our_max_bid) if case.our_max_bid is not None else None)
+
+        # Validate merged state if all three bids are non-null
+        if merged_initial is not None and merged_second is not None and merged_max is not None:
+            if not (merged_initial <= merged_second <= merged_max):
+                return jsonify({
+                    'error': 'Invalid bid ladder: our_initial_bid <= our_second_bid <= our_max_bid'
+                }), 400
+
+        # Update fields (only if provided in request)
+        if our_initial_bid is not None:
+            case.our_initial_bid = our_initial_bid
+        if our_second_bid is not None:
+            case.our_second_bid = our_second_bid
+        if our_max_bid is not None:
+            case.our_max_bid = our_max_bid
+        if team_notes is not None:
+            case.team_notes = team_notes
+
+        # Return only the updated collaboration fields
+        # (Avoids lazy-loading relationships which causes session issues)
+        return jsonify({
+            'id': case.id,
+            'our_initial_bid': float(case.our_initial_bid) if case.our_initial_bid else None,
+            'our_second_bid': float(case.our_second_bid) if case.our_second_bid else None,
+            'our_max_bid': float(case.our_max_bid) if case.our_max_bid else None,
+            'team_notes': case.team_notes
         })

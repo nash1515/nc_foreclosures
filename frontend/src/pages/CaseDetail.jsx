@@ -1,14 +1,17 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
   Typography, Card, Row, Col, Tag, Button, Descriptions, Timeline, Table,
-  Spin, Alert, Space, Divider, message, Image
+  Spin, Alert, Space, Divider, message, Image, InputNumber
 } from 'antd';
 import {
   ArrowLeftOutlined, StarOutlined, StarFilled,
-  LinkOutlined, FileTextOutlined, PictureOutlined
+  LinkOutlined, FileTextOutlined, PictureOutlined,
+  LoadingOutlined, CheckCircleOutlined
 } from '@ant-design/icons';
-import { fetchCase, addToWatchlist, removeFromWatchlist } from '../api/cases';
+import { fetchCase, addToWatchlist, removeFromWatchlist, updateCase } from '../api/cases';
+import { useAutoSave } from '../hooks/useAutoSave';
+import NotesCard from '../components/NotesCard';
 import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
@@ -28,12 +31,29 @@ function CaseDetail() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  // Bid ladder state
+  const [ourInitialBid, setOurInitialBid] = useState(null);
+  const [ourSecondBid, setOurSecondBid] = useState(null);
+  const [ourMaxBid, setOurMaxBid] = useState(null);
+  const [bidValidationError, setBidValidationError] = useState(null);
+
+  // Team notes state
+  const [teamNotes, setTeamNotes] = useState('');
+
   useEffect(() => {
     async function loadCase() {
       try {
         setLoading(true);
         const data = await fetchCase(id);
         setCaseData(data);
+
+        // Initialize bid ladder state
+        setOurInitialBid(data.our_initial_bid);
+        setOurSecondBid(data.our_second_bid);
+        setOurMaxBid(data.our_max_bid);
+
+        // Initialize team notes
+        setTeamNotes(data.team_notes || '');
       } catch (err) {
         setError(err.message);
       } finally {
@@ -59,6 +79,80 @@ function CaseDetail() {
       message.error('Failed to update watchlist');
     }
   };
+
+  // Auto-save bid ladder
+  const handleBidSave = useCallback(async (updates) => {
+    try {
+      // Validate bid ladder - FIX: Validate pairwise, not all-or-nothing
+      const initial = updates.our_initial_bid ?? ourInitialBid;
+      const second = updates.our_second_bid ?? ourSecondBid;
+      const max = updates.our_max_bid ?? ourMaxBid;
+
+      // Validate initial vs second (if both present)
+      if (initial !== null && second !== null && initial > second) {
+        const error = 'Initial bid must be ≤ 2nd bid';
+        setBidValidationError(error);
+        throw new Error(error);
+      }
+
+      // Validate second vs max (if both present)
+      if (second !== null && max !== null && second > max) {
+        const error = '2nd bid must be ≤ Max bid';
+        setBidValidationError(error);
+        throw new Error(error);
+      }
+
+      // Validate initial vs max (if both present, covers transitive case)
+      if (initial !== null && max !== null && initial > max) {
+        const error = 'Initial bid must be ≤ Max bid';
+        setBidValidationError(error);
+        throw new Error(error);
+      }
+
+      setBidValidationError(null);
+      await updateCase(id, updates);
+      // No need to update caseData - local state already has correct values
+    } catch (err) {
+      message.error('Failed to save bid ladder');
+      throw err;
+    }
+  }, [id, ourInitialBid, ourSecondBid, ourMaxBid]);
+
+  // Auto-save hooks for each bid field
+  const { saveState: initialBidSaveState } = useAutoSave(
+    (value) => handleBidSave({ our_initial_bid: value }),
+    ourInitialBid
+  );
+  const { saveState: secondBidSaveState } = useAutoSave(
+    (value) => handleBidSave({ our_second_bid: value }),
+    ourSecondBid
+  );
+  const { saveState: maxBidSaveState } = useAutoSave(
+    (value) => handleBidSave({ our_max_bid: value }),
+    ourMaxBid
+  );
+
+  // Unified save state for the card (show if any field is saving/saved)
+  const bidCardSaveState = initialBidSaveState === 'saving' ||
+                           secondBidSaveState === 'saving' ||
+                           maxBidSaveState === 'saving'
+                           ? 'saving'
+                           : initialBidSaveState === 'saved' ||
+                             secondBidSaveState === 'saved' ||
+                             maxBidSaveState === 'saved'
+                           ? 'saved'
+                           : 'idle';
+
+  // Auto-save team notes
+  const handleNotesSave = useCallback(async (updates) => {
+    try {
+      await updateCase(id, updates);
+      // No need to update caseData - NotesCard manages its own state
+    } catch (err) {
+      message.error('Failed to save notes');
+      throw err;
+    }
+  }, [id]);
 
   if (loading) {
     return (
@@ -186,6 +280,100 @@ function CaseDetail() {
             </Row>
           </Card>
 
+          {/* Bid Information - Moved from right column */}
+          <Card title="Bid Information" style={{ marginBottom: 16 }}>
+            <Descriptions column={1} size="small">
+              <Descriptions.Item label="Current Bid">
+                <Text strong style={{ fontSize: 16 }}>
+                  {c.current_bid_amount ? `$${c.current_bid_amount.toLocaleString()}` : '-'}
+                </Text>
+              </Descriptions.Item>
+              <Descriptions.Item label="Minimum Next Bid">
+                {c.minimum_next_bid ? `$${c.minimum_next_bid.toLocaleString()}` : '-'}
+              </Descriptions.Item>
+              <Descriptions.Item label="Sale Date">
+                {c.sale_date ? dayjs(c.sale_date).format('MM/DD/YYYY') : '-'}
+              </Descriptions.Item>
+              <Descriptions.Item label="Bid Deadline">
+                {c.next_bid_deadline ? dayjs(c.next_bid_deadline).format('MM/DD/YYYY h:mm A') : '-'}
+              </Descriptions.Item>
+            </Descriptions>
+
+            <Divider style={{ margin: '12px 0' }} />
+
+            {/* Bid Ladder Editable */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Title level={5} style={{ margin: 0 }}>Your Bid Ladder</Title>
+              <Space size={4}>
+                {bidCardSaveState === 'saving' && (
+                  <>
+                    <LoadingOutlined style={{ color: '#1890ff', fontSize: 12 }} />
+                    <Text type="secondary" style={{ fontSize: 12 }}>Saving...</Text>
+                  </>
+                )}
+                {bidCardSaveState === 'saved' && (
+                  <>
+                    <CheckCircleOutlined style={{ color: '#52c41a', fontSize: 12 }} />
+                    <Text type="success" style={{ fontSize: 12 }}>Saved</Text>
+                  </>
+                )}
+              </Space>
+            </div>
+
+            <div style={{ marginTop: 12 }}>
+              <Space direction="vertical" style={{ width: '100%' }} size="small">
+                <div>
+                  <Text type="secondary" style={{ fontSize: 12 }}>Our Initial Bid</Text>
+                  <InputNumber
+                    value={ourInitialBid}
+                    onChange={setOurInitialBid}
+                    formatter={value => `$${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+                    parser={value => value.replace(/\$\s?|(,*)/g, '')}
+                    style={{ width: '100%', marginTop: 4 }}
+                    min={0}
+                    step={100}
+                    placeholder="Enter initial bid"
+                  />
+                </div>
+                <div>
+                  <Text type="secondary" style={{ fontSize: 12 }}>Our 2nd Bid</Text>
+                  <InputNumber
+                    value={ourSecondBid}
+                    onChange={setOurSecondBid}
+                    formatter={value => `$${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+                    parser={value => value.replace(/\$\s?|(,*)/g, '')}
+                    style={{ width: '100%', marginTop: 4 }}
+                    min={0}
+                    step={100}
+                    placeholder="Enter 2nd bid"
+                  />
+                </div>
+                <div>
+                  <Text type="secondary" style={{ fontSize: 12 }}>Our Max Bid</Text>
+                  <InputNumber
+                    value={ourMaxBid}
+                    onChange={setOurMaxBid}
+                    formatter={value => `$${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+                    parser={value => value.replace(/\$\s?|(,*)/g, '')}
+                    style={{ width: '100%', marginTop: 4 }}
+                    min={0}
+                    step={100}
+                    placeholder="Enter max bid"
+                  />
+                </div>
+              </Space>
+
+              {bidValidationError && (
+                <Alert
+                  type="error"
+                  message={bidValidationError}
+                  showIcon
+                  style={{ marginTop: 12 }}
+                />
+              )}
+            </div>
+          </Card>
+
           {/* Parties */}
           <Card title="Parties" style={{ marginBottom: 16 }}>
             {c.parties && Object.keys(c.parties).length > 0 ? (
@@ -219,48 +407,13 @@ function CaseDetail() {
           )}
         </Col>
 
-        {/* Right Column - Bid Info & Events */}
+        {/* Right Column - Notes & Events */}
         <Col xs={24} lg={12}>
-          {/* Bid Information */}
-          <Card title="Bid Information" style={{ marginBottom: 16 }}>
-            <Descriptions column={1} size="small">
-              <Descriptions.Item label="Current Bid">
-                <Text strong style={{ fontSize: 16 }}>
-                  {c.current_bid_amount ? `$${c.current_bid_amount.toLocaleString()}` : '-'}
-                </Text>
-              </Descriptions.Item>
-              <Descriptions.Item label="Minimum Next Bid">
-                {c.minimum_next_bid ? `$${c.minimum_next_bid.toLocaleString()}` : '-'}
-              </Descriptions.Item>
-              <Descriptions.Item label="Sale Date">
-                {c.sale_date ? dayjs(c.sale_date).format('MM/DD/YYYY') : '-'}
-              </Descriptions.Item>
-              <Descriptions.Item label="Bid Deadline">
-                {c.next_bid_deadline ? dayjs(c.next_bid_deadline).format('MM/DD/YYYY h:mm A') : '-'}
-              </Descriptions.Item>
-            </Descriptions>
-
-            <Divider style={{ margin: '12px 0' }} />
-
-            {/* Bid Ladder Display */}
-            <Title level={5}>Your Bid Ladder</Title>
-            <Descriptions column={1} size="small" bordered>
-              <Descriptions.Item label="Initial Bid">
-                <Text type="secondary">Not set</Text>
-              </Descriptions.Item>
-              <Descriptions.Item label="2nd Bid">
-                <Text type="secondary">Not set</Text>
-              </Descriptions.Item>
-              <Descriptions.Item label="Max Bid">
-                <Text type="secondary">Not set</Text>
-              </Descriptions.Item>
-            </Descriptions>
-            <div style={{ marginTop: 8 }}>
-              <Text type="secondary" style={{ fontSize: 12 }}>
-                Bid ladder editing coming in Phase 3
-              </Text>
-            </div>
-          </Card>
+          {/* Team Notes */}
+          <NotesCard
+            initialNotes={teamNotes}
+            onSave={handleNotesSave}
+          />
 
           {/* Attorney Info */}
           {(c.attorney_name || c.trustee_name) && (
