@@ -6,7 +6,6 @@ from database.models import Case, Document, CaseEvent
 from common.logger import setup_logger
 from extraction.extractor import update_case_with_extracted_data
 from ocr.processor import process_case_documents
-from scraper.document_downloader import download_case_documents
 
 logger = setup_logger(__name__)
 
@@ -71,36 +70,36 @@ def _tier1_reextract(case: Case) -> bool:
         return False
 
 
-def _tier2_redownload(case: Case) -> bool:
+def _tier2_reocr(case: Case) -> bool:
     """
-    Tier 2: Re-download documents and extract.
+    Tier 2: Re-OCR existing documents and extract.
+
+    This tier is for cases where documents exist but OCR may have failed
+    or been incomplete. It does NOT re-download documents (that requires
+    a browser session - use case_monitor.py for that).
 
     Args:
         case: Case to heal
 
     Returns:
-        True if download was attempted
+        True if OCR was attempted
     """
-    logger.info(f"Case {case.case_number}: Tier 2 (re-download) - attempting...")
+    logger.info(f"Case {case.case_number}: Tier 2 (re-OCR) - attempting...")
     try:
-        # Get events with document URLs
+        # Check if we have documents to process
         with get_session() as session:
-            events = session.query(CaseEvent).filter(
-                CaseEvent.case_id == case.id,
-                CaseEvent.document_url.isnot(None)
+            docs = session.query(Document).filter(
+                Document.case_id == case.id
             ).all()
-            event_count = len(events)
+            doc_count = len(docs)
             session.expunge_all()
 
-        if event_count == 0:
-            logger.info(f"Case {case.case_number}: Tier 2 - no document URLs found")
+        if doc_count == 0:
+            logger.info(f"Case {case.case_number}: Tier 2 - no documents found")
+            logger.info(f"  To download documents, run: python scraper/case_monitor.py --case-number {case.case_number}")
             return False
 
-        # Re-download documents
-        downloaded = download_case_documents(case.id, force=True)
-        logger.info(f"Case {case.case_number}: Tier 2 - downloaded {downloaded} documents")
-
-        # OCR the documents
+        # Re-OCR the documents
         processed = process_case_documents(case.id)
         logger.info(f"Case {case.case_number}: Tier 2 - processed {processed} documents")
 
