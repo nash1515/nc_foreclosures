@@ -2,6 +2,44 @@
 
 Detailed session-by-session history for NC Foreclosures project. This file preserves context for debugging and understanding past decisions.
 
+## Dec 13, 2025 - Session 4
+
+### Focus: OCR/Extraction Pipeline Reliability
+
+### Root Cause Analysis
+Conducted systematic debugging to identify why OCR and extraction were not completing:
+
+1. **OCR skip logic** - Documents with any ocr_text (even empty) were skipped on retry
+2. **Extraction coupling** - Extraction only triggered by OCR completion, no independent retry
+3. **Conditional OCR tasks** - Task 1.5 skipped when `cases_processed == 0`
+4. **Selective document OCR** - Only upset_bid/sale documents were OCR'd
+5. **Silent error handling** - 9+ bare `except:` blocks swallowing failures
+6. **No extraction tracking** - No way to identify documents needing extraction
+
+### Fixes Implemented
+
+| Fix | File(s) | Change |
+|-----|---------|--------|
+| 1 | `ocr/processor.py` | Return False for <50 chars, allow retry |
+| 2 | `database/models.py`, `extractor.py` | Added `extraction_attempted_at` tracking |
+| 3 | `scraper/daily_scrape.py` | Removed `cases_processed > 0` condition |
+| 4 | `scraper/case_monitor.py` | OCR all documents, not just upset_bid/sale |
+| 5 | 3 files | Replaced 9 bare `except:` with logging |
+| 6 | `extractor.py` | Added `get_documents_needing_extraction()` |
+
+### Database Changes
+- Added `extraction_attempted_at` column to documents table
+- Added partial index `idx_documents_extraction_pending`
+- Deleted 68 orphaned document records (files never existed)
+
+### Commits
+- `5bed81b` - fix: improve OCR/extraction reliability with 6 targeted fixes
+
+### Results
+- All 37 upset_bid cases: 100% complete data (address, bid, sale_date, deadline)
+- All documents in upset_bid cases: 100% OCR coverage
+- Orphaned documents: 188 → 0
+
 ## Session 22 (Dec 8, 2025) - Critical Upset Bid Bug Fixes
 
 **Fixed 7 bugs in upset bid classification:**

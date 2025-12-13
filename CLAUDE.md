@@ -41,7 +41,30 @@ cd frontend && npm run dev -- --host &
 - **Frontend:** React + Flask API (Dashboard, Admin tab for admins)
 - **Review Queue:** Fixed skipped cases filter (7-day lookback), Approve/Reject working
 
-### Recent Session Changes (Dec 13 - Session 3)
+### Recent Session Changes (Dec 13 - Session 4)
+- **Root cause analysis of OCR/extraction incompleteness:**
+  - Identified 6 root causes for incomplete OCR/extraction
+  - 188 documents had file_path but no ocr_text (1.9% of total)
+- **Fix 1: OCR retry for insufficient text** (`ocr/processor.py`)
+  - Now returns False for <50 chars, allowing retry on subsequent runs
+  - Changed extraction failure logging from WARNING to ERROR
+- **Fix 2: Extraction tracking** (`database/models.py`, `extraction/extractor.py`)
+  - Added `extraction_attempted_at` column to documents table
+  - Added `get_documents_needing_extraction()` function
+  - Migration: `migrations/add_extraction_tracking.sql`
+- **Fix 3: Unconditional OCR tasks** (`scraper/daily_scrape.py`)
+  - Removed `cases_processed > 0` condition from Task 1.5
+  - OCR now runs even when no new cases found
+- **Fix 4: OCR all document types** (`scraper/case_monitor.py`)
+  - Now OCRs ALL documents, not just upset_bid/sale types
+  - Fixes "unknown_*.pdf" files that were being skipped
+- **Fix 5: Replaced bare except blocks** (3 files)
+  - Added proper exception handling and logging to 9 bare `except:` blocks
+  - `case_monitor.py`, `extractor.py`, `portal_interactions.py`
+- **Cleanup:** Deleted 68 orphaned document records (files never existed on disk)
+- **Result:** All 37 upset_bid cases have 100% complete data and OCR coverage
+
+### Previous Session Changes (Dec 13 - Session 3)
 - **Fixed Daily Scrape duration bug:**
   - Root cause: Timezone mismatch - `started_at` used PostgreSQL local time, `completed_at` used Python UTC
   - Was showing 5h duration for 15min scrapes due to EST/UTC offset
