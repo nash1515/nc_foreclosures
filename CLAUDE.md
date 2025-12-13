@@ -33,7 +33,7 @@ cd frontend && npm run dev -- --host &
 - Frontend: http://localhost:5173
 - API: http://localhost:5001
 
-## Current Status (Dec 12, 2025)
+## Current Status (Dec 13, 2025)
 
 - **2,125 cases** across 6 counties (Wake, Durham, Harnett, Lee, Orange, Chatham)
 - **Active upset_bid cases:** 37 (all with complete data)
@@ -41,7 +41,15 @@ cd frontend && npm run dev -- --host &
 - **Frontend:** React + Flask API (Dashboard with county filtering, improved layout)
 - **Review Queue:** Fixed skipped cases filter (7-day lookback), Approve/Reject working
 
-### Recent Session Changes (Dec 12 - Session 3)
+### Recent Session Changes (Dec 13)
+- **Implemented self-diagnosis system for upset_bid cases:**
+  - Three-tier healing approach: re-extract → re-OCR → re-scrape
+  - Runs as Task 5 in `daily_scrape.py` after all scraping/monitoring
+  - Detects missing critical fields: sale_date, upset_deadline, property_address, current_bid
+  - Successfully healed 2 cases with missing sale_date on first run
+  - Dry-run mode available for testing (`dry_run=True`)
+
+### Previous Session Changes (Dec 12 - Session 3)
 - **Fixed extraction pipeline for monitored cases:**
   - Root cause: `case_monitor.py` wasn't calling full extraction after updates
   - Root cause: Documents only downloaded for upset_bid events, not sale events
@@ -114,6 +122,9 @@ PYTHONPATH=$(pwd) venv/bin/python scraper/parallel_scrape.py \
 # Download missing documents
 PYTHONPATH=$(pwd) venv/bin/python scripts/download_missing_documents.py
 
+# Run self-diagnosis manually
+PYTHONPATH=$(pwd) venv/bin/python -c "from scraper.self_diagnosis import diagnose_and_heal_upset_bids; print(diagnose_and_heal_upset_bids(dry_run=False))"
+
 # Database queries
 PGPASSWORD=nc_password psql -U nc_user -d nc_foreclosures -h localhost
 ```
@@ -137,6 +148,7 @@ PGPASSWORD=nc_password psql -U nc_user -d nc_foreclosures -h localhost
 ### Key Files
 - `scraper/case_monitor.py` - Monitors existing cases via direct URLs (no CAPTCHA)
 - `scraper/daily_scrape.py` - Orchestrates daily tasks (3-day lookback on Mondays)
+- `scraper/self_diagnosis.py` - Auto-healing for upset_bid cases with missing data
 - `scraper/page_parser.py` - Day-1 detection indicators + exclusions
 - `extraction/classifier.py` - Case status classification
 - `common/business_days.py` - NC court holiday calendar for deadline calculation
@@ -170,10 +182,9 @@ npm install && npm run dev -- --port 5174
 ```
 
 ## Next Priorities
-1. Design self-diagnosis system (check dashboard data completeness after scrapes)
-2. Build Case Detail page
-3. Build Case List page with filtering
-4. Enrichment module (Zillow, tax records)
+1. Build Case Detail page
+2. Build Case List page with filtering
+3. Enrichment module (Zillow, tax records)
 
 ## Session Commands
 - **"Wrap up session"** - Update CLAUDE.md + commit/push + review todos + give handoff
