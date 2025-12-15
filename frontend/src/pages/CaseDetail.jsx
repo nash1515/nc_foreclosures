@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
   Typography, Card, Row, Col, Tag, Button, Descriptions, Timeline, Table,
-  Spin, Alert, Space, Divider, message, InputNumber
+  Spin, Alert, Space, Divider, message, InputNumber, Tooltip
 } from 'antd';
 import {
   ArrowLeftOutlined, StarOutlined, StarFilled,
@@ -12,6 +12,8 @@ import {
 import { fetchCase, addToWatchlist, removeFromWatchlist, updateCase } from '../api/cases';
 import { useAutoSave } from '../hooks/useAutoSave';
 import NotesCard from '../components/NotesCard';
+import { formatZillowUrl } from '../utils/urlHelpers';
+import { ZillowIcon } from '../assets/ZillowIcon';
 import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
@@ -231,7 +233,16 @@ function CaseDetail() {
                       </Button>
                     </a>
                   )}
-                  <Button size="small" icon={<LinkOutlined />} disabled>Zillow</Button>
+                  <Tooltip title={c.property_address ? "Search on Zillow" : "No address available"}>
+                    <Button
+                      size="small"
+                      icon={<ZillowIcon size={14} style={{ opacity: c.property_address ? 1 : 0.4 }} />}
+                      disabled={!c.property_address}
+                      onClick={() => c.property_address && window.open(formatZillowUrl(c.property_address), '_blank')}
+                    >
+                      Zillow
+                    </Button>
+                  </Tooltip>
                   <Button size="small" icon={<LinkOutlined />} disabled>Propwire</Button>
                   <Button size="small" icon={<FileTextOutlined />} disabled>Deed</Button>
                 </Space>
