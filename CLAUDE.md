@@ -41,7 +41,18 @@ cd frontend && npm run dev -- --host &
 - **Frontend:** React + Flask API (Dashboard, Admin tab for admins, Case Detail with bid ladder)
 - **Review Queue:** Fixed skipped cases filter (7-day lookback), Approve/Reject working
 
-### Recent Session Changes (Dec 13 - Session 5)
+### Recent Session Changes (Dec 15 - Session 6)
+- **Zillow QuickLink enrichment (Phase 1):**
+  - Created isolated worktree: `.worktrees/zillow-quicklink` on branch `feature/zillow-quicklink`
+  - New utility: `frontend/src/utils/urlHelpers.js` - `formatZillowUrl()` for address-to-URL conversion
+  - New icons: `frontend/src/assets/ZillowIcon.jsx`, `PropWireIcon.jsx`
+  - Case Detail: Zillow button now active in QuickLinks section (opens Zillow property page)
+  - Dashboard: Added "Links" column with 4 icons (Zillow active, PropWire/Deed/PropertyInfo disabled "Coming soon")
+  - Design doc: `docs/plans/2025-12-14-zillow-quicklink-design.md`
+  - Implementation plan: `docs/plans/2025-12-14-zillow-quicklink-implementation.md`
+- **Status:** Feature complete in worktree, ready for testing/merge to main
+
+### Previous Session Changes (Dec 13 - Session 5)
 - **Phase 3: Collaboration Features implemented:**
   - Team notes with auto-save (1.5s debounce)
   - Bid ladder editing (Initial, 2nd, Max) with validation
@@ -245,10 +256,10 @@ npm install && npm run dev -- --port 5174
 ```
 
 ## Next Priorities
-1. Build Case Detail page
-2. Build Case List page with filtering
-3. Test Admin page manual scrape in production
-4. Enrichment module (Zillow, tax records)
+1. Test and merge Zillow QuickLink feature
+2. PropWire enrichment (next quicklink)
+3. County Deed enrichment
+4. County Property Info enrichment
 
 ## Session Commands
 - **"Wrap up session"** - Update CLAUDE.md + commit/push + review todos + give handoff
