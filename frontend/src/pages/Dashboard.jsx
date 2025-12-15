@@ -2,14 +2,17 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Typography, Card, Row, Col, Table, Tag, Statistic,
-  Spin, Alert, Progress, Space, Button, Select
+  Spin, Alert, Progress, Space, Button, Select, Tooltip
 } from 'antd';
 import {
   DollarOutlined, ClockCircleOutlined, HomeOutlined,
   WarningOutlined, CheckCircleOutlined, ExclamationCircleOutlined,
-  StarOutlined, StarFilled
+  StarOutlined, StarFilled, FileTextOutlined
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
+import { formatZillowUrl } from '../utils/urlHelpers';
+import { ZillowIcon } from '../assets/ZillowIcon';
+import { PropWireIcon } from '../assets/PropWireIcon';
 
 const { Title, Text } = Typography;
 
@@ -226,6 +229,53 @@ function Dashboard() {
           {formatCurrency(record.minimum_next_bid)}
         </Text>
       )
+    },
+    {
+      title: 'Links',
+      key: 'quicklinks',
+      width: 120,
+      render: (_, record) => {
+        const hasAddress = record.property_address;
+
+        return (
+          <Space size="small">
+            <Tooltip title={hasAddress ? "Search on Zillow" : "No address available"}>
+              <span
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (hasAddress) window.open(formatZillowUrl(record.property_address), '_blank');
+                }}
+                style={{
+                  cursor: hasAddress ? 'pointer' : 'not-allowed',
+                  opacity: hasAddress ? 1 : 0.4,
+                  display: 'inline-flex',
+                  alignItems: 'center'
+                }}
+              >
+                <ZillowIcon size={16} />
+              </span>
+            </Tooltip>
+
+            <Tooltip title="PropWire - Coming soon">
+              <span style={{ cursor: 'not-allowed', opacity: 0.4, display: 'inline-flex', alignItems: 'center' }}>
+                <PropWireIcon size={16} />
+              </span>
+            </Tooltip>
+
+            <Tooltip title="Deed - Coming soon">
+              <span style={{ cursor: 'not-allowed', opacity: 0.4, display: 'inline-flex', alignItems: 'center' }}>
+                <FileTextOutlined style={{ fontSize: 16 }} />
+              </span>
+            </Tooltip>
+
+            <Tooltip title="Property Info - Coming soon">
+              <span style={{ cursor: 'not-allowed', opacity: 0.4, display: 'inline-flex', alignItems: 'center' }}>
+                <HomeOutlined style={{ fontSize: 16 }} />
+              </span>
+            </Tooltip>
+          </Space>
+        );
+      }
     }
   ];
 
