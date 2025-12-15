@@ -8,7 +8,7 @@ Classification states:
 - 'closed_dismissed': Case dismissed/terminated
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time
 from typing import Optional, List
 
 from database.connection import get_session
@@ -465,7 +465,8 @@ def classify_case(case_id: int) -> Optional[str]:
         if reference_date:
             # NC upset bid period is 10 days from the reference event (adjusted for weekends/holidays)
             adjusted_deadline = calculate_upset_bid_deadline(reference_date)
-            estimated_deadline = datetime.combine(adjusted_deadline, datetime.min.time())
+            # Use end-of-day (5 PM courthouse close) - deadline is the ENTIRE day, not midnight
+            estimated_deadline = datetime.combine(adjusted_deadline, time(17, 0, 0))
             if datetime.now() <= estimated_deadline:
                 logger.debug(f"  Case {case_id}: Within upset period (from {reference_source} on {reference_date}, deadline {adjusted_deadline}) -> 'upset_bid'")
                 return 'upset_bid'

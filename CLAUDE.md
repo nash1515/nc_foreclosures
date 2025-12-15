@@ -33,7 +33,7 @@ cd frontend && npm run dev -- --host &
 - Frontend: http://localhost:5173
 - API: http://localhost:5001
 
-## Current Status (Dec 13, 2025)
+## Current Status (Dec 15, 2025)
 
 - **2,135 cases** across 6 counties (Wake, Durham, Harnett, Lee, Orange, Chatham)
 - **Active upset_bid cases:** 37 (all with complete data)
@@ -41,16 +41,35 @@ cd frontend && npm run dev -- --host &
 - **Frontend:** React + Flask API (Dashboard, Admin tab for admins, Case Detail with bid ladder)
 - **Review Queue:** Fixed skipped cases filter (7-day lookback), Approve/Reject working
 
-### Recent Session Changes (Dec 15 - Session 6)
+### Recent Session Changes (Dec 15 - Session 7)
+- **Fixed stale case reclassification bug:**
+  - Root cause: Deadlines stored as midnight (00:00:00) instead of 5 PM courthouse close
+  - Case 25SP001706-910 was prematurely moved to closed_sold at 12:51 PM on deadline day
+  - Fix: Changed `datetime.min.time()` to `time(17, 0, 0)` in `classifier.py:468`
+  - Fix: Updated stale reclassification in `daily_scrape.py` to check if current time > 5 PM on deadline day
+- **Fixed Petition to Sell address extraction (case 25SP002123-910):**
+  - Root cause: Event descriptions from portal weren't being scraped
+  - Added event_description extraction in `page_parser.py` (captures address from "Report of Sale" events)
+  - Added event_description saving in `date_range_scrape.py` and `case_monitor.py`
+  - Added `_find_address_in_event_descriptions()` in `extractor.py`
+  - For Special Proceeding cases, event descriptions are now checked FIRST (more reliable than OCR)
+- **Fixed bid extraction bug (case 25SP000133-180):**
+  - Root cause: Greedy pattern `offer\s+to\s+purchase[^$]*\$` was matching minimum_next_bid instead of actual bid
+  - Fix: Added `(?:was\s+)?` to "property sold for" pattern
+  - Fix: Added generic "sold for $X" pattern
+  - Fix: Limited greedy pattern to `[^$]{0,200}` chars
+- **Dashboard improvements:**
+  - Added NC Courts Portal link (gavel icon) in Links column
+  - "Back to Cases" button now goes to Dashboard (was All Cases)
+  - New icon: `frontend/src/assets/GavelIcon.jsx`
+
+### Previous Session Changes (Dec 15 - Session 6)
 - **Zillow QuickLink enrichment (Phase 1):**
-  - Created isolated worktree: `.worktrees/zillow-quicklink` on branch `feature/zillow-quicklink`
   - New utility: `frontend/src/utils/urlHelpers.js` - `formatZillowUrl()` for address-to-URL conversion
   - New icons: `frontend/src/assets/ZillowIcon.jsx`, `PropWireIcon.jsx`
   - Case Detail: Zillow button now active in QuickLinks section (opens Zillow property page)
-  - Dashboard: Added "Links" column with 4 icons (Zillow active, PropWire/Deed/PropertyInfo disabled "Coming soon")
-  - Design doc: `docs/plans/2025-12-14-zillow-quicklink-design.md`
-  - Implementation plan: `docs/plans/2025-12-14-zillow-quicklink-implementation.md`
-- **Status:** Feature complete in worktree, ready for testing/merge to main
+  - Dashboard: Added "Links" column with 5 icons (Gavel/Zillow active, PropWire/Deed/PropertyInfo disabled "Coming soon")
+- **Status:** Merged to main
 
 ### Previous Session Changes (Dec 13 - Session 5)
 - **Phase 3: Collaboration Features implemented:**
@@ -164,11 +183,11 @@ cd frontend && npm run dev -- --host &
 ### Classifications
 | Status | Count | Description |
 |--------|-------|-------------|
-| upcoming | 1,451 | Foreclosure initiated, no sale |
+| upcoming | 1,458 | Foreclosure initiated, no sale |
 | upset_bid | 37 | Sale occurred, within 10-day bid period |
-| blocked | 70 | Bankruptcy/stay in effect |
-| closed_sold | 355 | Past upset period |
-| closed_dismissed | 67 | Case dismissed |
+| blocked | 69 | Bankruptcy/stay in effect |
+| closed_sold | 356 | Past upset period |
+| closed_dismissed | 68 | Case dismissed |
 
 ## Key Commands
 
@@ -256,10 +275,10 @@ npm install && npm run dev -- --port 5174
 ```
 
 ## Next Priorities
-1. Test and merge Zillow QuickLink feature
-2. PropWire enrichment (next quicklink)
-3. County Deed enrichment
-4. County Property Info enrichment
+1. PropWire enrichment (next quicklink)
+2. County Deed enrichment
+3. County Property Info enrichment
+4. Re-run extraction on upset_bid cases to populate event_descriptions
 
 ## Session Commands
 - **"Wrap up session"** - Update CLAUDE.md + commit/push + review todos + give handoff

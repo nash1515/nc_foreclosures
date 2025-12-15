@@ -168,8 +168,8 @@ function CaseDetail() {
     return (
       <div style={{ padding: '24px' }}>
         <Alert type="error" message={error} showIcon />
-        <Link to="/cases" style={{ marginTop: 16, display: 'inline-block' }}>
-          <Button icon={<ArrowLeftOutlined />}>Back to Cases</Button>
+        <Link to="/" style={{ marginTop: 16, display: 'inline-block' }}>
+          <Button icon={<ArrowLeftOutlined />}>Back to Dashboard</Button>
         </Link>
       </div>
     );
@@ -184,8 +184,8 @@ function CaseDetail() {
     <div style={{ padding: '24px' }}>
       {/* Header */}
       <Space style={{ marginBottom: 16 }}>
-        <Link to="/cases">
-          <Button icon={<ArrowLeftOutlined />}>Back to Cases</Button>
+        <Link to="/">
+          <Button icon={<ArrowLeftOutlined />}>Back to Dashboard</Button>
         </Link>
         <Title level={4} style={{ margin: 0 }}>{c.case_number}</Title>
         <Button

@@ -13,6 +13,7 @@ import dayjs from 'dayjs';
 import { formatZillowUrl } from '../utils/urlHelpers';
 import { ZillowIcon } from '../assets/ZillowIcon';
 import { PropWireIcon } from '../assets/PropWireIcon';
+import { GavelIcon } from '../assets/GavelIcon';
 
 const { Title, Text } = Typography;
 
@@ -236,9 +237,27 @@ function Dashboard() {
       width: 120,
       render: (_, record) => {
         const hasAddress = record.property_address;
+        const hasCaseUrl = record.case_url;
 
         return (
           <Space size="small">
+            <Tooltip title={hasCaseUrl ? "NC Courts Portal" : "No court link available"}>
+              <span
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (hasCaseUrl) window.open(record.case_url, '_blank');
+                }}
+                style={{
+                  cursor: hasCaseUrl ? 'pointer' : 'not-allowed',
+                  opacity: hasCaseUrl ? 1 : 0.4,
+                  display: 'inline-flex',
+                  alignItems: 'center'
+                }}
+              >
+                <GavelIcon size={16} />
+              </span>
+            </Tooltip>
+
             <Tooltip title={hasAddress ? "Search on Zillow" : "No address available"}>
               <span
                 onClick={(e) => {

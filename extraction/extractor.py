@@ -11,7 +11,7 @@ from typing import Optional, Dict, Any, Tuple, List
 
 from datetime import timedelta
 from database.connection import get_session
-from database.models import Case, Document
+from database.models import Case, Document, CaseEvent
 from common.logger import setup_logger
 from common.business_days import calculate_upset_bid_deadline
 
@@ -156,14 +156,16 @@ REPORT_OF_SALE_BID_PATTERNS = [
     r'[Aa]mount\s+[Bb]id[\s\S]{0,100}?\$([\d,]+\.?\d*)',
     # Alternative wording
     r'[Aa]mount\s*[Oo]f\s*[Ss]uccessful\s*[Bb]id[\s:]*\$?\s*([\d,]+\.?\d*)',
-    r'[Pp]roperty\s*[Ss]old\s*[Ff]or[\s:]*\$?\s*([\d,]+\.?\d*)',
+    r'[Pp]roperty\s*(?:was\s+)?[Ss]old\s*[Ff]or[\s:]*\$?\s*([\d,]+\.?\d*)',
     r'[Ww]inning\s*[Bb]id[\s:]*\$?\s*([\d,]+\.?\d*)',
     # Field with OCR artifacts - "Highest Bid" followed by amount on next line
     r'[Hh]ighest\s*[Bb]id[\s\S]{1,50}?\$?\s*(\d[\d,\.\s]+\.\d{2})',
     # Partition sale format: "for the sum of $X"
     r'for\s+the\s+sum\s+of\s*\$\s*([\d,]+\.?\d*)',
-    # Offer to purchase format (least specific - check last)
-    r'offer\s+to\s+purchase[^$]*\$\s*([\d,]+\.?\d*)',
+    # Generic "sold for $X" pattern
+    r'sold\s+for\s*\$\s*([\d,]+\.?\d*)',
+    # Offer to purchase format (limit search to 200 chars to avoid matching minimum_next_bid)
+    r'offer\s+to\s+purchase[^$]{0,200}\$\s*([\d,]+\.?\d*)',
 ]
 
 # Date of sale patterns for Report of Sale
@@ -1055,6 +1057,60 @@ def _find_address_in_documents(documents: list) -> Optional[str]:
     return None
 
 
+def _find_address_in_event_descriptions(case_id: int) -> Optional[str]:
+    """
+    Search event descriptions for property addresses.
+
+    For Petition to Sell and other special proceeding cases, the property address
+    often appears in the event description on the portal (e.g., "Report of Sale"
+    events show "1508 Beacon Village Drive, Raleigh 27604").
+
+    Args:
+        case_id: Database ID of the case
+
+    Returns:
+        Property address string or None if not found
+    """
+    # Event types that commonly contain property addresses in their descriptions
+    ADDRESS_EVENT_TYPES = [
+        'report of sale',
+        'petition to sell',
+        'notice of sale',
+        'order confirming sale',
+    ]
+
+    # Pattern to match addresses in event descriptions
+    # Format: "123 Street Name, City 12345" or "123 Street Name, City, NC 12345"
+    EVENT_ADDRESS_PATTERN = re.compile(
+        r'^(\d+\s+[A-Za-z0-9\s]+(?:Street|St|Road|Rd|Drive|Dr|Lane|Ln|Court|Ct|'
+        r'Circle|Cir|Way|Avenue|Ave|Boulevard|Blvd|Place|Pl|Terrace|Ter|Trail|Trl|'
+        r'Village|Villiage)[,\s]+[A-Za-z\s]+(?:,\s*NC)?\s*\d{5}(?:-\d{4})?)$',
+        re.IGNORECASE
+    )
+
+    with get_session() as session:
+        events = session.query(CaseEvent).filter_by(case_id=case_id).all()
+
+        for event in events:
+            if not event.event_description:
+                continue
+
+            # Check if this event type commonly contains addresses
+            event_type_lower = (event.event_type or '').lower()
+            if not any(addr_type in event_type_lower for addr_type in ADDRESS_EVENT_TYPES):
+                continue
+
+            # Check if the description looks like an address
+            desc = event.event_description.strip()
+            match = EVENT_ADDRESS_PATTERN.match(desc)
+            if match:
+                address = match.group(1).strip()
+                logger.info(f"  Found address in event description ({event.event_type}): {address}")
+                return address
+
+    return None
+
+
 def extract_all_from_case(case_id: int) -> Dict[str, Any]:
     """
     Extract all available data from all documents for a case.
@@ -1081,11 +1137,22 @@ def extract_all_from_case(case_id: int) -> Dict[str, Any]:
         'attorney_email': None,
     }
 
+    # First, check case type (separate session to avoid detached instance issues)
+    with get_session() as session:
+        case = session.query(Case).filter_by(id=case_id).first()
+        is_special_proceeding = case and case.case_type == 'Special Proceeding'
+
+    # For Special Proceedings (Petition to Sell), check event descriptions FIRST
+    # These often have property addresses in Report of Sale event descriptions
+    if is_special_proceeding:
+        result['property_address'] = _find_address_in_event_descriptions(case_id)
+
+    # For property_address: search ALL documents in priority order
     with get_session() as session:
         documents = session.query(Document).filter_by(case_id=case_id).all()
 
-        # For property_address: search ALL documents in priority order
-        result['property_address'] = _find_address_in_documents(documents)
+        if not result['property_address']:
+            result['property_address'] = _find_address_in_documents(documents)
 
         # For other fields: use first non-null value from any document
         for doc in documents:
@@ -1100,6 +1167,10 @@ def extract_all_from_case(case_id: int) -> Dict[str, Any]:
                     continue  # Already handled with priority search
                 if value is not None and result[key] is None:
                     result[key] = value
+
+    # Fallback: check event descriptions for addresses (for non-special-proceeding cases)
+    if not result['property_address']:
+        result['property_address'] = _find_address_in_event_descriptions(case_id)
 
     return result
 

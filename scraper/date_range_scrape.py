@@ -366,6 +366,7 @@ class DateRangeScraper:
                     case_id=case.id,
                     event_date=event_data.get('event_date'),
                     event_type=event_data.get('event_type'),
+                    event_description=event_data.get('event_description'),
                     filed_by=event_data.get('filed_by'),
                     filed_against=event_data.get('filed_against'),
                     hearing_date=event_data.get('hearing_date'),

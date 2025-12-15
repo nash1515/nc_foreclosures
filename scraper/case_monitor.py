@@ -590,6 +590,7 @@ class CaseMonitor:
                     case_id=case_id,
                     event_date=event_date,
                     event_type=event_data.get('event_type'),
+                    event_description=event_data.get('event_description'),
                     filed_by=event_data.get('filed_by'),
                     filed_against=event_data.get('filed_against'),
                     document_url=event_data.get('document_url')

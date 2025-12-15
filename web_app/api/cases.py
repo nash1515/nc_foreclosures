@@ -487,7 +487,8 @@ def get_upset_bids():
                 'days_remaining': days_remaining,
                 'urgency': urgency,
                 'sale_date': case.sale_date.isoformat() if case.sale_date else None,
-                'is_watchlisted': case.id in watchlist_case_ids
+                'is_watchlisted': case.id in watchlist_case_ids,
+                'case_url': case.case_url
             })
 
         return jsonify({

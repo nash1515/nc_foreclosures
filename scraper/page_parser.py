@@ -352,15 +352,44 @@ def parse_case_detail(page_content):
 
         # Extract event type - look for capitalized text that's an event description
         event_type = None
+        event_description = None
         lines = [l.strip() for l in event_text.split('\n') if l.strip()]
-        for line in lines:
+        event_type_index = None
+        for i, line in enumerate(lines):
             # Event types are usually capitalized phrases
             # Allow letters, spaces, parens, numbers, slashes, hyphens (for types like "Chapter 45", "Sale/Resale")
             if (re.match(r'^[A-Z][a-zA-Z\s()/\-0-9]+$', line) and
                 5 < len(line) < 100 and
                 not any(skip in line for skip in ['Index', 'Created', 'Filed By', 'Against'])):
                 event_type = line
+                event_type_index = i
                 break
+
+        # Extract event description - the line(s) after event type that contain details
+        # Examples: "1508 Beacon Village Drive, Raleigh 27604" for Report of Sale
+        #           "Petition for Possession..." for Petition To Sell
+        if event_type_index is not None:
+            skip_labels = ['Index', 'Created', 'Filed By', 'Against', 'A document is available',
+                          'Click here', 'document', 'Index #']
+            desc_lines = []
+            for line in lines[event_type_index + 1:]:
+                # Stop at form labels or metadata
+                if any(skip in line for skip in skip_labels):
+                    break
+                # Skip dates that look like Created dates (MM/DD/YYYY format followed by time)
+                if re.match(r'^\d{2}/\d{2}/\d{4}\s+\d{1,2}:\d{2}', line):
+                    break
+                # Skip pure dates
+                if re.match(r'^\d{2}/\d{2}/\d{4}$', line):
+                    continue
+                # Capture substantive description lines
+                if len(line) > 3 and len(line) < 500:
+                    desc_lines.append(line)
+                    # Usually just one or two lines of description
+                    if len(desc_lines) >= 2:
+                        break
+            if desc_lines:
+                event_description = ' '.join(desc_lines)
 
         # Extract Index number
         index_match = re.search(r'Index\s*#\s*(\d+)', event_text)
@@ -402,7 +431,7 @@ def parse_case_detail(page_content):
             event_data = {
                 'event_date': event_date,
                 'event_type': event_type,
-                'event_description': None,
+                'event_description': event_description,
                 'document_title': document_title,  # Document title for classification
                 'filed_by': filed_by_match.group(1).strip() if filed_by_match else None,
                 'filed_against': against_match.group(1).strip() if against_match else None,

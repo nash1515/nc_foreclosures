@@ -30,7 +30,7 @@ Cron example (run at 6 AM daily):
 
 import argparse
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, time
 from typing import Dict, Optional
 
 from database.connection import get_session
@@ -305,12 +305,27 @@ def run_stale_reclassification(dry_run: bool = False) -> Dict:
     logger.info("=" * 60)
 
     # Check for upset_bid cases with passed deadlines
+    # Deadline expires at 5 PM courthouse close, not midnight
+    # Only consider cases stale if: deadline date < today OR (deadline date = today AND current time > 5 PM)
     with get_session() as session:
         now = datetime.now()
-        stale_count = session.query(Case).filter(
+        today = now.date()
+        past_5pm_today = now.hour >= 17
+
+        # Get all upset_bid cases with deadlines
+        stale_cases = session.query(Case).filter(
             Case.classification == 'upset_bid',
-            Case.next_bid_deadline < now
-        ).count()
+            Case.next_bid_deadline != None
+        ).all()
+
+        # Filter to truly stale cases (deadline passed)
+        stale_count = 0
+        for case in stale_cases:
+            deadline_date = case.next_bid_deadline.date()
+            if deadline_date < today:
+                stale_count += 1
+            elif deadline_date == today and past_5pm_today:
+                stale_count += 1
 
     logger.info(f"Stale upset_bid cases (deadline passed): {stale_count}")
 
