@@ -137,6 +137,45 @@ def delete_user(user_id):
         return jsonify({'success': True})
 
 
+@admin_bp.route('/monitor', methods=['POST'])
+@require_admin
+def run_case_monitor():
+    """Trigger a case monitor run with specified classification."""
+    data = request.get_json() or {}
+
+    classification = data.get('classification', 'upset_bid')
+
+    # Validate classification
+    valid_classifications = ['upcoming', 'blocked', 'upset_bid']
+    if classification not in valid_classifications:
+        return jsonify({'error': f'Invalid classification. Must be one of: {valid_classifications}'}), 400
+
+    try:
+        from scraper.case_monitor import monitor_cases
+
+        result = monitor_cases(
+            classification=classification,
+            headless=False,  # Use visible browser for reliability
+            max_workers=4    # Use fewer workers for manual runs
+        )
+
+        return jsonify({
+            'status': 'success',
+            'cases_checked': result.get('cases_checked', 0),
+            'cases_updated': result.get('classifications_changed', 0) + result.get('bid_updates', 0),
+            'events_added': result.get('events_added', 0),
+            'classifications_changed': result.get('classifications_changed', 0),
+            'bid_updates': result.get('bid_updates', 0),
+            'errors': len(result.get('errors', [])),
+            'classification': classification
+        })
+    except Exception as e:
+        return jsonify({
+            'status': 'failed',
+            'error': str(e)
+        }), 500
+
+
 @admin_bp.route('/scrape', methods=['POST'])
 @require_admin
 def run_manual_scrape():

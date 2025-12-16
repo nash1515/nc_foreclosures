@@ -35,13 +35,45 @@ cd frontend && npm run dev -- --host &
 
 ## Current Status (Dec 16, 2025)
 
-- **2,135 cases** across 6 counties (Wake, Durham, Harnett, Lee, Orange, Chatham)
-- **Active upset_bid cases:** 36 (all with complete data)
+- **2,151 cases** across 6 counties (Wake, Durham, Harnett, Lee, Orange, Chatham)
+- **Active upset_bid cases:** 37 (all with complete data)
 - **Scheduler running** 5 AM Mon-Fri (3-day lookback on Mondays)
 - **Frontend:** React + Flask API (Dashboard, Admin tab for admins, Case Detail with bid ladder)
 - **Review Queue:** Fixed skipped cases filter (7-day lookback), Approve/Reject working
 
-### Recent Session Changes (Dec 16 - Session 8)
+### Recent Session Changes (Dec 16 - Session 9)
+- **Admin UI: Case Monitor feature:**
+  - Added Mode radio buttons to Manual Scrape section: "Date Range Scrape" vs "Case Monitor"
+  - Case Monitor options: "Dashboard Cases (upset_bid)" or "All Upcoming Cases"
+  - New endpoint `POST /api/admin/monitor` runs `monitor_cases()` with selected classification
+  - Results show cases checked, events added, classifications changed, bid updates
+- **Fixed bulk approval bug:**
+  - Root cause: `approveAllForeclosures()` was called without required `date` parameter
+  - Fix: Pass `data.date` to API call in `ReviewQueue.jsx`
+- **Fixed NULL classification monitoring gap:**
+  - Root cause: Cases with `classification=NULL` were never monitored by `case_monitor.py`
+  - These cases missed new sale events (e.g., case 25SP001376-910 had Report of Sale on 12/12 but wasn't detected)
+  - Fix: Added `or_(Case.classification.is_(None))` to monitoring query filter
+  - 156 NULL classification cases now included in daily monitoring
+- **Recovered case 25SP001376-910:**
+  - Petition to Sell case with Report of Sale on 12/12/2025
+  - Now shows on dashboard: $321,000 bid, deadline 12/26, address 4029 Strickland Farm Road
+- **Fixed address extraction issues:**
+  - Case 25SP001024-910: Pattern captured garbage text ("Grantors: Brandon S. Roe a married man...")
+    - Fix: Added validation to reject addresses containing legal keywords (Grantor, Grantee, married man/woman, etc.)
+  - Case 25SP002519-910: Wrong address (Matthews, NC instead of Raleigh)
+    - Root cause 1: EVENT_ADDRESS_PATTERN used `.match()` instead of `.search()`
+    - Root cause 2: Pattern didn't allow periods in street names (e.g., "W. Lake Anne Drive")
+    - Fix: Changed to `.search()` and added `\.` to character class
+  - Case 25SP001024-910: Duplicate address with 25SP001017-910
+    - Root cause: Court clerical error - Report of Sale PDF had wrong property address
+    - Fix: Manually corrected to 5718 Sentinel Drive, Raleigh, NC 27609
+- **Address extraction improvements (`extractor.py`):**
+  - Added legal keyword validation inside captured addresses (lines 410-425)
+  - Changed EVENT_ADDRESS_PATTERN from `.match()` to `.search()` (line 1244)
+  - Added period `.` to street name character class for "W." abbreviations (line 1224)
+
+### Previous Session Changes (Dec 16 - Session 8)
 - **Fixed bid extraction from event descriptions (case 25SP001906-910):**
   - Root cause: Event descriptions weren't being fully captured (parser stopped at document notices)
   - Fix: Changed `page_parser.py` to continue past "A document is available" lines instead of breaking
@@ -206,11 +238,12 @@ cd frontend && npm run dev -- --host &
 ### Classifications
 | Status | Count | Description |
 |--------|-------|-------------|
-| upcoming | 1,458 | Foreclosure initiated, no sale |
+| upcoming | 1,464 | Foreclosure initiated, no sale |
 | upset_bid | 37 | Sale occurred, within 10-day bid period |
 | blocked | 69 | Bankruptcy/stay in effect |
-| closed_sold | 356 | Past upset period |
+| closed_sold | 358 | Past upset period |
 | closed_dismissed | 68 | Case dismissed |
+| NULL | 156 | Unclassified (non-foreclosure Special Proceedings) |
 
 ## Key Commands
 

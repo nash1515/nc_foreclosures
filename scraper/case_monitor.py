@@ -21,6 +21,7 @@ from typing import List, Dict, Optional, Tuple
 os.environ['PLAYWRIGHT_CHROMIUM_USE_HEADLESS_NEW'] = '1'
 
 from playwright.sync_api import sync_playwright, Browser, Page
+from sqlalchemy import or_
 
 from database.connection import get_session
 from database.models import Case, CaseEvent
@@ -1005,7 +1006,10 @@ def monitor_cases(
             query = query.filter(Case.classification == classification)
         else:
             query = query.filter(
-                Case.classification.in_(['upcoming', 'blocked', 'upset_bid'])
+                or_(
+                    Case.classification.in_(['upcoming', 'blocked', 'upset_bid']),
+                    Case.classification.is_(None)
+                )
             )
 
         if limit:

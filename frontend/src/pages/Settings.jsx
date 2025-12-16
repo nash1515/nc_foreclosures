@@ -16,7 +16,8 @@ import {
   Form,
   Select,
   Popconfirm,
-  Tag
+  Tag,
+  Radio
 } from 'antd';
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
@@ -28,6 +29,8 @@ const ALL_COUNTIES = ['WAKE', 'DURHAM', 'HARNETT', 'LEE', 'ORANGE', 'CHATHAM'];
 
 export default function Settings() {
   // Manual Scrape State
+  const [scrapeMode, setScrapeMode] = useState('date_range'); // 'date_range' or 'case_monitor'
+  const [monitorClassification, setMonitorClassification] = useState('upset_bid'); // 'upset_bid' or 'upcoming'
   const [dateRange, setDateRange] = useState([null, null]);
   const [selectedCounties, setSelectedCounties] = useState(ALL_COUNTIES);
   const [partyName, setPartyName] = useState('');
@@ -73,41 +76,51 @@ export default function Settings() {
 
   // Manual scrape handler
   const handleRunScrape = async () => {
-    if (!dateRange[0] || !dateRange[1]) {
-      message.error('Please select a date range');
-      return;
-    }
-    if (selectedCounties.length === 0) {
-      message.error('Please select at least one county');
-      return;
+    if (scrapeMode === 'date_range') {
+      if (!dateRange[0] || !dateRange[1]) {
+        message.error('Please select a date range');
+        return;
+      }
+      if (selectedCounties.length === 0) {
+        message.error('Please select at least one county');
+        return;
+      }
     }
 
     setScrapeLoading(true);
     setScrapeResult(null);
 
     try {
-      const res = await fetch('/api/admin/scrape', {
+      const endpoint = scrapeMode === 'case_monitor' ? '/api/admin/monitor' : '/api/admin/scrape';
+      const payload = scrapeMode === 'case_monitor'
+        ? { classification: monitorClassification }
+        : {
+            start_date: dateRange[0].format('YYYY-MM-DD'),
+            end_date: dateRange[1].format('YYYY-MM-DD'),
+            counties: selectedCounties,
+            party_name: partyName || undefined
+          };
+
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({
-          start_date: dateRange[0].format('YYYY-MM-DD'),
-          end_date: dateRange[1].format('YYYY-MM-DD'),
-          counties: selectedCounties,
-          party_name: partyName || undefined
-        })
+        body: JSON.stringify(payload)
       });
 
       const data = await res.json();
       setScrapeResult(data);
 
       if (data.status === 'success') {
-        message.success(`Scrape complete: ${data.cases_processed} cases processed`);
+        const countText = scrapeMode === 'case_monitor'
+          ? `${data.cases_updated || 0} cases updated`
+          : `${data.cases_processed} cases processed`;
+        message.success(`Complete: ${countText}`);
       } else {
-        message.error(data.error || 'Scrape failed');
+        message.error(data.error || 'Operation failed');
       }
     } catch (err) {
-      message.error('Failed to run scrape');
+      message.error('Failed to run operation');
       setScrapeResult({ status: 'failed', error: err.message });
     } finally {
       setScrapeLoading(false);
@@ -219,54 +232,83 @@ export default function Settings() {
       {/* Manual Scrape Section */}
       <Card title="Manual Scrape" style={{ marginBottom: 24 }}>
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-          {/* Date Range */}
+          {/* Mode Selection */}
           <div>
-            <Text strong>Date Range:</Text>
+            <Text strong>Mode:</Text>
             <div style={{ marginTop: 8 }}>
-              <RangePicker
-                value={dateRange}
-                onChange={setDateRange}
-                format="YYYY-MM-DD"
-              />
+              <Radio.Group value={scrapeMode} onChange={(e) => setScrapeMode(e.target.value)}>
+                <Radio value="date_range">Date Range Scrape</Radio>
+                <Radio value="case_monitor">Case Monitor</Radio>
+              </Radio.Group>
             </div>
           </div>
 
-          {/* Counties */}
-          <div>
-            <Text strong>Counties:</Text>
-            <div style={{ marginTop: 8, marginBottom: 8 }}>
-              <Space>
-                <Button size="small" onClick={handleSelectAll}>Select All</Button>
-                <Button size="small" onClick={handleClearAll}>Clear All</Button>
-              </Space>
+          {/* Case Monitor Options */}
+          {scrapeMode === 'case_monitor' && (
+            <div>
+              <Text strong>Monitor Classification:</Text>
+              <div style={{ marginTop: 8 }}>
+                <Radio.Group value={monitorClassification} onChange={(e) => setMonitorClassification(e.target.value)}>
+                  <Radio value="upset_bid">Dashboard Cases (upset_bid)</Radio>
+                  <Radio value="upcoming">All Upcoming Cases</Radio>
+                </Radio.Group>
+              </div>
             </div>
-            <Row gutter={[16, 8]}>
-              {ALL_COUNTIES.map(county => (
-                <Col span={8} key={county}>
-                  <Checkbox
-                    checked={selectedCounties.includes(county)}
-                    onChange={(e) => handleCountyChange(county, e.target.checked)}
-                  >
-                    {county.charAt(0) + county.slice(1).toLowerCase()}
-                  </Checkbox>
-                </Col>
-              ))}
-            </Row>
-          </div>
+          )}
 
-          {/* Party Name */}
-          <div>
-            <Text strong>Party Name:</Text>
-            <Text type="secondary" style={{ marginLeft: 8 }}>(optional)</Text>
-            <div style={{ marginTop: 8 }}>
-              <Input
-                placeholder="Enter party name to search"
-                value={partyName}
-                onChange={(e) => setPartyName(e.target.value)}
-                style={{ maxWidth: 400 }}
-              />
-            </div>
-          </div>
+          {/* Date Range Scrape Options */}
+          {scrapeMode === 'date_range' && (
+            <>
+              {/* Date Range */}
+              <div>
+                <Text strong>Date Range:</Text>
+                <div style={{ marginTop: 8 }}>
+                  <RangePicker
+                    value={dateRange}
+                    onChange={setDateRange}
+                    format="YYYY-MM-DD"
+                  />
+                </div>
+              </div>
+
+              {/* Counties */}
+              <div>
+                <Text strong>Counties:</Text>
+                <div style={{ marginTop: 8, marginBottom: 8 }}>
+                  <Space>
+                    <Button size="small" onClick={handleSelectAll}>Select All</Button>
+                    <Button size="small" onClick={handleClearAll}>Clear All</Button>
+                  </Space>
+                </div>
+                <Row gutter={[16, 8]}>
+                  {ALL_COUNTIES.map(county => (
+                    <Col span={8} key={county}>
+                      <Checkbox
+                        checked={selectedCounties.includes(county)}
+                        onChange={(e) => handleCountyChange(county, e.target.checked)}
+                      >
+                        {county.charAt(0) + county.slice(1).toLowerCase()}
+                      </Checkbox>
+                    </Col>
+                  ))}
+                </Row>
+              </div>
+
+              {/* Party Name */}
+              <div>
+                <Text strong>Party Name:</Text>
+                <Text type="secondary" style={{ marginLeft: 8 }}>(optional)</Text>
+                <div style={{ marginTop: 8 }}>
+                  <Input
+                    placeholder="Enter party name to search"
+                    value={partyName}
+                    onChange={(e) => setPartyName(e.target.value)}
+                    style={{ maxWidth: 400 }}
+                  />
+                </div>
+              </div>
+            </>
+          )}
 
           {/* Run Button */}
           <Button
@@ -275,7 +317,7 @@ export default function Settings() {
             loading={scrapeLoading}
             disabled={scrapeLoading}
           >
-            {scrapeLoading ? 'Running Scrape...' : 'Run Scrape'}
+            {scrapeLoading ? (scrapeMode === 'case_monitor' ? 'Running Monitor...' : 'Running Scrape...') : (scrapeMode === 'case_monitor' ? 'Run Monitor' : 'Run Scrape')}
           </Button>
 
           {/* Results */}
@@ -287,6 +329,23 @@ export default function Settings() {
               </Tag>
               {scrapeResult.cases_processed !== undefined && (
                 <Text>Cases processed: {scrapeResult.cases_processed}</Text>
+              )}
+              {scrapeResult.cases_checked !== undefined && (
+                <div style={{ marginTop: 8 }}>
+                  <div><Text>Cases checked: {scrapeResult.cases_checked}</Text></div>
+                  {scrapeResult.events_added !== undefined && (
+                    <div><Text>Events added: {scrapeResult.events_added}</Text></div>
+                  )}
+                  {scrapeResult.classifications_changed !== undefined && (
+                    <div><Text>Classifications changed: {scrapeResult.classifications_changed}</Text></div>
+                  )}
+                  {scrapeResult.bid_updates !== undefined && (
+                    <div><Text>Bid updates: {scrapeResult.bid_updates}</Text></div>
+                  )}
+                  {scrapeResult.errors !== undefined && scrapeResult.errors > 0 && (
+                    <div><Text type="warning">Errors: {scrapeResult.errors}</Text></div>
+                  )}
+                </div>
               )}
               {scrapeResult.error && (
                 <div style={{ marginTop: 8 }}>

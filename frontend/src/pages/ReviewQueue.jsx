@@ -57,7 +57,7 @@ export default function ReviewQueue() {
 
   const handleApproveAll = async () => {
     try {
-      const result = await approveAllForeclosures();
+      const result = await approveAllForeclosures(data.date);
       message.success(`Approved ${result.approved} foreclosure(s)`);
       fetchData();
       triggerRefresh();

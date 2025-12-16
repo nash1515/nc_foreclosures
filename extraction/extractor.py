@@ -65,8 +65,8 @@ ADDRESS_PATTERNS = [
     # Pattern 6: Multi-line address (street on one line, city/state on next)
     (r'ADDRESS/LOCATION\s+OF\s+PROPERTY\s*(?:BEING\s+FORECLOSED)?[:\s]*\n+\s*(\d+[^\n]+)\n+\s*([A-Z][A-Za-z\s]+,\s*NC\s*\d{5})', 'address_location_multiline'),
     # Pattern 7: "Address of property:" (different word order - COMMON in NC docs)
-    # Use non-greedy match and stop at common delimiters to avoid capturing legal text
-    (r'Address\s+of\s+Property[:\s]+(\d+[^,\n]+,\s*[A-Za-z\s]+,\s*(?:NC|North\s+Carolina)\s*\d{5}(?:-\d{4})?)', 'address_of_property'),
+    # Use non-greedy match and limit street address capture to 60 chars to avoid capturing legal text
+    (r'Address\s+of\s+Property[:\s]+(\d+[^,\n]{1,60},\s*[A-Za-z\s]+,\s*(?:NC|North\s+Carolina)\s*\d{5}(?:-\d{4})?)', 'address_of_property'),
     # Pattern 8: Multi-line after "Address of property:"
     (r'Address\s+of\s+Property[:\s]+\n*\s*(\d+[^\n]+)\n+\s*([A-Z][A-Za-z\s]+,\s*NC\s*\d{5})', 'address_of_property_multiline'),
 
@@ -113,6 +113,13 @@ REJECT_ADDRESS_CONTEXTS = [
     r'or\s+to\s+the\s+heirs',
     r'service\s+of\s+process',
     r'last\s+known\s+address',
+    # Legal document keywords (indicate legal descriptions, not property addresses)
+    r'[Gg]rantor',
+    r'[Gg]rantee',
+    r'[Tt]rustee',
+    r'[Aa]ttorney',
+    r'married\s+(?:man|woman)',
+    r'sole\s+and\s+separate',
 ]
 
 # Attorney/Law Firm Address Indicators
@@ -398,6 +405,23 @@ def extract_property_address(ocr_text: str, return_quality: bool = False) -> Opt
             # If after cleaning we're left with an incomplete address, skip it
             if not address or len(address) < 10:
                 logger.debug(f"  Address too short after cleaning artifacts, skipping")
+                continue
+
+            # THIRD: Check if captured address CONTAINS legal keywords (garbage text captured inline)
+            # This catches cases where OCR text like "Grantors: John Doe" appears within the address
+            legal_keywords_in_address = [
+                r'[Gg]rantor', r'[Gg]rantee', r'[Tt]rustee',
+                r'married\s+(?:man|woman)', r'sole\s+and\s+separate',
+                r'his\s+sole', r'her\s+sole', r'a\s+single\s+person'
+            ]
+            has_legal_keyword = False
+            for keyword in legal_keywords_in_address:
+                if re.search(keyword, address):
+                    has_legal_keyword = True
+                    logger.debug(f"  Skipping address with legal keyword '{keyword}' inside: {address}")
+                    break
+
+            if has_legal_keyword:
                 continue
 
             logger.debug(f"  Extracted address using pattern '{pattern_label}' (quality={pattern_idx}): {address}")
@@ -1195,10 +1219,11 @@ def _find_address_in_event_descriptions(case_id: int) -> Optional[str]:
 
     # Pattern to match addresses in event descriptions
     # Format: "123 Street Name, City 12345" or "123 Street Name, City, NC 12345"
+    # Note: Allows periods in street names (e.g., "W. Lake Anne Drive")
     EVENT_ADDRESS_PATTERN = re.compile(
-        r'^(\d+\s+[A-Za-z0-9\s]+(?:Street|St|Road|Rd|Drive|Dr|Lane|Ln|Court|Ct|'
+        r'(\d+\s+[A-Za-z0-9\s\.]+(?:Street|St|Road|Rd|Drive|Dr|Lane|Ln|Court|Ct|'
         r'Circle|Cir|Way|Avenue|Ave|Boulevard|Blvd|Place|Pl|Terrace|Ter|Trail|Trl|'
-        r'Village|Villiage)[,\s]+[A-Za-z\s]+(?:,\s*NC)?\s*\d{5}(?:-\d{4})?)$',
+        r'Village|Villiage)[,\s]+[A-Za-z\s]+(?:,\s*NC)?\s*\d{5}(?:-\d{4})?)',
         re.IGNORECASE
     )
 
@@ -1216,7 +1241,7 @@ def _find_address_in_event_descriptions(case_id: int) -> Optional[str]:
 
             # Check if the description looks like an address
             desc = event.event_description.strip()
-            match = EVENT_ADDRESS_PATTERN.match(desc)
+            match = EVENT_ADDRESS_PATTERN.search(desc)  # Use search() not match() to find anywhere in string
             if match:
                 address = match.group(1).strip()
                 logger.info(f"  Found address in event description ({event.event_type}): {address}")
