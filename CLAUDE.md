@@ -33,15 +33,38 @@ cd frontend && npm run dev -- --host &
 - Frontend: http://localhost:5173
 - API: http://localhost:5001
 
-## Current Status (Dec 15, 2025)
+## Current Status (Dec 16, 2025)
 
 - **2,135 cases** across 6 counties (Wake, Durham, Harnett, Lee, Orange, Chatham)
-- **Active upset_bid cases:** 37 (all with complete data)
+- **Active upset_bid cases:** 36 (all with complete data)
 - **Scheduler running** 5 AM Mon-Fri (3-day lookback on Mondays)
 - **Frontend:** React + Flask API (Dashboard, Admin tab for admins, Case Detail with bid ladder)
 - **Review Queue:** Fixed skipped cases filter (7-day lookback), Approve/Reject working
 
-### Recent Session Changes (Dec 15 - Session 7)
+### Recent Session Changes (Dec 16 - Session 8)
+- **Fixed bid extraction from event descriptions (case 25SP001906-910):**
+  - Root cause: Event descriptions weren't being fully captured (parser stopped at document notices)
+  - Fix: Changed `page_parser.py` to continue past "A document is available" lines instead of breaking
+  - Added `_find_bid_in_event_descriptions()` in `extractor.py` to extract "Bid Amount $X" from event text
+  - Added `update_existing_events_with_descriptions()` in `case_monitor.py` to backfill descriptions
+  - Result: Case 25SP001906-910 updated from wrong $8,327.49 to correct $9,830.00
+- **Fixed address extraction (case 22SP001110-910):**
+  - Root cause 1: Document priority put "Report of Foreclosure Sale" before "Notice of SaleResale"
+  - Root cause 2: Address extraction never overwrote existing (even wrong) addresses
+  - Fix: Reordered `ADDRESS_DOCUMENT_PRIORITY` - Notice of Sale now highest priority (has explicit "Address of Property:" labels)
+  - Fix: Added address quality scoring (0-12 = explicit labels, 13+ = generic patterns)
+  - Fix: `update_case_with_extracted_data()` now overwrites addresses when new quality ≤ threshold
+  - Tightened `address_of_property` pattern to avoid capturing legal text
+  - Result: Case 22SP001110-910 corrected from mailing address to property address
+- **Dashboard UI improvements:**
+  - Removed "Case Classifications" and "Cases by County" tiles
+  - Replaced county dropdown with tabs showing bid counts: "Wake (17)", "Durham (3)", etc.
+  - Changed to client-side filtering (all data fetched once)
+- **Re-ran extraction on all 36 upset_bid cases:**
+  - 3 addresses auto-corrected (typos, wrong county)
+  - 4 addresses manually reverted (pattern captured garbage text)
+
+### Previous Session Changes (Dec 15 - Session 7)
 - **Fixed stale case reclassification bug:**
   - Root cause: Deadlines stored as midnight (00:00:00) instead of 5 PM courthouse close
   - Case 25SP001706-910 was prematurely moved to closed_sold at 12:51 PM on deadline day
@@ -278,7 +301,6 @@ npm install && npm run dev -- --port 5174
 1. PropWire enrichment (next quicklink)
 2. County Deed enrichment
 3. County Property Info enrichment
-4. Re-run extraction on upset_bid cases to populate event_descriptions
 
 ## Session Commands
 - **"Wrap up session"** - Update CLAUDE.md + commit/push + review todos + give handoff

@@ -34,7 +34,7 @@ from datetime import datetime, timedelta, timezone, time
 from typing import Dict, Optional
 
 from database.connection import get_session
-from database.models import Case, ScrapeLogTask
+from database.models import Case, ScrapeLog, ScrapeLogTask
 from scraper.date_range_scrape import DateRangeScraper
 from scraper.case_monitor import CaseMonitor, monitor_cases
 from extraction.classifier import reclassify_stale_cases
@@ -585,6 +585,16 @@ def run_daily_tasks(
 
     results['end_time'] = str(end_time)
     results['duration_seconds'] = duration.total_seconds()
+
+    # Update the scrape_log's completed_at to reflect the full workflow duration
+    # (not just Task 1's completion time which was set by DateRangeScraper)
+    if task_logger.scrape_log_id:
+        with get_session() as session:
+            log = session.query(ScrapeLog).get(task_logger.scrape_log_id)
+            if log:
+                log.completed_at = end_time
+                session.commit()
+                logger.debug(f"Updated scrape_log {task_logger.scrape_log_id} completed_at to {end_time}")
 
     return results
 

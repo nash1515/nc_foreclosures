@@ -102,14 +102,16 @@ class CaseMonitor:
             case_id: Database ID of the case
 
         Returns:
-            List of event dicts with event_date and event_type
+            List of event dicts with id, event_date, event_type, and event_description
         """
         with get_session() as session:
             events = session.query(CaseEvent).filter_by(case_id=case_id).all()
             return [
                 {
+                    'id': e.id,
                     'event_date': e.event_date.strftime('%m/%d/%Y') if e.event_date else None,
-                    'event_type': e.event_type
+                    'event_type': e.event_type,
+                    'event_description': e.event_description
                 }
                 for e in events
             ]
@@ -213,6 +215,60 @@ class CaseMonitor:
                 new_events.append(event)
 
         return new_events
+
+    def update_existing_events_with_descriptions(
+        self,
+        case_id: int,
+        existing_events: List[Dict],
+        parsed_events: List[Dict]
+    ) -> int:
+        """
+        Update existing events that are missing event_description.
+
+        When we re-scrape a case, we may have better parsing that captures
+        descriptions (like "Bid Amount $9,830.00") that weren't captured before.
+
+        Args:
+            case_id: Database ID of the case
+            existing_events: Events already in database
+            parsed_events: Events parsed from current page
+
+        Returns:
+            Number of events updated
+        """
+        # Create lookup of parsed events by signature
+        parsed_by_sig = {}
+        for event in parsed_events:
+            sig = (event.get('event_date'), (event.get('event_type') or '').strip().lower())
+            if event.get('event_description'):  # Only if we have a description
+                parsed_by_sig[sig] = event
+
+        # Find existing events that are missing descriptions but we now have them
+        updates_needed = []
+        for existing in existing_events:
+            if existing.get('event_description'):
+                continue  # Already has description
+
+            sig = (existing.get('event_date'), (existing.get('event_type') or '').strip().lower())
+            if sig in parsed_by_sig:
+                updates_needed.append({
+                    'id': existing['id'],
+                    'new_description': parsed_by_sig[sig]['event_description']
+                })
+
+        if not updates_needed:
+            return 0
+
+        # Apply updates
+        with get_session() as session:
+            for update in updates_needed:
+                event = session.query(CaseEvent).get(update['id'])
+                if event:
+                    event.event_description = update['new_description']
+                    logger.info(f"  Updated event {event.event_type} ({event.event_date}) with description: {update['new_description'][:50]}...")
+            session.commit()
+
+        return len(updates_needed)
 
     def is_sale_event(self, event_type: str) -> bool:
         """Check if event type indicates a sale occurred."""
@@ -642,6 +698,14 @@ class CaseMonitor:
 
             # Find new events
             new_events = self.detect_new_events(existing_events, parsed_events)
+
+            # Update existing events with missing descriptions
+            # (e.g., "Bid Amount $9,830.00" wasn't captured in earlier scrapes)
+            descriptions_updated = self.update_existing_events_with_descriptions(
+                case.id, existing_events, parsed_events
+            )
+            if descriptions_updated > 0:
+                result['descriptions_updated'] = descriptions_updated
 
             if new_events:
                 logger.info(f"  Found {len(new_events)} new events")

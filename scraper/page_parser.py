@@ -380,21 +380,27 @@ def parse_case_detail(page_content):
         # Extract event description - the line(s) after event type that contain details
         # Examples: "1508 Beacon Village Drive, Raleigh 27604" for Report of Sale
         #           "Petition for Possession..." for Petition To Sell
+        #           "Bid Amount $9,830.00 Deposit Amount $750.00" for Upset Bid Filed
         if event_type_index is not None:
-            skip_labels = ['Index', 'Created', 'Filed By', 'Against', 'A document is available',
-                          'Click here', 'document', 'Index #']
+            # Labels that indicate we've reached metadata (stop here)
+            stop_labels = ['Index', 'Created', 'Filed By', 'Against', 'Index #']
+            # Labels to skip over but continue looking
+            skip_labels = ['A document is available', 'Click here', 'document']
             desc_lines = []
             for line in lines[event_type_index + 1:]:
                 # Stop at form labels or metadata
-                if any(skip in line for skip in skip_labels):
+                if any(stop in line for stop in stop_labels):
                     break
+                # Skip document-related lines but continue looking for description
+                if any(skip in line for skip in skip_labels):
+                    continue
                 # Skip dates that look like Created dates (MM/DD/YYYY format followed by time)
                 if re.match(r'^\d{2}/\d{2}/\d{4}\s+\d{1,2}:\d{2}', line):
                     break
                 # Skip pure dates
                 if re.match(r'^\d{2}/\d{2}/\d{4}$', line):
                     continue
-                # Capture substantive description lines
+                # Capture substantive description lines (e.g., "Bid Amount $9,830.00 Deposit...")
                 if len(line) > 3 and len(line) < 500:
                     desc_lines.append(line)
                     # Usually just one or two lines of description

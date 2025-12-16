@@ -19,6 +19,30 @@ logger = setup_logger(__name__)
 
 
 # =============================================================================
+# UTILITY FUNCTIONS
+# =============================================================================
+
+def clean_amount(amount_str: str) -> Optional[Decimal]:
+    """
+    Clean a dollar amount string and convert to Decimal.
+
+    Args:
+        amount_str: String containing a dollar amount (e.g., "856,161.56", "$9,830.00")
+
+    Returns:
+        Decimal amount or None if invalid
+    """
+    if not amount_str:
+        return None
+    try:
+        # Remove $ and commas, then convert
+        cleaned = amount_str.replace('$', '').replace(',', '').replace(' ', '').strip()
+        return Decimal(cleaned)
+    except Exception:
+        return None
+
+
+# =============================================================================
 # REGEX PATTERNS
 # =============================================================================
 
@@ -41,9 +65,10 @@ ADDRESS_PATTERNS = [
     # Pattern 6: Multi-line address (street on one line, city/state on next)
     (r'ADDRESS/LOCATION\s+OF\s+PROPERTY\s*(?:BEING\s+FORECLOSED)?[:\s]*\n+\s*(\d+[^\n]+)\n+\s*([A-Z][A-Za-z\s]+,\s*NC\s*\d{5})', 'address_location_multiline'),
     # Pattern 7: "Address of property:" (different word order - COMMON in NC docs)
-    (r'Address\s+of\s+property[:\s]+([0-9]+[^\n]+(?:NC|North\s+Carolina)\s*\d{5}(?:-\d{4})?)', 'address_of_property'),
+    # Use non-greedy match and stop at common delimiters to avoid capturing legal text
+    (r'Address\s+of\s+Property[:\s]+(\d+[^,\n]+,\s*[A-Za-z\s]+,\s*(?:NC|North\s+Carolina)\s*\d{5}(?:-\d{4})?)', 'address_of_property'),
     # Pattern 8: Multi-line after "Address of property:"
-    (r'Address\s+of\s+property[:\s]+\n*\s*(\d+[^\n]+)\n+\s*([A-Z][A-Za-z\s]+,\s*NC\s*\d{5})', 'address_of_property_multiline'),
+    (r'Address\s+of\s+Property[:\s]+\n*\s*(\d+[^\n]+)\n+\s*([A-Z][A-Za-z\s]+,\s*NC\s*\d{5})', 'address_of_property_multiline'),
 
     # MEDIUM PRIORITY: Common property description patterns
     # Pattern 9: "commonly known as" or "known as"
@@ -116,20 +141,26 @@ FORM_ARTIFACTS = [
 # Document Priority for Address Extraction
 # When searching multiple documents for property address, try these types first
 # Keywords matched against file_path (case-insensitive)
+# IMPORTANT: More specific patterns must come BEFORE generic ones to avoid false matches
+# e.g., "notice of sale" must come before "sale" since both match sale documents
 ADDRESS_DOCUMENT_PRIORITY = [
-    # Highest priority - initial filings usually have labeled property address
-    'foreclosure',
-    'special proceeding',
-    'notice of hearing',
-    # Sale documents
+    # Highest priority - Notice of Sale/Resale documents contain explicit "Address of Property:" labels
+    'notice of saleresale',  # Common combined filename
     'notice of sale',
+    'amended notice',
+    # Report documents (may or may not have address)
     'report of foreclosure sale',
     'report of sale',
+    # Initial filings
+    'special proceeding',
+    'notice of hearing',
     # Service documents often list property address for posting
     'affidavit of service',
     'return of service',
     # Other affidavits
     'affidavit',
+    # Generic foreclosure match (lower priority to avoid matching Report of Foreclosure Sale)
+    'foreclosure',
     # Any other document (lowest priority)
 ]
 
@@ -152,8 +183,9 @@ BID_AMOUNT_PATTERNS = [
 REPORT_OF_SALE_BID_PATTERNS = [
     # Field 5: "Highest Bid Amount" in AOC-SP-301
     r'[Hh]ighest\s*[Bb]id\s*[Aa]mount[\s:]*\$?\s*([\d,]+\.?\d*)',
-    # "Amount Bid" field with multiline gap (common in AOC forms) - check early
-    r'[Aa]mount\s+[Bb]id[\s\S]{0,100}?\$([\d,]+\.?\d*)',
+    # "Amount Bid" or "Amount of Bid" field with multiline gap (common in AOC forms)
+    # Also handle OCR errors: Bx, Bld, B1d instead of Bid
+    r'[Aa]mount\s+(?:of\s+)?[Bb][il1dx]{1,2}[\s\S]{0,150}?\$([\d,]+\.?\d*)',
     # Alternative wording
     r'[Aa]mount\s*[Oo]f\s*[Ss]uccessful\s*[Bb]id[\s:]*\$?\s*([\d,]+\.?\d*)',
     r'[Pp]roperty\s*(?:was\s+)?[Ss]old\s*[Ff]or[\s:]*\$?\s*([\d,]+\.?\d*)',
@@ -283,7 +315,7 @@ EMAIL_PATTERNS = [
 # EXTRACTION FUNCTIONS
 # =============================================================================
 
-def extract_property_address(ocr_text: str) -> Optional[str]:
+def extract_property_address(ocr_text: str, return_quality: bool = False) -> Optional[str]:
     """
     Extract property address from OCR text.
 
@@ -292,15 +324,20 @@ def extract_property_address(ocr_text: str) -> Optional[str]:
 
     Args:
         ocr_text: Raw OCR text from document
+        return_quality: If True, returns tuple (address, quality_score) where
+                       quality_score is the pattern index (lower = higher quality).
+                       Patterns 0-7 are explicit labels like "Address of Property:",
+                       patterns 8+ are generic patterns that may match mailing addresses.
 
     Returns:
-        Property address string or None if not found
+        Property address string or None if not found.
+        If return_quality=True, returns (address, quality_score) or (None, None).
     """
     if not ocr_text:
-        return None
+        return (None, None) if return_quality else None
 
     # Try each pattern in priority order
-    for pattern_tuple in ADDRESS_PATTERNS:
+    for pattern_idx, pattern_tuple in enumerate(ADDRESS_PATTERNS):
         # Pattern is now a tuple: (regex, label)
         pattern = pattern_tuple[0]
         pattern_label = pattern_tuple[1]
@@ -363,10 +400,16 @@ def extract_property_address(ocr_text: str) -> Optional[str]:
                 logger.debug(f"  Address too short after cleaning artifacts, skipping")
                 continue
 
-            logger.debug(f"  Extracted address using pattern '{pattern_label}': {address}")
-            return address
+            logger.debug(f"  Extracted address using pattern '{pattern_label}' (quality={pattern_idx}): {address}")
+            return (address, pattern_idx) if return_quality else address
 
-    return None
+    return (None, None) if return_quality else None
+
+
+# Threshold for "high quality" address patterns (explicit labels like "Address of Property:")
+# Patterns at or below this index are considered high-confidence property addresses
+# Patterns above this may match mailing addresses from Certificate of Service, etc.
+ADDRESS_QUALITY_THRESHOLD = 12  # Patterns 0-12 are explicit labels, 13+ are generic
 
 
 def extract_bid_amount(ocr_text: str) -> Optional[Decimal]:
@@ -825,7 +868,8 @@ def extract_report_of_sale_data(ocr_text: str) -> Dict[str, Any]:
     # Fallback: If no direct bid amount found, try to extract "Minimum Amount of Next Upset Bid"
     # and back-calculate the current bid (current_bid = minimum_next_bid / 1.05)
     if result['initial_bid'] is None:
-        minimum_next_pattern = r'Minimum\s+Amount.*?(?:of\s+)?Next\s+Upset\s+Bid[\s\S]{0,100}?\$?\s*(\d[\d,\.\s]+\.\d{2})'
+        # Allow 200 chars for whitespace - AOC forms have heavy right-alignment (105+ chars common)
+        minimum_next_pattern = r'Minimum\s+Amount.*?(?:of\s+)?Next\s+Upset\s+Bid[\s\S]{0,200}?\$?\s*(\d[\d,\.\s]+\.\d{2})'
         match = re.search(minimum_next_pattern, ocr_text, re.IGNORECASE | re.DOTALL)
         if match:
             minimum_next_bid = clean_amount(match.group(1))
@@ -1027,7 +1071,7 @@ def _get_document_priority(file_path: str) -> int:
     return len(ADDRESS_DOCUMENT_PRIORITY)  # Lowest priority
 
 
-def _find_address_in_documents(documents: list) -> Optional[str]:
+def _find_address_in_documents(documents: list, return_quality: bool = False):
     """
     Search documents in priority order for property address.
 
@@ -1037,9 +1081,11 @@ def _find_address_in_documents(documents: list) -> Optional[str]:
 
     Args:
         documents: List of Document objects with ocr_text
+        return_quality: If True, returns (address, quality_score) tuple
 
     Returns:
-        Property address string or None if not found in any document
+        Property address string or None if not found in any document.
+        If return_quality=True, returns (address, quality_score) or (None, None).
     """
     # Sort documents by priority (foreclosure notices first)
     sorted_docs = sorted(documents, key=lambda d: _get_document_priority(d.file_path))
@@ -1049,12 +1095,80 @@ def _find_address_in_documents(documents: list) -> Optional[str]:
         if not doc.ocr_text:
             continue
 
-        address = extract_property_address(doc.ocr_text)
+        result = extract_property_address(doc.ocr_text, return_quality=True)
+        address, quality = result
         if address:
-            logger.info(f"  Found address in {doc.file_path}: {address}")
-            return address
+            logger.info(f"  Found address in {doc.file_path} (quality={quality}): {address}")
+            return (address, quality) if return_quality else address
 
-    return None
+    return (None, None) if return_quality else None
+
+
+def _find_bid_in_event_descriptions(case_id: int) -> Optional[Decimal]:
+    """
+    Search event descriptions for bid amounts.
+
+    Event descriptions for "Upset Bid Filed" and "Report of Sale" events often
+    contain the bid amount directly, e.g.:
+    - "Bid Amount $9,830.00 Deposit Amount $750.00 and Emailed confirmation."
+    - "Property sold for $125,000.00"
+
+    This is often more reliable than OCR extraction from PDFs.
+
+    Args:
+        case_id: Database ID of the case
+
+    Returns:
+        Bid amount as Decimal or None if not found
+    """
+    # Event types that commonly contain bid amounts in their descriptions
+    BID_EVENT_TYPES = [
+        'upset bid filed',
+        'report of sale',
+        'report of foreclosure sale',
+    ]
+
+    # Patterns to match bid amounts in event descriptions
+    BID_DESCRIPTION_PATTERNS = [
+        r'[Bb]id\s+[Aa]mount\s*\$?\s*([\d,]+\.?\d*)',  # "Bid Amount $9,830.00"
+        r'[Ss]old\s+for\s*\$?\s*([\d,]+\.?\d*)',  # "sold for $125,000"
+        r'[Aa]mount\s+[Bb]id\s*\$?\s*([\d,]+\.?\d*)',  # "Amount Bid $50,000"
+        r'\$\s*([\d,]+\.\d{2})\s+[Bb]id',  # "$9,830.00 Bid"
+    ]
+
+    with get_session() as session:
+        # Get events ordered by date descending (most recent first)
+        events = session.query(CaseEvent).filter_by(case_id=case_id).order_by(
+            CaseEvent.event_date.desc().nullslast()
+        ).all()
+
+        highest_bid = None
+
+        for event in events:
+            if not event.event_description:
+                continue
+
+            # Check if this event type commonly contains bid amounts
+            event_type_lower = (event.event_type or '').lower()
+            if not any(bid_type in event_type_lower for bid_type in BID_EVENT_TYPES):
+                continue
+
+            # Try each pattern
+            for pattern in BID_DESCRIPTION_PATTERNS:
+                match = re.search(pattern, event.event_description)
+                if match:
+                    amount = clean_amount(match.group(1))
+                    if amount and amount > 0:
+                        # Keep the highest bid found (upset bids increase)
+                        if highest_bid is None or amount > highest_bid:
+                            highest_bid = amount
+                            logger.debug(f"  Found bid ${amount} in event description: {event.event_description[:50]}...")
+                        break
+
+        if highest_bid:
+            logger.info(f"  Found bid in event descriptions for case {case_id}: ${highest_bid}")
+
+        return highest_bid
 
 
 def _find_address_in_event_descriptions(case_id: int) -> Optional[str]:
@@ -1123,10 +1237,13 @@ def extract_all_from_case(case_id: int) -> Dict[str, Any]:
         case_id: Database ID of the case
 
     Returns:
-        Dict with all extracted fields (best values from all documents)
+        Dict with all extracted fields (best values from all documents).
+        Includes 'address_quality' (int) where lower is better quality.
+        Quality 0-12 = explicit labels ("Address of Property:"), 13+ = generic patterns.
     """
     result = {
         'property_address': None,
+        'address_quality': None,  # Lower = higher quality (explicit labels)
         'current_bid_amount': None,
         'next_bid_deadline': None,
         'sale_date': None,
@@ -1146,13 +1263,17 @@ def extract_all_from_case(case_id: int) -> Dict[str, Any]:
     # These often have property addresses in Report of Sale event descriptions
     if is_special_proceeding:
         result['property_address'] = _find_address_in_event_descriptions(case_id)
+        if result['property_address']:
+            result['address_quality'] = 0  # Event descriptions are high quality
 
     # For property_address: search ALL documents in priority order
     with get_session() as session:
         documents = session.query(Document).filter_by(case_id=case_id).all()
 
         if not result['property_address']:
-            result['property_address'] = _find_address_in_documents(documents)
+            addr, quality = _find_address_in_documents(documents, return_quality=True)
+            result['property_address'] = addr
+            result['address_quality'] = quality
 
         # For other fields: use first non-null value from any document
         for doc in documents:
@@ -1171,6 +1292,15 @@ def extract_all_from_case(case_id: int) -> Dict[str, Any]:
     # Fallback: check event descriptions for addresses (for non-special-proceeding cases)
     if not result['property_address']:
         result['property_address'] = _find_address_in_event_descriptions(case_id)
+
+    # Fallback: check event descriptions for bid amounts
+    # Event descriptions (e.g., "Bid Amount $9,830.00") are often more reliable than OCR
+    event_bid = _find_bid_in_event_descriptions(case_id)
+    if event_bid:
+        # Use event bid if no bid found from documents, OR if event bid is higher
+        # (event descriptions show the most recent upset bids)
+        if result['current_bid_amount'] is None or event_bid > result['current_bid_amount']:
+            result['current_bid_amount'] = event_bid
 
     return result
 
@@ -1201,11 +1331,34 @@ def update_case_with_extracted_data(case_id: int) -> bool:
                 return False
 
             # Update fields only if we have new data and field is empty
+            # Exception: property_address can be overwritten if new address has better quality
             updated_fields = []
 
-            if extracted['property_address'] and not case.property_address:
-                case.property_address = extracted['property_address']
-                updated_fields.append('property_address')
+            # Property address: overwrite if (1) empty, or (2) new address is high quality
+            # High quality = patterns 0-12 (explicit labels like "Address of Property:")
+            # Low quality = patterns 13+ (generic patterns that may match mailing addresses)
+            if extracted['property_address']:
+                new_quality = extracted.get('address_quality', 99)
+                should_update = False
+
+                if not case.property_address:
+                    # No existing address, always update
+                    should_update = True
+                elif new_quality is not None and new_quality <= ADDRESS_QUALITY_THRESHOLD:
+                    # New address is high quality (explicit label pattern)
+                    # Overwrite existing address which may have been from generic pattern
+                    if case.property_address != extracted['property_address']:
+                        should_update = True
+                        logger.info(f"  Overwriting address (quality={new_quality} <= {ADDRESS_QUALITY_THRESHOLD}): "
+                                    f"'{case.property_address}' -> '{extracted['property_address']}'")
+
+                if should_update:
+                    old_address = case.property_address
+                    case.property_address = extracted['property_address']
+                    if old_address:
+                        updated_fields.append(f'property_address (corrected: {old_address} -> {extracted["property_address"]})')
+                    else:
+                        updated_fields.append('property_address')
 
             if extracted['current_bid_amount'] and (
                 not case.current_bid_amount or

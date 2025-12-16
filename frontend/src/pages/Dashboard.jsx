@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Typography, Card, Row, Col, Table, Tag, Statistic,
-  Spin, Alert, Progress, Space, Button, Select, Tooltip
+  Spin, Alert, Space, Button, Tooltip, Tabs
 } from 'antd';
 import {
   DollarOutlined, ClockCircleOutlined, HomeOutlined,
@@ -34,38 +34,36 @@ const classificationColors = {
   closed_dismissed: { color: '#8c8c8c', bg: '#fafafa' }
 };
 
-// County options
-const COUNTIES = [
-  { label: 'All Counties', value: 'all' },
-  { label: 'Wake', value: '910' },
-  { label: 'Durham', value: '310' },
-  { label: 'Harnett', value: '420' },
-  { label: 'Lee', value: '520' },
-  { label: 'Orange', value: '670' },
-  { label: 'Chatham', value: '180' }
+// County tabs - key matches county_name from API
+const COUNTY_TABS = [
+  { key: 'all', label: 'All' },
+  { key: 'Wake', label: 'Wake' },
+  { key: 'Durham', label: 'Durham' },
+  { key: 'Harnett', label: 'Harnett' },
+  { key: 'Lee', label: 'Lee' },
+  { key: 'Orange', label: 'Orange' },
+  { key: 'Chatham', label: 'Chatham' }
 ];
 
 function Dashboard() {
   const [stats, setStats] = useState(null);
-  const [upsetBids, setUpsetBids] = useState([]);
+  const [allUpsetBids, setAllUpsetBids] = useState([]);  // All bids for counting
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selectedCounty, setSelectedCounty] = useState('all');
 
   useEffect(() => {
     fetchData();
-  }, [selectedCounty]);
+  }, []);  // Only fetch once on mount
 
   const fetchData = async () => {
     try {
       setLoading(true);
 
-      // Build query params for county filter
-      const countyParam = selectedCounty !== 'all' ? `?county=${selectedCounty}` : '';
-
+      // Always fetch all data (no county filter) to get counts for tabs
       const [statsRes, upsetRes] = await Promise.all([
-        fetch(`/api/cases/stats${countyParam}`, { credentials: 'include' }),
-        fetch(`/api/cases/upset-bids${countyParam}`, { credentials: 'include' })
+        fetch('/api/cases/stats', { credentials: 'include' }),
+        fetch('/api/cases/upset-bids', { credentials: 'include' })
       ]);
 
       if (!statsRes.ok || !upsetRes.ok) {
@@ -76,13 +74,24 @@ function Dashboard() {
       const upsetData = await upsetRes.json();
 
       setStats(statsData);
-      setUpsetBids(upsetData.cases || []);
+      setAllUpsetBids(upsetData.cases || []);
     } catch (err) {
       setError(err.message);
     } finally {
       setLoading(false);
     }
   };
+
+  // Filter bids by selected county (client-side)
+  const filteredBids = selectedCounty === 'all'
+    ? allUpsetBids
+    : allUpsetBids.filter(bid => bid.county_name === selectedCounty);
+
+  // Count bids per county for tab labels
+  const countsByCounty = allUpsetBids.reduce((acc, bid) => {
+    acc[bid.county_name] = (acc[bid.county_name] || 0) + 1;
+    return acc;
+  }, {});
 
   const toggleWatchlist = async (caseId, isWatchlisted) => {
     try {
@@ -366,106 +375,46 @@ function Dashboard() {
         </Col>
       </Row>
 
-      {/* Upset Bid Cases Table */}
-      <Card
-        title={
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span>
-              <DollarOutlined style={{ marginRight: 8, color: '#fa541c' }} />
-              Active Upset Bid Opportunities ({upsetBids.length})
-            </span>
-            <Space>
-              <Text style={{ marginRight: 8 }}>Filter by County:</Text>
-              <Select
-                value={selectedCounty}
-                onChange={setSelectedCounty}
-                options={COUNTIES}
-                style={{ width: 160 }}
-                loading={loading}
-              />
-            </Space>
-          </div>
-        }
-      >
-        {upsetBids.length === 0 ? (
-          <Alert
-            type="info"
-            message="No Active Upset Bids"
-            description="There are currently no cases in the upset bid period. Check back later for new opportunities."
-            showIcon
-          />
-        ) : (
-          <Table
-            dataSource={upsetBids}
-            columns={columns}
-            rowKey="id"
-            pagination={false}
-            size="middle"
-            rowClassName={(record) => {
-              if (record.urgency === 'expired') return 'row-expired';
-              if (record.urgency === 'critical') return 'row-critical';
-              return '';
-            }}
-          />
-        )}
+      {/* County Tabs with Upset Bid Table */}
+      <Card bodyStyle={{ padding: 0 }}>
+        <Tabs
+          activeKey={selectedCounty}
+          onChange={setSelectedCounty}
+          style={{ marginBottom: 0 }}
+          tabBarStyle={{ marginBottom: 0, paddingLeft: 16, paddingRight: 16 }}
+          items={COUNTY_TABS.map(tab => ({
+            key: tab.key,
+            label: tab.key === 'all'
+              ? `All (${allUpsetBids.length})`
+              : `${tab.label} (${countsByCounty[tab.key] || 0})`
+          }))}
+        />
+        <div style={{ padding: 16 }}>
+          {filteredBids.length === 0 ? (
+            <Alert
+              type="info"
+              message="No Active Upset Bids"
+              description={selectedCounty === 'all'
+                ? "There are currently no cases in the upset bid period. Check back later for new opportunities."
+                : `There are currently no active upset bids in ${selectedCounty} County.`}
+              showIcon
+            />
+          ) : (
+            <Table
+              dataSource={filteredBids}
+              columns={columns}
+              rowKey="id"
+              pagination={false}
+              size="middle"
+              rowClassName={(record) => {
+                if (record.urgency === 'expired') return 'row-expired';
+                if (record.urgency === 'critical') return 'row-critical';
+                return '';
+              }}
+            />
+          )}
+        </div>
       </Card>
-
-      {/* Classification Breakdown */}
-      <Row gutter={[16, 16]} style={{ marginTop: 24 }}>
-        <Col xs={24} lg={12}>
-          <Card title="Case Classifications" size="small">
-            <Space direction="vertical" style={{ width: '100%' }}>
-              {stats?.classifications && Object.entries(stats.classifications)
-                .sort((a, b) => b[1] - a[1])
-                .map(([classification, count]) => {
-                  const colors = classificationColors[classification] || { color: '#8c8c8c', bg: '#fafafa' };
-                  const percent = Math.round((count / stats.total_cases) * 100);
-                  return (
-                    <div key={classification}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                        <Tag color={colors.color} style={{ margin: 0 }}>
-                          {classification || 'unclassified'}
-                        </Tag>
-                        <Text>{count.toLocaleString()} ({percent}%)</Text>
-                      </div>
-                      <Progress
-                        percent={percent}
-                        showInfo={false}
-                        strokeColor={colors.color}
-                        size="small"
-                      />
-                    </div>
-                  );
-                })}
-            </Space>
-          </Card>
-        </Col>
-        <Col xs={24} lg={12}>
-          <Card title="Cases by County" size="small">
-            <Space direction="vertical" style={{ width: '100%' }}>
-              {stats?.counties && Object.entries(stats.counties)
-                .sort((a, b) => b[1] - a[1])
-                .map(([county, count]) => {
-                  const percent = Math.round((count / stats.total_cases) * 100);
-                  return (
-                    <div key={county}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                        <Text>{county}</Text>
-                        <Text>{count.toLocaleString()} ({percent}%)</Text>
-                      </div>
-                      <Progress
-                        percent={percent}
-                        showInfo={false}
-                        strokeColor="#1890ff"
-                        size="small"
-                      />
-                    </div>
-                  );
-                })}
-            </Space>
-          </Card>
-        </Col>
-      </Row>
 
       <style>{`
         .row-expired {
