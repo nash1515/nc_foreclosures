@@ -149,6 +149,18 @@ def is_foreclosure_case(case_data):
                     logger.debug(f"Sale opportunity identified by event type: {event_type}")
                     return True
 
+    # Check event_description for sale indicators (e.g., "Petition to Sell/Lease/Mortgage Ward's Estate")
+    for event in events:
+        event_description = (event.get('event_description') or '').lower()
+        if event_description:
+            # Exclude motor vehicle sales
+            if 'motor vehicle' in event_description:
+                continue
+            for indicator in SALE_DOCUMENT_INDICATORS:
+                if indicator in event_description:
+                    logger.debug(f"Sale opportunity identified by event description: {event_description}")
+                    return True
+
     return False
 
 
