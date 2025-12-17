@@ -10,6 +10,7 @@ This module handles:
 import os
 import re
 import time
+import subprocess
 from pathlib import Path
 from datetime import datetime
 from playwright.sync_api import Page, Download
@@ -20,6 +21,100 @@ from database.connection import get_session
 from database.models import Document, CaseEvent
 
 logger = setup_logger(__name__)
+
+
+def validate_document_case_number(file_path: str, expected_case_number: str) -> bool:
+    """
+    Validate that a downloaded PDF belongs to the expected case.
+
+    This function extracts text from the first page of the PDF and searches for
+    case number patterns. If a case number is found, it compares it with the
+    expected case number. If no case number is found, the document is assumed
+    valid (some documents don't contain case numbers).
+
+    Args:
+        file_path: Path to the downloaded PDF
+        expected_case_number: Expected case number (e.g., "25SP001024-910")
+
+    Returns:
+        True if document appears to belong to the case, False if mismatch detected
+    """
+    try:
+        # Extract the core case number without suffix (e.g., "25SP001024" from "25SP001024-910")
+        expected_core = expected_case_number.split('-')[0] if '-' in expected_case_number else expected_case_number
+
+        # Normalize expected case number to handle OCR variations
+        # Convert "25SP001024" to patterns that match "25 SP 1024" or "25SP1024"
+        expected_normalized = re.sub(r'\s+', '', expected_core).upper()
+
+        # Extract text from first page using pdftotext (limit to 2000 chars for performance)
+        try:
+            result = subprocess.run(
+                ['pdftotext', '-l', '1', '-nopgbrk', file_path, '-'],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+
+            if result.returncode != 0:
+                logger.debug(f"    pdftotext failed for {Path(file_path).name}: {result.stderr}")
+                # If we can't extract text, assume valid (might be scanned image)
+                return True
+
+            pdf_text = result.stdout[:2000]  # Only check first 2000 chars
+
+        except subprocess.TimeoutExpired:
+            logger.warning(f"    pdftotext timeout for {Path(file_path).name}")
+            return True
+        except FileNotFoundError:
+            logger.warning(f"    pdftotext not found - skipping validation")
+            return True
+        except Exception as e:
+            logger.debug(f"    Error running pdftotext: {e}")
+            return True
+
+        # Search for case number patterns in the PDF text
+        # Pattern 1: "25SP001024-910" (exact format)
+        # Pattern 2: "25 SP 1024" (with spaces, common in OCR)
+        # Pattern 3: "25SP1024" (no leading zeros)
+        case_number_patterns = [
+            r'\b(\d{2})\s*SP\s*(\d{6})\b',  # Matches "25SP001024" or "25 SP 001024"
+            r'\b(\d{2})\s*SP\s*(\d{4})\b',   # Matches "25SP1024" or "25 SP 1024"
+        ]
+
+        found_case_numbers = []
+        for pattern in case_number_patterns:
+            matches = re.finditer(pattern, pdf_text, re.IGNORECASE)
+            for match in matches:
+                # Reconstruct case number from groups (year + "SP" + number)
+                year = match.group(1)
+                number = match.group(2)
+                found_case = f"{year}SP{number.zfill(6)}"  # Normalize to 6-digit format
+                found_case_numbers.append(found_case)
+
+        # If no case numbers found, assume valid (some docs don't have case numbers)
+        if not found_case_numbers:
+            logger.debug(f"    No case numbers found in {Path(file_path).name} - assuming valid")
+            return True
+
+        # Check if any found case number matches the expected one
+        for found_case in found_case_numbers:
+            found_normalized = re.sub(r'\s+', '', found_case).upper()
+            if found_normalized == expected_normalized:
+                logger.debug(f"    Validated: {Path(file_path).name} contains case {found_case}")
+                return True
+
+        # Mismatch detected - found case numbers but none match expected
+        logger.warning(
+            f"    MISMATCH: {Path(file_path).name} - expected {expected_case_number}, "
+            f"found {', '.join(set(found_case_numbers))}"
+        )
+        return False
+
+    except Exception as e:
+        logger.error(f"    Validation error for {Path(file_path).name}: {e}")
+        # On error, assume valid to avoid false positives
+        return True
 
 
 def find_matching_event(session, case_id: int, event_date_str: str, event_type: str):
@@ -750,6 +845,17 @@ def download_upset_bid_documents(page: Page, case_id: int, county: str, case_num
 
                     for file_path in popup_files:
                         filename = Path(file_path).name
+
+                        # Validate document case number
+                        is_valid = validate_document_case_number(str(file_path), case_number)
+                        if not is_valid:
+                            logger.warning(f"      Misfiled document detected - deleting: {filename}")
+                            try:
+                                os.unlink(file_path)
+                            except Exception as e:
+                                logger.error(f"      Failed to delete misfiled document: {e}")
+                            continue
+
                         with get_session() as session:
                             # Find matching event
                             event = find_matching_event(session, case_id, event_date, event_type)
@@ -794,6 +900,16 @@ def download_upset_bid_documents(page: Page, case_id: int, county: str, case_num
                         filename = f"{clean_date}_{clean_type}.pdf"
                         file_path = download_path / filename
                         download.save_as(str(file_path))
+
+                        # Validate document case number
+                        is_valid = validate_document_case_number(str(file_path), case_number)
+                        if not is_valid:
+                            logger.warning(f"      Misfiled document detected - deleting: {filename}")
+                            try:
+                                os.unlink(str(file_path))
+                            except Exception as e:
+                                logger.error(f"      Failed to delete misfiled document: {e}")
+                            continue
 
                         # Create database record
                         doc_date = None
@@ -1022,6 +1138,17 @@ def download_all_case_documents(page: Page, case_id: int, county: str, case_numb
 
                     for file_path in popup_files:
                         filename = Path(file_path).name
+
+                        # Validate document case number
+                        is_valid = validate_document_case_number(str(file_path), case_number)
+                        if not is_valid:
+                            logger.warning(f"      Misfiled document detected - deleting: {filename}")
+                            try:
+                                os.unlink(file_path)
+                            except Exception as e:
+                                logger.error(f"      Failed to delete misfiled document: {e}")
+                            continue
+
                         # Create database record for each
                         with get_session() as session:
                             # Find matching event
@@ -1080,6 +1207,16 @@ def download_all_case_documents(page: Page, case_id: int, county: str, case_numb
                             counter += 1
 
                         download.save_as(str(file_path))
+
+                        # Validate document case number
+                        is_valid = validate_document_case_number(str(file_path), case_number)
+                        if not is_valid:
+                            logger.warning(f"      Misfiled document detected - deleting: {filename}")
+                            try:
+                                os.unlink(str(file_path))
+                            except Exception as e:
+                                logger.error(f"      Failed to delete misfiled document: {e}")
+                            continue
 
                         # Create database record
                         doc_date = None
