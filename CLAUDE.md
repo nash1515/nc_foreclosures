@@ -41,7 +41,18 @@ cd frontend && npm run dev -- --host &
 - **Frontend:** React + Flask API (Dashboard, Admin tab for admins, Case Detail with bid ladder)
 - **Review Queue:** Fixed skipped cases filter (7-day lookback), Approve/Reject working
 
-### Recent Session Changes (Dec 17 - Session 10)
+### Recent Session Changes (Dec 17 - Session 11)
+- **Fixed Zillow link CAPTCHA issue:**
+  - Root cause: Manual URL formatting (`123-Main-St-Raleigh-NC`) looked bot-generated
+  - Fix: Changed to proper `encodeURIComponent()` with `+` for spaces
+  - Before: `https://www.zillow.com/homes/123-Main-St-Raleigh-NC-27612_rb/`
+  - After: `https://www.zillow.com/homes/123+Main+St%2C+Raleigh+NC+27612_rb/`
+  - File: `frontend/src/utils/urlHelpers.js`
+- **Updated NC Courts Portal icon:**
+  - Replaced gavel icon with scales of justice (cleaner, more recognizable)
+  - File: `frontend/src/assets/GavelIcon.jsx`
+
+### Previous Session Changes (Dec 17 - Session 10)
 - **Scheduler catch-up logic:**
   - Root cause: If system boots after 5 AM, daily scrape was missed entirely until next day
   - Fix: Added `check_for_missed_run()` method in `scheduler_service.py`
