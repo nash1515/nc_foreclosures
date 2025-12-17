@@ -88,6 +88,31 @@ class TaskLogger:
                     task.error_message = error_message
                 session.commit()
 
+    def log_completed_task(self, task_name: str, started_at: datetime, completed_at: datetime,
+                           status: str = 'success', items_checked: int = None,
+                           items_found: int = None, items_processed: int = None,
+                           error_message: str = None) -> Optional[int]:
+        """Log a task that has already completed with explicit timestamps."""
+        if not self.scrape_log_id:
+            return None
+        self.task_order += 1
+        with get_session() as session:
+            task = ScrapeLogTask(
+                scrape_log_id=self.scrape_log_id,
+                task_name=task_name,
+                task_order=self.task_order,
+                started_at=started_at,
+                completed_at=completed_at,
+                status=status,
+                items_checked=items_checked,
+                items_found=items_found,
+                items_processed=items_processed,
+                error_message=error_message
+            )
+            session.add(task)
+            session.commit()
+            return task.id
+
 # Target counties
 TARGET_COUNTIES = ['wake', 'durham', 'orange', 'chatham', 'lee', 'harnett']
 
@@ -408,16 +433,19 @@ def run_daily_tasks(
 
     # Task 1: Search for new cases
     if search_new:
+        task1_start = datetime.now()
         try:
             results['new_case_search'] = run_new_case_search(target_date, dry_run)
+            task1_end = datetime.now()
             # Get scrape_log_id from the search result to log subsequent tasks
             scrape_log_id = results['new_case_search'].get('scrape_log_id')
             if scrape_log_id:
                 task_logger.scrape_log_id = scrape_log_id
-                # Log Task 1 retroactively (it was already run by DateRangeScraper)
-                task_id = task_logger.start_task('new_case_search')
-                task_logger.complete_task(
-                    task_id,
+                # Log Task 1 with actual timestamps
+                task_logger.log_completed_task(
+                    'new_case_search',
+                    started_at=task1_start,
+                    completed_at=task1_end,
                     status='success' if not results['new_case_search'].get('error') else 'failed',
                     items_found=results['new_case_search'].get('cases_processed', 0),
                     items_processed=results['new_case_search'].get('cases_processed', 0)

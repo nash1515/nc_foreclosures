@@ -33,15 +33,37 @@ cd frontend && npm run dev -- --host &
 - Frontend: http://localhost:5173
 - API: http://localhost:5001
 
-## Current Status (Dec 16, 2025)
+## Current Status (Dec 17, 2025)
 
 - **2,151 cases** across 6 counties (Wake, Durham, Harnett, Lee, Orange, Chatham)
-- **Active upset_bid cases:** 37 (all with complete data)
-- **Scheduler running** 5 AM Mon-Fri (3-day lookback on Mondays)
+- **Active upset_bid cases:** 38 (all with complete data)
+- **Scheduler running** 5 AM Mon-Fri (3-day lookback on Mondays) + **catch-up logic on startup**
 - **Frontend:** React + Flask API (Dashboard, Admin tab for admins, Case Detail with bid ladder)
 - **Review Queue:** Fixed skipped cases filter (7-day lookback), Approve/Reject working
 
-### Recent Session Changes (Dec 16 - Session 9)
+### Recent Session Changes (Dec 17 - Session 10)
+- **Scheduler catch-up logic:**
+  - Root cause: If system boots after 5 AM, daily scrape was missed entirely until next day
+  - Fix: Added `check_for_missed_run()` method in `scheduler_service.py`
+  - On startup, checks if today is a scheduled day, past scheduled time, and no run today
+  - If all conditions met, executes immediately instead of waiting until tomorrow
+- **Daily Scrapes page - Acknowledge/Dismiss feature:**
+  - Added `acknowledged_at` column to `scrape_logs` table
+  - New endpoint: `POST /api/scheduler/acknowledge/<log_id>`
+  - Failed scrapes warning now only shows unacknowledged failures
+  - Added "Dismiss" button next to "Retry" to acknowledge and hide warnings
+- **Fixed task timing for New Case Search:**
+  - Root cause: Task was logged "retroactively" after completion, showing 0s duration
+  - Fix: Added `log_completed_task()` method to TaskLogger with explicit timestamps
+  - Now captures start time before `run_new_case_search()` and end time after
+- **Files changed:**
+  - `scheduler/scheduler_service.py` - Added catch-up logic
+  - `scheduler/api.py` - Added acknowledge endpoint, included acknowledged_at in history
+  - `database/models.py` - Added acknowledged_at column to ScrapeLog
+  - `scraper/daily_scrape.py` - Added log_completed_task(), fixed Task 1 timing
+  - `frontend/src/pages/DailyScrape.jsx` - Added dismiss button, filter acknowledged
+
+### Previous Session Changes (Dec 16 - Session 9)
 - **Admin UI: Case Monitor feature:**
   - Added Mode radio buttons to Manual Scrape section: "Date Range Scrape" vs "Case Monitor"
   - Case Monitor options: "Dashboard Cases (upset_bid)" or "All Upcoming Cases"

@@ -191,6 +191,7 @@ class ScrapeLog(Base):
     error_message = Column(Text)
     started_at = Column(TIMESTAMP, server_default=func.current_timestamp())
     completed_at = Column(TIMESTAMP)
+    acknowledged_at = Column(TIMESTAMP)  # When user acknowledged a failed scrape
 
     tasks = relationship('ScrapeLogTask', back_populates='scrape_log', cascade='all, delete-orphan')
 

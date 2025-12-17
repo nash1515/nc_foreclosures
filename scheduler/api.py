@@ -171,6 +171,7 @@ def get_scrape_history():
                 'error_message': log.error_message,
                 'started_at': log.started_at.isoformat() if log.started_at else None,
                 'completed_at': log.completed_at.isoformat() if log.completed_at else None,
+                'acknowledged_at': log.acknowledged_at.isoformat() if log.acknowledged_at else None,
                 'tasks': [{
                     'id': task.id,
                     'task_name': task.task_name,
@@ -186,6 +187,27 @@ def get_scrape_history():
             })
 
         return jsonify({'history': history})
+
+
+@scheduler_api.route('/acknowledge/<int:log_id>', methods=['POST'])
+def acknowledge_scrape_log(log_id):
+    """Acknowledge a failed scrape to dismiss the warning.
+
+    This marks the scrape as reviewed/acknowledged so it won't show
+    in the active warnings banner.
+    """
+    with get_session() as session:
+        log = session.query(ScrapeLog).filter_by(id=log_id).first()
+        if not log:
+            return jsonify({'error': f'Scrape log {log_id} not found'}), 404
+
+        log.acknowledged_at = datetime.now()
+        session.commit()
+
+        return jsonify({
+            'message': f'Scrape log {log_id} acknowledged',
+            'acknowledged_at': log.acknowledged_at.isoformat()
+        })
 
 
 @scheduler_api.route('/run/<job_name>', methods=['POST'])

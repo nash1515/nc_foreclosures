@@ -29,6 +29,7 @@ function DailyScrape() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [retrying, setRetrying] = useState(null);
+  const [acknowledging, setAcknowledging] = useState(null);
 
   useEffect(() => {
     fetchHistory();
@@ -173,10 +174,32 @@ function DailyScrape() {
     }
   };
 
-  // Separate failed scrapes from last 7 days
+  const handleAcknowledge = async (logId) => {
+    try {
+      setAcknowledging(logId);
+      const response = await fetch(`/api/scheduler/acknowledge/${logId}`, {
+        method: 'POST',
+        credentials: 'include'
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to acknowledge scrape');
+      }
+
+      // Refresh history to update the UI
+      fetchHistory();
+    } catch (err) {
+      console.error('Acknowledge failed:', err);
+    } finally {
+      setAcknowledging(null);
+    }
+  };
+
+  // Separate unacknowledged failed scrapes from last 7 days
   const recentFailures = history.filter(item => {
     const isRecent = dayjs(item.started_at).isAfter(dayjs().subtract(7, 'day'));
-    return item.status === 'failed' && isRecent;
+    const isUnacknowledged = !item.acknowledged_at;
+    return item.status === 'failed' && isRecent && isUnacknowledged;
   });
 
   const columns = [
@@ -343,15 +366,24 @@ function DailyScrape() {
                               </div>
                             )}
                           </div>
-                          <Button
-                            size="small"
-                            type="primary"
-                            danger
-                            loading={retrying === item.start_date}
-                            onClick={() => handleRetry(item.start_date)}
-                          >
-                            Retry
-                          </Button>
+                          <Space>
+                            <Button
+                              size="small"
+                              type="primary"
+                              danger
+                              loading={retrying === item.start_date}
+                              onClick={() => handleRetry(item.start_date)}
+                            >
+                              Retry
+                            </Button>
+                            <Button
+                              size="small"
+                              loading={acknowledging === item.id}
+                              onClick={() => handleAcknowledge(item.id)}
+                            >
+                              Dismiss
+                            </Button>
+                          </Space>
                         </div>
                       ))}
                     </div>

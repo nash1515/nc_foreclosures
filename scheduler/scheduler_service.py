@@ -111,6 +111,46 @@ class SchedulerService:
 
         return True
 
+    def check_for_missed_run(self, config):
+        """Check if we missed a scheduled run and should execute immediately.
+
+        Called once on startup to catch up if the system was down during
+        the scheduled time window.
+        """
+        if not config or not config['enabled']:
+            return False
+
+        now = datetime.now()
+
+        # Check if today is a scheduled day
+        days = [d.strip().lower() for d in config['days_of_week'].split(',')]
+        current_day = now.strftime('%a').lower()
+
+        if current_day not in days:
+            return False
+
+        # Build today's scheduled time
+        scheduled_time = now.replace(
+            hour=config['schedule_hour'],
+            minute=config['schedule_minute'],
+            second=0,
+            microsecond=0
+        )
+
+        # Only catch up if we're past the scheduled time
+        if now <= scheduled_time:
+            return False
+
+        # Check if we already ran today
+        last_run = config['last_run_at']
+        if last_run and last_run.date() == now.date():
+            return False
+
+        # We missed today's run - should catch up
+        logger.info(f"Detected missed run: scheduled for {scheduled_time.strftime('%H:%M')}, "
+                    f"last run was {last_run.strftime('%Y-%m-%d %H:%M') if last_run else 'never'}")
+        return True
+
     def run_daily_scrape(self):
         """Execute the full daily scrape job (all 4 tasks)."""
         logger.info("=" * 60)
@@ -177,6 +217,11 @@ class SchedulerService:
 
         logger.info(f"Checking every {self.check_interval} seconds...")
         logger.info("=" * 60)
+
+        # Check for missed run on startup (e.g., system was down at scheduled time)
+        if config and self.check_for_missed_run(config):
+            logger.info("Executing catch-up run for missed schedule...")
+            self.run_daily_scrape()
 
         while self.running:
             try:
