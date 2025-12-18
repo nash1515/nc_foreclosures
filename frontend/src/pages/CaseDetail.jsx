@@ -10,6 +10,7 @@ import {
   LoadingOutlined, CheckCircleOutlined
 } from '@ant-design/icons';
 import { fetchCase, addToWatchlist, removeFromWatchlist, updateCase } from '../api/cases';
+import { fetchAnalysis } from '../api/analysis';
 import { useAutoSave } from '../hooks/useAutoSave';
 import NotesCard from '../components/NotesCard';
 import AIAnalysisSection from '../components/AIAnalysisSection';
@@ -43,6 +44,9 @@ function CaseDetail() {
   // Team notes state
   const [teamNotes, setTeamNotes] = useState('');
 
+  // Analysis state
+  const [analysis, setAnalysis] = useState(null);
+
   useEffect(() => {
     async function loadCase() {
       try {
@@ -57,6 +61,17 @@ function CaseDetail() {
 
         // Initialize team notes
         setTeamNotes(data.team_notes || '');
+
+        // Fetch analysis data if case is upset_bid
+        if (data.classification === 'upset_bid') {
+          try {
+            const analysisData = await fetchAnalysis(id);
+            setAnalysis(analysisData);
+          } catch (err) {
+            // Analysis fetch failed or not available - that's ok
+            console.error('Failed to fetch analysis:', err);
+          }
+        }
       } catch (err) {
         setError(err.message);
       } finally {
@@ -384,6 +399,13 @@ function CaseDetail() {
             ) : (
               <Text type="secondary">No parties on record</Text>
             )}
+            {/* AI Extracted Defendant */}
+            {analysis?.defendant_name && (
+              <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px dashed #d9d9d9' }}>
+                <Text type="secondary">AI Extracted: </Text>
+                <Tag color="purple">{analysis.defendant_name}</Tag>
+              </div>
+            )}
           </Card>
 
           {/* Upset Bidders */}
@@ -460,7 +482,11 @@ function CaseDetail() {
       {/* AI Analysis Section - only show for upset_bid cases */}
       {caseData?.classification === 'upset_bid' && (
         <div style={{ marginTop: 24 }}>
-          <AIAnalysisSection caseId={id} />
+          <AIAnalysisSection
+            caseId={id}
+            initialAnalysis={analysis}
+            onAnalysisUpdate={setAnalysis}
+          />
         </div>
       )}
     </div>

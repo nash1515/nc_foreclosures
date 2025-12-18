@@ -25,21 +25,36 @@ const CATEGORY_ICONS = {
   property: <WarningOutlined />
 };
 
-function AIAnalysisSection({ caseId }) {
-  const [analysis, setAnalysis] = useState(null);
-  const [loading, setLoading] = useState(true);
+function AIAnalysisSection({ caseId, initialAnalysis = null, onAnalysisUpdate = null }) {
+  const [analysis, setAnalysis] = useState(initialAnalysis);
+  const [loading, setLoading] = useState(initialAnalysis === null);
   const [resolving, setResolving] = useState(null);
 
   useEffect(() => {
-    loadAnalysis();
+    // Only fetch if we don't have initial data
+    if (initialAnalysis === null) {
+      loadAnalysis();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [caseId]);
+
+  useEffect(() => {
+    // Update local state if parent passes new analysis data
+    if (initialAnalysis !== null) {
+      setAnalysis(initialAnalysis);
+      setLoading(false);
+    }
+  }, [initialAnalysis]);
 
   const loadAnalysis = async () => {
     setLoading(true);
     try {
       const data = await fetchAnalysis(caseId);
       setAnalysis(data);
+      // Notify parent of the update
+      if (onAnalysisUpdate) {
+        onAnalysisUpdate(data);
+      }
     } catch (err) {
       message.error('Failed to load analysis');
     } finally {
