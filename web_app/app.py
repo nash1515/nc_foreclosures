@@ -74,6 +74,10 @@ def create_app():
     from web_app.api.admin import admin_bp
     app.register_blueprint(admin_bp)
 
+    # Register analysis API
+    from web_app.api.analysis import analysis_bp
+    app.register_blueprint(analysis_bp)
+
     # Seed admin user from environment
     seed_admin_user()
 
