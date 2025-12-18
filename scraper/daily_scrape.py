@@ -563,14 +563,14 @@ def run_daily_tasks(
         analysis_result = process_analysis_queue(max_items=10)
         task_logger.complete_task(
             task_id,
-            'success',
             items_checked=analysis_result['processed'],
             items_processed=analysis_result['succeeded']
         )
         logger.info(f"Task 6 complete: {analysis_result['succeeded']}/{analysis_result['processed']} analyses completed")
     except Exception as e:
         logger.error(f"Task 6 failed: {e}")
-        task_logger.complete_task(task_id, 'failed', error_message=str(e))
+        results['errors'].append(f"ai_analysis_queue: {e}")
+        task_logger.complete_task(task_id, status='failed', error_message=str(e))
 
     # Summary
     end_time = datetime.now()
