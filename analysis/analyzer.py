@@ -1,0 +1,284 @@
+# analysis/analyzer.py
+"""Main orchestrator for AI case analysis."""
+
+import json
+from datetime import datetime
+from decimal import Decimal
+from typing import Optional, Dict, Any
+
+import anthropic
+
+from common.config import Config
+from common.logger import setup_logger
+from database.connection import get_session
+from database.models import Case, CaseAnalysis, Document, Party
+from analysis.prompt_builder import build_analysis_prompt, estimate_token_count
+
+logger = setup_logger(__name__)
+
+# Model configuration
+MODEL_NAME = "claude-sonnet-4-20250514"
+# Pricing: $3 per million input tokens, $15 per million output tokens
+INPUT_COST_PER_MILLION = 3.0
+OUTPUT_COST_PER_MILLION = 15.0
+
+
+def analyze_case(case_id: int) -> Dict[str, Any]:
+    """
+    Run AI analysis on a case.
+
+    Args:
+        case_id: The case ID to analyze
+
+    Returns:
+        Dict with analysis results or error info
+    """
+    logger.info(f"Starting AI analysis for case_id={case_id}")
+
+    with get_session() as session:
+        # Get or create analysis record
+        analysis = session.query(CaseAnalysis).filter_by(case_id=case_id).first()
+        if not analysis:
+            logger.error(f"No analysis record found for case_id={case_id}")
+            return {'error': 'No analysis record found'}
+
+        # Mark as processing
+        analysis.status = 'processing'
+        session.commit()
+
+        try:
+            # Fetch case and related data
+            case = session.query(Case).filter_by(id=case_id).first()
+            if not case:
+                raise ValueError(f"Case {case_id} not found")
+
+            # Fetch documents with OCR text
+            documents = session.query(Document).filter(
+                Document.case_id == case_id,
+                Document.ocr_text.isnot(None),
+                Document.ocr_text != ''
+            ).all()
+
+            if not documents:
+                raise ValueError(f"No documents with OCR text for case {case_id}")
+
+            # Fetch defendant names from parties table
+            defendants = session.query(Party).filter(
+                Party.case_id == case_id,
+                Party.party_type.ilike('%defendant%')
+            ).all()
+            defendant_names = [d.party_name for d in defendants if d.party_name]
+
+            # Build current DB values for comparison
+            current_db_values = {
+                'property_address': case.property_address,
+                'current_bid_amount': float(case.current_bid_amount) if case.current_bid_amount else None,
+                'minimum_next_bid': float(case.minimum_next_bid) if case.minimum_next_bid else None,
+                'defendant_names': defendant_names
+            }
+
+            # Prepare document data - INCLUDING document_id for contribution tracking
+            doc_data = [
+                {
+                    'document_id': doc.id,
+                    'document_name': doc.document_name,
+                    'ocr_text': doc.ocr_text
+                }
+                for doc in documents
+            ]
+
+            # Build prompt
+            prompt = build_analysis_prompt(
+                case_number=case.case_number,
+                county=case.county_code,
+                documents=doc_data,
+                current_db_values=current_db_values
+            )
+
+            # Call Claude API
+            result = _call_claude_api(prompt)
+
+            if 'error' in result:
+                raise ValueError(result['error'])
+
+            # Parse response
+            parsed = _parse_analysis_response(result['content'])
+
+            # Generate discrepancies
+            discrepancies = _generate_discrepancies(
+                parsed.get('confirmations', {}),
+                current_db_values
+            )
+
+            # Update analysis record
+            analysis.summary = parsed.get('summary')
+            analysis.financials = parsed.get('financials')
+            analysis.red_flags = parsed.get('red_flags', [])
+            analysis.defendant_name = parsed.get('confirmations', {}).get('defendant_name')
+            analysis.deed_book = parsed.get('deed_book')
+            analysis.deed_page = parsed.get('deed_page')
+            analysis.discrepancies = discrepancies
+            analysis.document_contributions = parsed.get('document_contributions', [])
+            analysis.model_used = MODEL_NAME
+            analysis.input_tokens = result.get('input_tokens', 0)
+            analysis.output_tokens = result.get('output_tokens', 0)
+            analysis.cost_cents = _calculate_cost_cents(
+                result.get('input_tokens', 0),
+                result.get('output_tokens', 0)
+            )
+            analysis.status = 'completed'
+            analysis.completed_at = datetime.now()
+            analysis.error_message = None
+
+            session.commit()
+
+            logger.info(f"Completed AI analysis for case_id={case_id}, cost={analysis.cost_cents} cents")
+
+            return {
+                'status': 'completed',
+                'case_id': case_id,
+                'cost_cents': analysis.cost_cents,
+                'discrepancies_found': len(discrepancies)
+            }
+
+        except Exception as e:
+            logger.error(f"AI analysis failed for case_id={case_id}: {e}")
+            analysis.status = 'failed'
+            analysis.error_message = str(e)
+            analysis.completed_at = datetime.now()
+            session.commit()
+            return {'error': str(e), 'case_id': case_id}
+
+
+def _call_claude_api(prompt: str) -> Dict[str, Any]:
+    """Call Claude API and return response."""
+    try:
+        client = anthropic.Anthropic(api_key=Config.ANTHROPIC_API_KEY)
+
+        response = client.messages.create(
+            model=MODEL_NAME,
+            max_tokens=4096,
+            messages=[
+                {"role": "user", "content": prompt}
+            ]
+        )
+
+        return {
+            'content': response.content[0].text,
+            'input_tokens': response.usage.input_tokens,
+            'output_tokens': response.usage.output_tokens
+        }
+
+    except Exception as e:
+        logger.error(f"Claude API error: {e}")
+        return {'error': str(e)}
+
+
+def _parse_analysis_response(content: str) -> Dict[str, Any]:
+    """Parse JSON response from Claude."""
+    # Try to extract JSON from response
+    content = content.strip()
+
+    # Remove markdown code blocks if present
+    if content.startswith('```'):
+        lines = content.split('\n')
+        # Remove first and last lines (```json and ```)
+        content = '\n'.join(lines[1:-1])
+
+    try:
+        return json.loads(content)
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse Claude response as JSON: {e}")
+        logger.debug(f"Response content: {content[:500]}")
+        return {'parse_error': str(e)}
+
+
+def _generate_discrepancies(
+    confirmations: Dict[str, Any],
+    db_values: Dict[str, Any]
+) -> list:
+    """Compare AI confirmations against DB values and generate discrepancies."""
+    discrepancies = []
+
+    # Compare property address
+    ai_address = confirmations.get('property_address')
+    db_address = db_values.get('property_address')
+    if ai_address and db_address and _normalize_string(ai_address) != _normalize_string(db_address):
+        discrepancies.append({
+            'field': 'property_address',
+            'db_value': db_address,
+            'ai_value': ai_address,
+            'status': 'pending',
+            'resolved_at': None,
+            'resolved_by': None
+        })
+
+    # Compare current bid
+    ai_bid = confirmations.get('current_bid_amount')
+    db_bid = db_values.get('current_bid_amount')
+    if ai_bid and db_bid and float(ai_bid) != float(db_bid):
+        discrepancies.append({
+            'field': 'current_bid_amount',
+            'db_value': str(db_bid),
+            'ai_value': str(ai_bid),
+            'status': 'pending',
+            'resolved_at': None,
+            'resolved_by': None
+        })
+
+    # Compare minimum next bid
+    ai_min = confirmations.get('minimum_next_bid')
+    db_min = db_values.get('minimum_next_bid')
+    if ai_min and db_min and float(ai_min) != float(db_min):
+        discrepancies.append({
+            'field': 'minimum_next_bid',
+            'db_value': str(db_min),
+            'ai_value': str(ai_min),
+            'status': 'pending',
+            'resolved_at': None,
+            'resolved_by': None
+        })
+
+    # Compare defendant name
+    ai_defendant = confirmations.get('defendant_name')
+    db_defendants = db_values.get('defendant_names', [])
+    if ai_defendant and db_defendants:
+        # Check if AI defendant matches any DB defendant
+        ai_normalized = _normalize_string(ai_defendant)
+        matches = any(_normalize_string(d) == ai_normalized for d in db_defendants)
+        if not matches:
+            discrepancies.append({
+                'field': 'defendant_name',
+                'db_value': ', '.join(db_defendants),
+                'ai_value': ai_defendant,
+                'status': 'pending',
+                'resolved_at': None,
+                'resolved_by': None
+            })
+    elif ai_defendant and not db_defendants:
+        # AI found defendant but DB has none
+        discrepancies.append({
+            'field': 'defendant_name',
+            'db_value': None,
+            'ai_value': ai_defendant,
+            'status': 'pending',
+            'resolved_at': None,
+            'resolved_by': None
+        })
+
+    return discrepancies
+
+
+def _normalize_string(s: str) -> str:
+    """Normalize string for comparison."""
+    if not s:
+        return ''
+    return ' '.join(s.lower().split())
+
+
+def _calculate_cost_cents(input_tokens: int, output_tokens: int) -> int:
+    """Calculate cost in cents."""
+    input_cost = (input_tokens / 1_000_000) * INPUT_COST_PER_MILLION
+    output_cost = (output_tokens / 1_000_000) * OUTPUT_COST_PER_MILLION
+    total_dollars = input_cost + output_cost
+    return int(total_dollars * 100)  # Convert to cents
