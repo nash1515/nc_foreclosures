@@ -45,9 +45,11 @@ def process_analysis_queue(max_items: int = 10) -> Dict[str, Any]:
 
         logger.info(f"Found {len(pending)} pending analyses")
 
+        # Extract case_ids inside session to prevent DetachedInstanceError
+        pending_case_ids = [analysis.case_id for analysis in pending]
+
     # Process each analysis (outside session to avoid long transactions)
-    for analysis in pending:
-        case_id = analysis.case_id
+    for case_id in pending_case_ids:
         result = analyze_case(case_id)
 
         results['processed'] += 1
@@ -67,7 +69,7 @@ def process_analysis_queue(max_items: int = 10) -> Dict[str, Any]:
     return results
 
 
-def enqueue_analysis(case_id: int) -> bool:
+def enqueue_analysis(case_id: int) -> str:
     """
     Add a case to the analysis queue.
 
@@ -75,14 +77,14 @@ def enqueue_analysis(case_id: int) -> bool:
         case_id: The case ID to queue for analysis
 
     Returns:
-        True if queued successfully, False if already queued
+        'queued' if newly created, or the existing status ('pending', 'processing', 'completed', 'failed')
     """
     with get_session() as session:
         # Check if already queued
         existing = session.query(CaseAnalysis).filter_by(case_id=case_id).first()
         if existing:
             logger.debug(f"Case {case_id} already has analysis record (status={existing.status})")
-            return False
+            return existing.status
 
         # Create new analysis record
         analysis = CaseAnalysis(
@@ -94,7 +96,7 @@ def enqueue_analysis(case_id: int) -> bool:
         session.commit()
 
         logger.info(f"Queued case {case_id} for AI analysis")
-        return True
+        return 'queued'
 
 
 def get_queue_status() -> Dict[str, Any]:
