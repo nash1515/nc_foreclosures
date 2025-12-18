@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from flask import Blueprint, jsonify, request
+from sqlalchemy.orm.attributes import flag_modified
 
 from common.logger import setup_logger
 from database.connection import get_session
@@ -77,6 +78,10 @@ def resolve_discrepancy(case_id, index):
         # If accepting, update the database field
         if action == 'accept':
             case = session.query(Case).filter_by(id=case_id).first()
+
+            if not case:
+                return jsonify({'error': 'Case not found'}), 404
+
             field = discrepancy['field']
             ai_value = discrepancy['ai_value']
 
@@ -99,11 +104,14 @@ def resolve_discrepancy(case_id, index):
                         party_type='Defendant'
                     )
                     session.add(new_party)
+            else:
+                logger.warning(f"Unknown discrepancy field: {field} for case {case_id}")
 
             logger.info(f"Updated {field} for case {case_id} with AI value: {ai_value}")
 
         # Save updated discrepancies
         analysis.discrepancies = discrepancies
+        flag_modified(analysis, 'discrepancies')
         session.commit()
 
         return jsonify({
