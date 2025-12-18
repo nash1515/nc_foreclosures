@@ -12,11 +12,13 @@ from flask import Blueprint, jsonify, request
 
 from database.connection import get_session
 from database.models import SchedulerConfig, ScrapeLog, ScrapeLogTask
+from web_app.auth.middleware import require_auth
 
 scheduler_api = Blueprint('scheduler', __name__, url_prefix='/api/scheduler')
 
 
 @scheduler_api.route('/config', methods=['GET'])
+@require_auth
 def get_scheduler_config():
     """Get all scheduler job configurations."""
     with get_session() as session:
@@ -37,6 +39,7 @@ def get_scheduler_config():
 
 
 @scheduler_api.route('/config/<job_name>', methods=['GET'])
+@require_auth
 def get_job_config(job_name):
     """Get configuration for a specific job."""
     with get_session() as session:
@@ -58,6 +61,7 @@ def get_job_config(job_name):
 
 
 @scheduler_api.route('/config/<job_name>', methods=['PUT'])
+@require_auth
 def update_job_config(job_name):
     """Update configuration for a specific job.
 
@@ -116,6 +120,7 @@ def update_job_config(job_name):
 
 
 @scheduler_api.route('/config/<job_name>/toggle', methods=['POST'])
+@require_auth
 def toggle_job(job_name):
     """Enable or disable a job."""
     with get_session() as session:
@@ -134,6 +139,7 @@ def toggle_job(job_name):
 
 
 @scheduler_api.route('/history', methods=['GET'])
+@require_auth
 def get_scrape_history():
     """Get recent scrape history.
 
@@ -190,6 +196,7 @@ def get_scrape_history():
 
 
 @scheduler_api.route('/acknowledge/<int:log_id>', methods=['POST'])
+@require_auth
 def acknowledge_scrape_log(log_id):
     """Acknowledge a failed scrape to dismiss the warning.
 
@@ -211,6 +218,7 @@ def acknowledge_scrape_log(log_id):
 
 
 @scheduler_api.route('/run/<job_name>', methods=['POST'])
+@require_auth
 def trigger_job(job_name):
     """Manually trigger a job to run immediately.
 

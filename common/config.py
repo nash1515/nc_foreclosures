@@ -30,6 +30,9 @@ class Config:
     # Anthropic API (for Claude Vision OCR fallback)
     ANTHROPIC_API_KEY = os.getenv('ANTHROPIC_API_KEY')
 
+    # Authentication
+    AUTH_DISABLED = os.getenv('AUTH_DISABLED', 'false').lower() == 'true'
+
     @classmethod
     def validate(cls):
         """Validate that required configuration is present."""

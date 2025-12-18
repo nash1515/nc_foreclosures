@@ -1,5 +1,6 @@
 """Admin API endpoints for user management and manual scraping."""
 
+import os
 from flask import Blueprint, jsonify, request
 from flask_dance.contrib.google import google
 from functools import wraps
@@ -10,9 +11,16 @@ from web_app.auth.google import get_google_user_info
 
 admin_bp = Blueprint('admin', __name__, url_prefix='/api/admin')
 
+# Check if auth is disabled
+AUTH_DISABLED = os.getenv('AUTH_DISABLED', 'false').lower() == 'true'
+
 
 def get_current_user_role():
     """Get the role of the currently authenticated user."""
+    # Return admin role if auth is disabled
+    if AUTH_DISABLED:
+        return 'admin'
+
     if not google.authorized:
         return None
 
@@ -29,6 +37,10 @@ def require_admin(f):
     """Decorator to require admin role for endpoint."""
     @wraps(f)
     def decorated(*args, **kwargs):
+        # Skip auth check if disabled
+        if AUTH_DISABLED:
+            return f(*args, **kwargs)
+
         role = get_current_user_role()
         if role != 'admin':
             return jsonify({'error': 'Admin access required'}), 403

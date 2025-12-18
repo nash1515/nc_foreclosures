@@ -1,5 +1,6 @@
 """Main API routes."""
 
+import os
 from flask import Blueprint, jsonify, redirect, session
 from flask_dance.contrib.google import google
 from oauthlib.oauth2.rfc6749.errors import TokenExpiredError
@@ -9,6 +10,9 @@ from database.models import User
 from datetime import datetime
 
 api_bp = Blueprint('api', __name__)
+
+# Check if auth is disabled
+AUTH_DISABLED = os.getenv('AUTH_DISABLED', 'false').lower() == 'true'
 
 
 @api_bp.route('/health', methods=['GET'])
@@ -20,6 +24,19 @@ def health_check():
 @api_bp.route('/auth/me', methods=['GET'])
 def get_current_user():
     """Get current authenticated user - requires user to be in whitelist."""
+    # Return mock user if auth is disabled
+    if AUTH_DISABLED:
+        return jsonify({
+            'authenticated': True,
+            'user': {
+                'id': 1,
+                'email': 'dev@local',
+                'display_name': 'Dev User',
+                'avatar_url': None,
+                'role': 'admin'
+            }
+        })
+
     if not google.authorized:
         return jsonify({'authenticated': False}), 401
 

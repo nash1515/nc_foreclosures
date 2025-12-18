@@ -1,13 +1,18 @@
 """Cases API endpoints."""
 
+import os
 from flask import Blueprint, jsonify, request
 from flask_dance.contrib.google import google
 from sqlalchemy import or_, func
 from database.connection import get_session
 from database.models import Case, Party, Watchlist, User
 from datetime import datetime, date, time
+from web_app.auth.middleware import require_auth
 
 cases_bp = Blueprint('cases', __name__)
+
+# Check if auth is disabled
+AUTH_DISABLED = os.getenv('AUTH_DISABLED', 'false').lower() == 'true'
 
 # Whitelist of allowed sort columns to prevent SQL injection
 ALLOWED_SORT_COLUMNS = {
@@ -18,6 +23,10 @@ ALLOWED_SORT_COLUMNS = {
 
 def get_current_user_id():
     """Get current user's ID from session."""
+    # Return mock user ID if auth is disabled
+    if AUTH_DISABLED:
+        return 1
+
     if not google.authorized:
         return None
 
@@ -32,6 +41,7 @@ def get_current_user_id():
 
 
 @cases_bp.route('', methods=['GET'])
+@require_auth
 def list_cases():
     """List cases with filters and pagination.
 
@@ -47,9 +57,6 @@ def list_cases():
     - sort_by: Column to sort by (default: file_date)
     - sort_order: 'asc' or 'desc' (default: desc)
     """
-    if not google.authorized:
-        return jsonify({'error': 'Not authenticated'}), 401
-
     user_id = get_current_user_id()
 
     # Parse query params
@@ -171,11 +178,9 @@ def list_cases():
 
 
 @cases_bp.route('/<int:case_id>', methods=['GET'])
+@require_auth
 def get_case(case_id):
     """Get full case detail including parties, events, and upset bidders."""
-    if not google.authorized:
-        return jsonify({'error': 'Not authenticated'}), 401
-
     user_id = get_current_user_id()
 
     with get_session() as db_session:
@@ -269,11 +274,9 @@ def get_case(case_id):
 
 
 @cases_bp.route('/<int:case_id>/watchlist', methods=['POST'])
+@require_auth
 def add_to_watchlist(case_id):
     """Add a case to user's watchlist."""
-    if not google.authorized:
-        return jsonify({'error': 'Not authenticated'}), 401
-
     user_id = get_current_user_id()
     if not user_id:
         return jsonify({'error': 'User not found'}), 401
@@ -301,11 +304,9 @@ def add_to_watchlist(case_id):
 
 
 @cases_bp.route('/<int:case_id>/watchlist', methods=['DELETE'])
+@require_auth
 def remove_from_watchlist(case_id):
     """Remove a case from user's watchlist."""
-    if not google.authorized:
-        return jsonify({'error': 'Not authenticated'}), 401
-
     user_id = get_current_user_id()
     if not user_id:
         return jsonify({'error': 'User not found'}), 401
@@ -323,15 +324,13 @@ def remove_from_watchlist(case_id):
 
 
 @cases_bp.route('/stats', methods=['GET'])
+@require_auth
 def get_stats():
     """Get dashboard statistics.
 
     Query params:
     - county: Filter by county code (optional)
     """
-    if not google.authorized:
-        return jsonify({'error': 'Not authenticated'}), 401
-
     # Parse query params
     county_filter = request.args.get('county', '').strip()
 
@@ -408,15 +407,13 @@ def get_stats():
 
 
 @cases_bp.route('/upset-bids', methods=['GET'])
+@require_auth
 def get_upset_bids():
     """Get all upset_bid cases sorted by deadline urgency.
 
     Query params:
     - county: Filter by county code (optional)
     """
-    if not google.authorized:
-        return jsonify({'error': 'Not authenticated'}), 401
-
     user_id = get_current_user_id()
 
     # Parse query params
@@ -498,6 +495,7 @@ def get_upset_bids():
 
 
 @cases_bp.route('/<int:case_id>', methods=['PATCH'])
+@require_auth
 def update_case(case_id):
     """Update case collaboration fields.
 
@@ -509,9 +507,6 @@ def update_case(case_id):
         "team_notes": "Property looks good. Needs roof work (~15k)."
     }
     """
-    if not google.authorized:
-        return jsonify({'error': 'Not authenticated'}), 401
-
     # Parse request body
     data = request.get_json()
     if not data:

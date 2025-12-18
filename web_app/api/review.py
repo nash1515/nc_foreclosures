@@ -8,6 +8,7 @@ from sqlalchemy import func
 from database.connection import get_session
 from database.models import Case, CaseEvent, Party, Hearing, SkippedCase
 from common.logger import setup_logger
+from web_app.auth.middleware import require_auth
 
 logger = setup_logger(__name__)
 
@@ -15,6 +16,7 @@ review_bp = Blueprint('review', __name__)
 
 
 @review_bp.route('/daily', methods=['GET'])
+@require_auth
 def get_daily_review():
     """
     Get cases for daily review.
@@ -107,6 +109,7 @@ def get_daily_review():
 
 
 @review_bp.route('/foreclosures/approve-all', methods=['POST'])
+@require_auth
 def approve_all_foreclosures():
     """
     Mark all foreclosures for a date as reviewed (approved).
@@ -148,6 +151,7 @@ def approve_all_foreclosures():
 
 
 @review_bp.route('/foreclosures/approve', methods=['POST'])
+@require_auth
 def approve_foreclosures():
     """
     Mark specific foreclosures as reviewed (approved) by case IDs.
@@ -180,6 +184,7 @@ def approve_foreclosures():
 
 
 @review_bp.route('/foreclosures/reject', methods=['POST'])
+@require_auth
 def reject_foreclosures():
     """
     Reject (delete) foreclosure cases.
@@ -211,6 +216,7 @@ def reject_foreclosures():
 
 
 @review_bp.route('/skipped/add', methods=['POST'])
+@require_auth
 def add_skipped_cases():
     """
     Add skipped cases as foreclosures.
@@ -296,6 +302,7 @@ def add_skipped_cases():
 
 
 @review_bp.route('/skipped/dismiss', methods=['POST'])
+@require_auth
 def dismiss_skipped_cases():
     """
     Dismiss skipped cases (confirm they are not foreclosures).
@@ -328,6 +335,7 @@ def dismiss_skipped_cases():
 
 
 @review_bp.route('/cleanup', methods=['DELETE'])
+@require_auth
 def cleanup_old_skipped():
     """
     Remove old dismissed skipped cases.
@@ -356,6 +364,7 @@ def cleanup_old_skipped():
 
 
 @review_bp.route('/pending-count', methods=['GET'])
+@require_auth
 def get_pending_count():
     """Get count of cases pending review (for badge)."""
     with get_session() as session:
