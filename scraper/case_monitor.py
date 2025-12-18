@@ -43,6 +43,7 @@ from ocr.processor import extract_text_from_pdf
 from common.logger import setup_logger
 from common.county_codes import get_county_name
 from common.business_days import calculate_upset_bid_deadline
+from analysis.queue_processor import enqueue_analysis
 
 logger = setup_logger(__name__)
 
@@ -827,6 +828,14 @@ class CaseMonitor:
             if new_classification and old_classification != new_classification:
                 logger.info(f"  Classification changed: {old_classification} -> {new_classification}")
                 result['classification_changed'] = True
+
+                # Queue for AI analysis when case transitions to upset_bid
+                if new_classification == 'upset_bid':
+                    try:
+                        enqueue_analysis(case.id)
+                        logger.info(f"  Queued case for AI analysis")
+                    except Exception as e:
+                        logger.warning(f"  Failed to queue analysis for case {case.id}: {e}")
             elif new_classification is None and old_classification:
                 # Restore the original classification - don't lose it
                 with get_session() as session:
