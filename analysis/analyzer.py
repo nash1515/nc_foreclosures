@@ -12,7 +12,7 @@ from common.config import Config
 from common.logger import setup_logger
 from database.connection import get_session
 from database.models import Case, CaseAnalysis, Document, Party
-from analysis.prompt_builder import build_analysis_prompt, estimate_token_count
+from analysis.prompt_builder import build_analysis_prompt
 
 logger = setup_logger(__name__)
 
@@ -103,6 +103,16 @@ def analyze_case(case_id: int) -> Dict[str, Any]:
 
             # Parse response
             parsed = _parse_analysis_response(result['content'])
+
+            # C2: Check for parse errors
+            if 'parse_error' in parsed:
+                raise ValueError(f"Failed to parse AI response: {parsed['parse_error']}")
+
+            # I1: Validate required fields
+            required_keys = ['summary', 'financials', 'confirmations']
+            missing = [k for k in required_keys if k not in parsed]
+            if missing:
+                raise ValueError(f"AI response missing required fields: {missing}")
 
             # Generate discrepancies
             discrepancies = _generate_discrepancies(
@@ -200,6 +210,11 @@ def _generate_discrepancies(
     """Compare AI confirmations against DB values and generate discrepancies."""
     discrepancies = []
 
+    # I2: Log missing confirmation fields
+    for field in ['property_address', 'current_bid_amount', 'minimum_next_bid', 'defendant_name']:
+        if field not in confirmations or confirmations[field] is None:
+            logger.warning(f"AI analysis did not extract {field}")
+
     # Compare property address
     ai_address = confirmations.get('property_address')
     db_address = db_values.get('property_address')
@@ -213,10 +228,10 @@ def _generate_discrepancies(
             'resolved_by': None
         })
 
-    # Compare current bid
+    # Compare current bid (I3: Use Decimal for float comparison)
     ai_bid = confirmations.get('current_bid_amount')
     db_bid = db_values.get('current_bid_amount')
-    if ai_bid and db_bid and float(ai_bid) != float(db_bid):
+    if ai_bid and db_bid and abs(Decimal(str(ai_bid)) - Decimal(str(db_bid))) > Decimal('0.01'):
         discrepancies.append({
             'field': 'current_bid_amount',
             'db_value': str(db_bid),
@@ -226,10 +241,10 @@ def _generate_discrepancies(
             'resolved_by': None
         })
 
-    # Compare minimum next bid
+    # Compare minimum next bid (I3: Use Decimal for float comparison)
     ai_min = confirmations.get('minimum_next_bid')
     db_min = db_values.get('minimum_next_bid')
-    if ai_min and db_min and float(ai_min) != float(db_min):
+    if ai_min and db_min and abs(Decimal(str(ai_min)) - Decimal(str(db_min))) > Decimal('0.01'):
         discrepancies.append({
             'field': 'minimum_next_bid',
             'db_value': str(db_min),
