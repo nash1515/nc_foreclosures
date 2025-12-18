@@ -39,6 +39,7 @@ from scraper.date_range_scrape import DateRangeScraper
 from scraper.case_monitor import CaseMonitor, monitor_cases
 from extraction.classifier import reclassify_stale_cases
 from scraper.self_diagnosis import diagnose_and_heal_upset_bids
+from analysis.queue_processor import process_analysis_queue
 from common.logger import setup_logger
 
 logger = setup_logger(__name__)
@@ -554,6 +555,22 @@ def run_daily_tasks(
         results['errors'].append(f"self_diagnosis: {e}")
         results['self_diagnosis'] = {'error': str(e)}
         task_logger.complete_task(task_id, status='failed', error_message=str(e))
+
+    # Task 6: Process AI Analysis Queue
+    task_id = task_logger.start_task('ai_analysis_queue')
+    try:
+        logger.info("Task 6: Processing AI analysis queue")
+        analysis_result = process_analysis_queue(max_items=10)
+        task_logger.complete_task(
+            task_id,
+            'success',
+            items_checked=analysis_result['processed'],
+            items_processed=analysis_result['succeeded']
+        )
+        logger.info(f"Task 6 complete: {analysis_result['succeeded']}/{analysis_result['processed']} analyses completed")
+    except Exception as e:
+        logger.error(f"Task 6 failed: {e}")
+        task_logger.complete_task(task_id, 'failed', error_message=str(e))
 
     # Summary
     end_time = datetime.now()
