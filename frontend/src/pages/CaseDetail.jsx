@@ -12,6 +12,7 @@ import {
 import { fetchCase, addToWatchlist, removeFromWatchlist, updateCase } from '../api/cases';
 import { useAutoSave } from '../hooks/useAutoSave';
 import NotesCard from '../components/NotesCard';
+import AIAnalysisSection from '../components/AIAnalysisSection';
 import { formatZillowUrl } from '../utils/urlHelpers';
 import { ZillowIcon } from '../assets/ZillowIcon';
 import dayjs from 'dayjs';
@@ -455,6 +456,13 @@ function CaseDetail() {
           </Card>
         </Col>
       </Row>
+
+      {/* AI Analysis Section - only show for upset_bid cases */}
+      {caseData?.classification === 'upset_bid' && (
+        <div style={{ marginTop: 24 }}>
+          <AIAnalysisSection caseId={id} />
+        </div>
+      )}
     </div>
   );
 }
