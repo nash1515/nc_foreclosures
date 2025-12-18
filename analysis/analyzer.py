@@ -11,7 +11,7 @@ import anthropic
 from common.config import Config
 from common.logger import setup_logger
 from database.connection import get_session
-from database.models import Case, CaseAnalysis, Document, Party
+from database.models import Case, CaseAnalysis, CaseEvent, Document, Party
 from analysis.prompt_builder import build_analysis_prompt
 
 logger = setup_logger(__name__)
@@ -87,12 +87,30 @@ def analyze_case(case_id: int) -> Dict[str, Any]:
                 for doc in documents
             ]
 
+            # Fetch case events with descriptions (structured data from portal)
+            events = session.query(CaseEvent).filter(
+                CaseEvent.case_id == case_id,
+                CaseEvent.event_description.isnot(None),
+                CaseEvent.event_description != ''
+            ).order_by(CaseEvent.event_date.desc().nullslast()).all()
+
+            event_data = [
+                {
+                    'event_date': str(event.event_date) if event.event_date else None,
+                    'event_type': event.event_type,
+                    'description': event.event_description
+                }
+                for event in events
+                if event.event_type  # Only include events with types
+            ]
+
             # Build prompt
             prompt = build_analysis_prompt(
                 case_number=case.case_number,
                 county=case.county_code,
                 documents=doc_data,
-                current_db_values=current_db_values
+                current_db_values=current_db_values,
+                events=event_data
             )
 
             # Call Claude API
@@ -229,30 +247,42 @@ def _generate_discrepancies(
         })
 
     # Compare current bid (I3: Use Decimal for float comparison)
+    # NOTE: If DB has a HIGHER value, don't flag as discrepancy - this means an upset bid
+    # occurred that we already captured. Upset bid documents often have handwritten amounts
+    # that can't be OCR'd, so AI may only see the original sale amount.
     ai_bid = confirmations.get('current_bid_amount')
     db_bid = db_values.get('current_bid_amount')
-    if ai_bid and db_bid and abs(Decimal(str(ai_bid)) - Decimal(str(db_bid))) > Decimal('0.01'):
-        discrepancies.append({
-            'field': 'current_bid_amount',
-            'db_value': str(db_bid),
-            'ai_value': str(ai_bid),
-            'status': 'pending',
-            'resolved_at': None,
-            'resolved_by': None
-        })
+    if ai_bid and db_bid:
+        ai_bid_dec = Decimal(str(ai_bid))
+        db_bid_dec = Decimal(str(db_bid))
+        # Only flag if values differ AND AI value is higher (potential DB error)
+        # If DB is higher, that's likely correct from an upset bid we captured
+        if abs(ai_bid_dec - db_bid_dec) > Decimal('0.01') and ai_bid_dec > db_bid_dec:
+            discrepancies.append({
+                'field': 'current_bid_amount',
+                'db_value': str(db_bid),
+                'ai_value': str(ai_bid),
+                'status': 'pending',
+                'resolved_at': None,
+                'resolved_by': None
+            })
 
     # Compare minimum next bid (I3: Use Decimal for float comparison)
+    # Same logic: only flag if AI found higher value (DB lower might be outdated)
     ai_min = confirmations.get('minimum_next_bid')
     db_min = db_values.get('minimum_next_bid')
-    if ai_min and db_min and abs(Decimal(str(ai_min)) - Decimal(str(db_min))) > Decimal('0.01'):
-        discrepancies.append({
-            'field': 'minimum_next_bid',
-            'db_value': str(db_min),
-            'ai_value': str(ai_min),
-            'status': 'pending',
-            'resolved_at': None,
-            'resolved_by': None
-        })
+    if ai_min and db_min:
+        ai_min_dec = Decimal(str(ai_min))
+        db_min_dec = Decimal(str(db_min))
+        if abs(ai_min_dec - db_min_dec) > Decimal('0.01') and ai_min_dec > db_min_dec:
+            discrepancies.append({
+                'field': 'minimum_next_bid',
+                'db_value': str(db_min),
+                'ai_value': str(ai_min),
+                'status': 'pending',
+                'resolved_at': None,
+                'resolved_by': None
+            })
 
     # Compare defendant name
     ai_defendant = confirmations.get('defendant_name')

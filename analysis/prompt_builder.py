@@ -30,7 +30,8 @@ def build_analysis_prompt(
     case_number: str,
     county: str,
     documents: List[Dict[str, Any]],
-    current_db_values: Dict[str, Any]
+    current_db_values: Dict[str, Any],
+    events: List[Dict[str, Any]] = None
 ) -> str:
     """
     Build the analysis prompt for Claude.
@@ -44,6 +45,8 @@ def build_analysis_prompt(
             - current_bid_amount
             - minimum_next_bid
             - defendant_names (list from parties table)
+        events: List of dicts with 'event_date', 'event_type', 'description'
+            These are structured events from the court portal with accurate bid amounts
 
     Returns:
         The complete prompt string for Claude
@@ -59,6 +62,17 @@ def build_analysis_prompt(
 
     documents_text = "\n".join(doc_sections)
 
+    # Build events section (structured data from court portal - more reliable than OCR)
+    events_text = ""
+    if events:
+        event_lines = []
+        for event in events:
+            date_str = event.get('event_date') or 'Unknown date'
+            event_type = event.get('event_type') or 'Unknown type'
+            desc = event.get('description') or ''
+            event_lines.append(f"- [{date_str}] {event_type}: {desc}")
+        events_text = "\n".join(event_lines)
+
     # Build red flags reference
     red_flags_reference = []
     for category, flags in RED_FLAG_CATEGORIES.items():
@@ -71,14 +85,33 @@ def build_analysis_prompt(
 - Case Number: {case_number}
 - County: {county}
 
+## NC UPSET BID PROCESS (IMPORTANT)
+In North Carolina, after a foreclosure sale, there is a 10-day upset bid period. During this time:
+- Anyone can submit a higher bid (minimum 5% increase) to purchase the property
+- Each upset bid restarts the 10-day period
+- Documents titled "Report of Upset Bid" or "Upset Bid Deposit" indicate a new, higher bid was placed
+- The MOST RECENT bid is the current winning bid
+
+When extracting bid amounts:
+- Look for ALL bid events in the documents (initial sale + any upset bids)
+- Extract the HIGHEST/MOST RECENT bid amount as current_bid_amount
+- If you see "Report of Upset Bid" documents, those contain newer bids than "Report of Sale"
+
 ## CURRENT DATABASE VALUES (for comparison)
 - Property Address: {current_db_values.get('property_address', 'Not recorded')}
 - Current Bid Amount: ${current_db_values.get('current_bid_amount', 'Not recorded')}
 - Minimum Next Bid: ${current_db_values.get('minimum_next_bid', 'Not recorded')}
 - Defendant Names: {', '.join(current_db_values.get('defendant_names', [])) or 'Not recorded'}
 
+Note: If the database bid amount is HIGHER than the initial sale bid in documents, this likely means an upset bid occurred that we already captured.
+
 ## DOCUMENTS TO ANALYZE
 {documents_text}
+
+## CASE EVENTS (from court portal - MOST RELIABLE for bid amounts)
+{events_text if events_text else "No events with bid information available."}
+
+**IMPORTANT:** Event descriptions like "Bid Amount $460,000.00" from "Upset Bid Filed" events are MORE RELIABLE than OCR'd document text, especially for handwritten amounts. Always prefer bid amounts from events when available.
 
 ## ANALYSIS INSTRUCTIONS
 
@@ -104,8 +137,8 @@ Analyze all documents and provide a JSON response with the following structure:
 
   "confirmations": {{
     "property_address": "<address extracted from documents>",
-    "current_bid_amount": <number extracted>,
-    "minimum_next_bid": <number extracted>,
+    "current_bid_amount": <HIGHEST/MOST RECENT bid amount found in documents>,
+    "minimum_next_bid": <minimum next bid from MOST RECENT bid document>,
     "defendant_name": "<primary defendant name>"
   }},
 
