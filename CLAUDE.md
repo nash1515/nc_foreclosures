@@ -42,7 +42,24 @@ cd frontend && npm run dev -- --host &
 - **Review Queue:** Fixed skipped cases filter (7-day lookback), Approve/Reject working
 - **Claude Vision OCR:** Fallback for handwritten bid amounts on Report of Sale/Upset Bid documents
 
-### Recent Session Changes (Dec 18 - Session 12)
+### Recent Session Changes (Dec 18 - Session 13)
+- **AUTH_DISABLED toggle for development:**
+  - Added `AUTH_DISABLED=true` env var to skip OAuth during local development
+  - New `web_app/auth/middleware.py` with `@require_auth` decorator
+  - When disabled: `/api/auth/me` returns mock admin user, all endpoints accessible
+  - When enabled: Normal Google OAuth flow with whitelist enforcement
+  - Applied `@require_auth` to all API endpoints (previously review.py and scheduler/api.py were unprotected)
+  - Cleaned up scattered `if not google.authorized:` checks in cases.py
+- **Files changed:**
+  - `web_app/auth/middleware.py` (NEW) - Centralized auth decorator
+  - `web_app/api/routes.py` - Mock user when auth disabled
+  - `web_app/api/cases.py` - Use decorator, remove manual checks
+  - `web_app/api/admin.py` - Respect AUTH_DISABLED in require_admin
+  - `web_app/api/review.py` - Add @require_auth (was unprotected)
+  - `scheduler/api.py` - Add @require_auth (was unprotected)
+  - `common/config.py` - Add AUTH_DISABLED config
+
+### Previous Session Changes (Dec 18 - Session 12)
 - **Claude Vision OCR fallback for handwritten bid amounts:**
   - Root cause: Tesseract OCR completely fails on handwritten text in court forms
   - Case 25SP000165-180 had blank clerk fields + handwritten "$65,000.00 (Credit Bid)"
@@ -377,7 +394,7 @@ PGPASSWORD=nc_password psql -U nc_user -d nc_foreclosures -h localhost
 6. **Address extraction patterns** - Comma-optional patterns for OCR text (handles variations)
 
 ## Environment Variables (.env)
-`DATABASE_URL`, `CAPSOLVER_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `FLASK_SECRET_KEY`, `ADMIN_EMAIL`
+`DATABASE_URL`, `CAPSOLVER_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `FLASK_SECRET_KEY`, `ADMIN_EMAIL`, `AUTH_DISABLED`
 
 ## Frontend Development
 
