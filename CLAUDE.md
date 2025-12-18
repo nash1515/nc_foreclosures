@@ -33,15 +33,38 @@ cd frontend && npm run dev -- --host &
 - Frontend: http://localhost:5173
 - API: http://localhost:5001
 
-## Current Status (Dec 17, 2025)
+## Current Status (Dec 18, 2025)
 
 - **2,151 cases** across 6 counties (Wake, Durham, Harnett, Lee, Orange, Chatham)
 - **Active upset_bid cases:** 38 (all with complete data)
 - **Scheduler running** 5 AM Mon-Fri (3-day lookback on Mondays) + **catch-up logic on startup**
 - **Frontend:** React + Flask API (Dashboard, Admin tab for admins, Case Detail with bid ladder)
 - **Review Queue:** Fixed skipped cases filter (7-day lookback), Approve/Reject working
+- **Claude Vision OCR:** Fallback for handwritten bid amounts on Report of Sale/Upset Bid documents
 
-### Recent Session Changes (Dec 17 - Session 11)
+### Recent Session Changes (Dec 18 - Session 12)
+- **Claude Vision OCR fallback for handwritten bid amounts:**
+  - Root cause: Tesseract OCR completely fails on handwritten text in court forms
+  - Case 25SP000165-180 had blank clerk fields + handwritten "$65,000.00 (Credit Bid)"
+  - New module: `ocr/vision_ocr.py` - Converts PDF to images, sends to Claude API
+  - Integration: `extraction/extractor.py` - `_try_vision_ocr_fallback()` triggers when:
+    1. Document is "Report of Sale" or "Upset Bid" type
+    2. OCR text has "Amount Bid" label but no dollar amount captured
+    3. Regular extraction failed to find bid_amount
+  - Extracts: bid_amount, minimum_next_bid, deposit_required, sale_date, deadline_date
+  - Cost: ~$0.01-0.03 per document (only runs when Tesseract fails)
+  - Model: `claude-sonnet-4-20250514`
+- **Pattern fixes for 2 other upset_bid cases:**
+  - 25SP000292-310: Added bidirectional deadline pattern (date appears BEFORE label)
+  - 25SP000825-310: Fixed "Upsat" OCR typo (`[Uu]ps[ae]t` handles 'a' instead of 'e')
+- **Files changed:**
+  - `ocr/vision_ocr.py` (NEW) - Claude Vision API integration
+  - `extraction/extractor.py` - Vision fallback + pattern fixes
+  - `common/config.py` - Added ANTHROPIC_API_KEY config
+  - `.env` - Added Anthropic API key (found in upset_bids project)
+- **Dependencies:** Added `anthropic` package to venv
+
+### Previous Session Changes (Dec 17 - Session 11)
 - **Fixed Zillow link CAPTCHA issue:**
   - Root cause: Manual URL formatting (`123-Main-St-Raleigh-NC`) looked bot-generated
   - Fix: Changed to proper `encodeURIComponent()` with `+` for spaces
@@ -325,7 +348,7 @@ PGPASSWORD=nc_password psql -U nc_user -d nc_foreclosures -h localhost
 - `scheduler/` - Daily scrape automation (5 AM Mon-Fri)
 - `web_app/` - Flask API with Google OAuth
 - `frontend/` - React + Vite + Ant Design
-- `ocr/` - PDF text extraction (Tesseract)
+- `ocr/` - PDF text extraction (Tesseract + Claude Vision fallback for handwritten text)
 - `analysis/` - Claude AI analysis (haiku model)
 
 ### Key Files
@@ -334,6 +357,8 @@ PGPASSWORD=nc_password psql -U nc_user -d nc_foreclosures -h localhost
 - `scraper/self_diagnosis.py` - Auto-healing for upset_bid cases with missing data
 - `scraper/page_parser.py` - Day-1 detection indicators + exclusions
 - `extraction/classifier.py` - Case status classification
+- `extraction/extractor.py` - Regex extraction from OCR text + Claude Vision fallback
+- `ocr/vision_ocr.py` - Claude Vision API for handwritten text extraction
 - `common/business_days.py` - NC court holiday calendar for deadline calculation
 - `web_app/api/admin.py` - Admin endpoints for user management and manual scraping
 - `scripts/reevaluate_skipped.py` - Re-check skipped cases against updated indicators

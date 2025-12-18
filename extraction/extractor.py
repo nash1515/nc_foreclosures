@@ -4,6 +4,7 @@ Extracts structured data from PDF documents using regex patterns.
 No LLM required - all data follows predictable formats in NC Court documents.
 """
 
+import os
 import re
 from decimal import Decimal
 from datetime import datetime, date
@@ -256,9 +257,9 @@ UPSET_BID_PREVIOUS_AMOUNT_PATTERNS = [
 # Minimum next upset bid amount - key for bidding strategy
 MINIMUM_NEXT_UPSET_PATTERNS = [
     # "*Minimum Am junt Of Next Upset! Bat" (with OCR typos) followed by $49,612.50
-    # Handle OCR typos: "Am junt" = "Amount", "Bat" = "Bid"
-    r'[*\"]?[Mm]inimum\s*[Aa]m[ou\s]*[nrt]*\s*(?:[Oo]f)?\s*[Nn]ext\s*[Uu]pset[!\s]*[Bb][adit]*[\s\S]{1,100}?' + DOLLAR_AMOUNT,
-    r'Next\s*(?:Minimum)?\s*Upset\s*B[id]*[\s\S]{1,50}?' + DOLLAR_AMOUNT,
+    # Handle OCR typos: "Am junt" = "Amount", "Bat" = "Bid", "Upsat" = "Upset"
+    r'[*\"]?[Mm]inimum\s*[Aa]m[ou\s]*[nrt]*\s*(?:[Oo]f)?\s*[Nn]ext\s*[Uu]ps[ae]t[!\s]*[Bb][adit]*[\s\S]{1,100}?' + DOLLAR_AMOUNT,
+    r'Next\s*(?:Minimum)?\s*[Uu]ps[ae]t\s*B[id]*[\s\S]{1,50}?' + DOLLAR_AMOUNT,
 ]
 
 # Deposit required for next upset bid
@@ -278,6 +279,9 @@ UPSET_DEADLINE_PATTERNS = [
     r'upset\s+bid\s+deadline[:\s]*(\d{1,2}/\d{1,2}/\d{4})',
     # "Next Upset" followed by date
     r'[Nn]ext\s*[Uu]pset[\s\S]{1,30}?(\d{1,2}/\d{1,2}/\d{4})',
+    # Bidirectional: date appears BEFORE "Last Day to Bid" label (clerk stamp format)
+    # Matches: "12/29/2025\nLast Day to Bid:"
+    r'(\d{1,2}/\d{1,2}/\d{4})[\s\S]{0,30}?Last\s*Day\s*(?:to|for)?\s*Bid',
 ]
 
 # Sale Date patterns
@@ -893,7 +897,8 @@ def extract_report_of_sale_data(ocr_text: str) -> Dict[str, Any]:
     # and back-calculate the current bid (current_bid = minimum_next_bid / 1.05)
     if result['initial_bid'] is None:
         # Allow 200 chars for whitespace - AOC forms have heavy right-alignment (105+ chars common)
-        minimum_next_pattern = r'Minimum\s+Amount.*?(?:of\s+)?Next\s+Upset\s+Bid[\s\S]{0,200}?\$?\s*(\d[\d,\.\s]+\.\d{2})'
+        # Handle OCR typos: "Upsat" instead of "Upset"
+        minimum_next_pattern = r'Minimum\s+Amount.*?(?:of\s+)?Next\s+Ups[ae]t\s+Bid[\s\S]{0,200}?\$?\s*(\d[\d,\.\s]+\.\d{2})'
         match = re.search(minimum_next_pattern, ocr_text, re.IGNORECASE | re.DOTALL)
         if match:
             minimum_next_bid = clean_amount(match.group(1))
@@ -1326,6 +1331,71 @@ def extract_all_from_case(case_id: int) -> Dict[str, Any]:
         # (event descriptions show the most recent upset bids)
         if result['current_bid_amount'] is None or event_bid > result['current_bid_amount']:
             result['current_bid_amount'] = event_bid
+
+    # Final fallback: Use Claude Vision OCR for Report of Sale / Upset Bid documents
+    # This handles cases where Tesseract fails to read handwritten bid amounts
+    if result['current_bid_amount'] is None:
+        result = _try_vision_ocr_fallback(case_id, result)
+
+    return result
+
+
+def _try_vision_ocr_fallback(case_id: int, result: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Try Claude Vision OCR as a last resort for extracting bid data.
+
+    Only runs on Report of Sale and Upset Bid documents when regular
+    extraction failed to find a bid amount.
+
+    Args:
+        case_id: Database ID of the case
+        result: Current extraction result dict
+
+    Returns:
+        Updated result dict with any data found via vision OCR
+    """
+    try:
+        from ocr.vision_ocr import (
+            extract_bid_data_with_vision,
+            should_use_vision_fallback,
+            _is_vision_ocr_document
+        )
+    except ImportError:
+        logger.debug("Vision OCR module not available")
+        return result
+
+    with get_session() as session:
+        documents = session.query(Document).filter_by(case_id=case_id).all()
+
+        for doc in documents:
+            # Only try vision OCR on relevant document types
+            if not _is_vision_ocr_document(doc.document_name):
+                continue
+
+            # Check if we should use fallback based on Tesseract output
+            if not doc.ocr_text:
+                continue
+
+            if not should_use_vision_fallback(doc.document_name, doc.ocr_text, result.get('current_bid_amount')):
+                continue
+
+            # Make sure file exists
+            if not doc.file_path or not os.path.exists(doc.file_path):
+                continue
+
+            logger.info(f"  Trying Claude Vision OCR fallback for {doc.document_name}")
+
+            # Run vision OCR
+            vision_data = extract_bid_data_with_vision(doc.file_path)
+
+            # Update result with any found data
+            if vision_data.get('bid_amount') and result['current_bid_amount'] is None:
+                result['current_bid_amount'] = vision_data['bid_amount']
+                logger.info(f"  Vision OCR found bid amount: ${vision_data['bid_amount']}")
+
+            # If we found a bid, we're done
+            if result['current_bid_amount'] is not None:
+                break
 
     return result
 

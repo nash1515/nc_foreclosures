@@ -27,6 +27,9 @@ class Config:
     # Logging
     LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
 
+    # Anthropic API (for Claude Vision OCR fallback)
+    ANTHROPIC_API_KEY = os.getenv('ANTHROPIC_API_KEY')
+
     @classmethod
     def validate(cls):
         """Validate that required configuration is present."""
