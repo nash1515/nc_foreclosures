@@ -283,3 +283,41 @@ class SkippedCase(Base):
 
     def __repr__(self):
         return f"<SkippedCase(case_number='{self.case_number}', scrape_date='{self.scrape_date}')>"
+
+
+class CaseAnalysis(Base):
+    """AI analysis results for upset_bid cases."""
+    __tablename__ = 'case_analyses'
+
+    id = Column(Integer, primary_key=True)
+    case_id = Column(Integer, ForeignKey('cases.id', ondelete='CASCADE'), nullable=False, unique=True)
+
+    # Analysis outputs
+    summary = Column(Text)
+    financials = Column(JSONB)
+    red_flags = Column(JSONB)
+    defendant_name = Column(String(255))
+    deed_book = Column(String(50))
+    deed_page = Column(String(50))
+
+    # Discrepancy tracking
+    discrepancies = Column(JSONB)
+
+    # Document contribution tracking
+    document_contributions = Column(JSONB)
+
+    # Metadata
+    status = Column(String(20), nullable=False, default='pending')
+    model_used = Column(String(50))
+    input_tokens = Column(Integer)
+    output_tokens = Column(Integer)
+    cost_cents = Column(Integer)
+    requested_at = Column(TIMESTAMP, server_default=func.current_timestamp())
+    completed_at = Column(TIMESTAMP)
+    error_message = Column(Text)
+
+    # Relationship
+    case = relationship("Case", backref="analysis")
+
+    def __repr__(self):
+        return f"<CaseAnalysis(case_id={self.case_id}, status={self.status})>"
