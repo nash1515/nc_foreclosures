@@ -42,7 +42,21 @@ cd frontend && npm run dev -- --host &
 - **Review Queue:** Fixed skipped cases filter (7-day lookback), Approve/Reject working
 - **Claude Vision OCR:** Fallback for handwritten bid amounts on Report of Sale/Upset Bid documents
 
-### Recent Session Changes (Dec 18 - Session 13)
+### Recent Session Changes (Dec 18 - Session 14)
+- **Dashboard UI updates:**
+  - Replaced "Current Bid" column with "Max Bid" (shows `our_max_bid` from bid ladder)
+  - Changed "Min Next Bid" text color from orange to green (#52c41a)
+  - Added `our_max_bid` to upset-bids API response
+- **Updated quicklink icons:**
+  - Zillow icon: Changed from house to bold blue "Z" (fontWeight 900, Arial Black)
+  - PropWire icon: Changed to stylized navy "P" matching their logo (#1E3A5F)
+- **Files changed:**
+  - `frontend/src/pages/Dashboard.jsx` - Column rename + color changes
+  - `frontend/src/assets/ZillowIcon.jsx` - Bold Z icon
+  - `frontend/src/assets/PropWireIcon.jsx` - Stylized P icon
+  - `web_app/api/cases.py` - Added our_max_bid to upset-bids endpoint
+
+### Previous Session Changes (Dec 18 - Session 13)
 - **AUTH_DISABLED toggle for development:**
   - Added `AUTH_DISABLED=true` env var to skip OAuth during local development
   - New `web_app/auth/middleware.py` with `@require_auth` decorator

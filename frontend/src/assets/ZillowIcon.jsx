@@ -8,9 +8,16 @@ export const ZillowIcon = ({ size = 16, style = {}, ...props }) => (
     style={style}
     {...props}
   >
-    <path
-      d="M12 2L2 12h3v8h6v-6h2v6h6v-8h3L12 2z"
+    <text
+      x="12"
+      y="18"
+      textAnchor="middle"
+      fontSize="20"
+      fontWeight="900"
+      fontFamily="Arial Black, Arial, sans-serif"
       fill="#006AFF"
-    />
+    >
+      Z
+    </text>
   </svg>
 );

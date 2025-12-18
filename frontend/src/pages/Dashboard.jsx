@@ -219,13 +219,13 @@ function Dashboard() {
       )
     },
     {
-      title: 'Current Bid',
-      key: 'current_bid',
+      title: 'Max Bid',
+      key: 'max_bid',
       align: 'right',
       width: 120,
       render: (_, record) => (
-        <Text strong style={{ color: '#52c41a' }}>
-          {formatCurrency(record.current_bid_amount)}
+        <Text strong style={{ color: record.our_max_bid ? '#52c41a' : '#8c8c8c' }}>
+          {record.our_max_bid ? formatCurrency(record.our_max_bid) : '-'}
         </Text>
       )
     },
@@ -235,7 +235,7 @@ function Dashboard() {
       align: 'right',
       width: 120,
       render: (_, record) => (
-        <Text style={{ color: '#fa8c16' }}>
+        <Text style={{ color: '#52c41a' }}>
           {formatCurrency(record.minimum_next_bid)}
         </Text>
       )
