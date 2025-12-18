@@ -32,6 +32,7 @@ function AIAnalysisSection({ caseId }) {
 
   useEffect(() => {
     loadAnalysis();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [caseId]);
 
   const loadAnalysis = async () => {
@@ -135,7 +136,7 @@ function AIAnalysisSection({ caseId }) {
         size="small"
         extra={
           <Space>
-            <Text type="secondary">Cost: ${(analysis.cost_cents / 100).toFixed(2)}</Text>
+            <Text type="secondary">Cost: ${((analysis.cost_cents || 0) / 100).toFixed(2)}</Text>
             <Button icon={<ReloadOutlined />} size="small" onClick={handleRerun}>Rerun</Button>
           </Space>
         }
