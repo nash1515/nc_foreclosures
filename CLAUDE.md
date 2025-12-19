@@ -41,9 +41,35 @@ cd frontend && npm run dev -- --host &
 - **Frontend:** React + Flask API (Dashboard, Admin tab for admins, Case Detail with bid ladder)
 - **Review Queue:** Fixed skipped cases filter (7-day lookback), Approve/Reject working
 - **Claude Vision OCR:** Fallback for handwritten bid amounts on Report of Sale/Upset Bid documents
-- **AI Analysis Module:** IN PROGRESS on `feature/ai-analysis` branch (22 commits, not merged)
+- **AI Analysis Module:** MERGED to main - comprehensive 4-section analysis
 
-### Recent Session Changes (Dec 19 - Session 17)
+### Recent Session Changes (Dec 19 - Session 18)
+- **AI Analysis Module merged to main:**
+  - Enhanced prompt with comprehensive 4-section analysis structure:
+    - I. Executive Summary (4-6 sentence overview)
+    - II. Analysis of Parties (plaintiff/defendant in 2-column layout)
+    - III. Legal & Procedural Analysis (statute citations, compliance review)
+    - IV. Conclusion & Key Takeaways (investment considerations)
+  - Removed chronological timeline (too verbose per user feedback)
+  - Removed Other Parties section
+  - Added NC foreclosure statute references (G.S. 45-21.16 through 45-21.33)
+  - Improved default_amount vs total_debt extraction guidance
+  - Increased max_tokens to 8192 for longer responses
+  - Added `comprehensive_analysis` JSONB column to case_analyses table
+  - Cost: ~$0.31 per case (increased from ~$0.02 due to larger response)
+- **Parcel ID discovery:** Found parcel IDs in 1,033+ documents
+  - Wake County: 10-digit format (e.g., `0787005323`)
+  - Durham: 10-digit format (e.g., `0831912409`)
+  - Formats vary by county - potential for QuickLinks integration
+- **Files changed:**
+  - `analysis/prompt_builder.py` - Comprehensive 4-section prompt structure
+  - `analysis/analyzer.py` - Parse comprehensive_analysis, increased max_tokens
+  - `database/models.py` - Added comprehensive_analysis column
+  - `web_app/api/analysis.py` - Return comprehensive_analysis in API
+  - `frontend/src/components/AIAnalysisSection.jsx` - 4-section UI with 2-column parties
+  - `migrations/add_comprehensive_analysis.sql` (NEW) - Schema migration
+
+### Previous Session Changes (Dec 19 - Session 17)
 - **Case Detail page layout update:**
   - Bid Information and Team Notes now side-by-side in same row
   - Team Notes card height matches Bid Information card
