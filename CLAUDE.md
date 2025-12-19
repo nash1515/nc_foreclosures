@@ -33,16 +33,76 @@ cd frontend && npm run dev -- --host &
 - Frontend: http://localhost:5173
 - API: http://localhost:5001
 
-## Current Status (Dec 18, 2025)
+## Current Status (Dec 19, 2025)
 
-- **2,151 cases** across 6 counties (Wake, Durham, Harnett, Lee, Orange, Chatham)
-- **Active upset_bid cases:** 38 (all with complete data)
+- **2,156 cases** across 6 counties (Wake, Durham, Harnett, Lee, Orange, Chatham)
+- **Active upset_bid cases:** 43
 - **Scheduler running** 5 AM Mon-Fri (3-day lookback on Mondays) + **catch-up logic on startup**
 - **Frontend:** React + Flask API (Dashboard, Admin tab for admins, Case Detail with bid ladder)
 - **Review Queue:** Fixed skipped cases filter (7-day lookback), Approve/Reject working
 - **Claude Vision OCR:** Fallback for handwritten bid amounts on Report of Sale/Upset Bid documents
+- **AI Analysis Module:** IN PROGRESS on `feature/ai-analysis` branch (22 commits, not merged)
 
-### Recent Session Changes (Dec 18 - Session 14)
+### Recent Session Changes (Dec 19 - Session 16)
+- **Root cause analysis: Case 25SP001804-910 missing from dashboard**
+  - Case was in `skipped_cases` table, dismissed on Dec 12
+  - New "Report of Sale" event added Dec 18 - but dismissed cases are never re-checked
+  - **Root cause:** Parser bug - event types split across HTML elements weren't captured
+    - Portal rendered: `<div>Order</div><div>for Sale of Ward's Real Property</div>`
+    - Parser saw "Order" (too short) + "for Sale..." (lowercase) → `event_type = NULL`
+  - **Impact:** 3,118 events with NULL event_type across 964 cases
+- **Parser fix (`page_parser.py:385-433`):**
+  - Added fallback logic to concatenate adjacent short lines that form split event types
+  - Now correctly captures "Order for Sale of Ward's Real Property"
+- **New indicator:** Added `'order for sale'` to `SALE_DOCUMENT_INDICATORS` for earlier detection
+- **Backfill completed (`scripts/backfill_event_types.py`):**
+  - Re-parsed 959 cases with NULL event types
+  - Fixed 2,411 events (78% of affected)
+  - 692 remaining NULL events (genuinely missing or edge cases)
+- **Reclassification:** 9 expired cases moved from `upcoming`/`upset_bid` → `closed_sold`
+- **Cases recovered/promoted:**
+  - `25SP001804-910` - Recovered from skipped_cases → `upset_bid` (deadline 12/29)
+  - `25SP002745-910` - Promoted from skipped_cases → `upcoming` (partition case)
+- **New script: `scripts/reevaluate_dismissed_cases.py`**
+  - Re-fetches fresh events for all 3,314 dismissed skipped cases
+  - Checks if any now match sale indicators
+  - Promotes matching cases to main `cases` table
+  - Generates detailed markdown report at `logs/reevaluate_report.md`
+  - **Scheduled to run at 5 PM today** (~6 hours, 4 workers)
+- **Files changed:**
+  - `scraper/page_parser.py` - Multi-line event type parsing fix + new indicator
+  - `scripts/backfill_event_types.py` (NEW) - Backfill NULL event types
+  - `scripts/reevaluate_dismissed_cases.py` (NEW) - Re-evaluate dismissed skipped cases
+  - `scripts/run_reevaluate_once.sh` (NEW) - One-time cron script
+
+### Previous Session Changes (Dec 19 - Session 15)
+- **AI Analysis Module (feature/ai-analysis branch):**
+  - Full implementation of Claude Sonnet-based case analysis
+  - Triggers when cases transition to `upset_bid` classification
+  - Extracts: Summary, Financial Deep Dive, Red Flags, Data Confirmation, Deed Book/Page, Defendant Name
+  - Database-backed queue with `case_analyses` table
+  - Frontend: AIAnalysisSection component on Case Detail page with discrepancy review
+  - **Key files:**
+    - `analysis/analyzer.py` - Main orchestrator calling Claude API
+    - `analysis/prompt_builder.py` - Builds prompts with documents + events
+    - `analysis/queue_processor.py` - Processes pending analyses
+    - `analysis/models.py` - CaseAnalysis SQLAlchemy model
+    - `web_app/api/analysis.py` - API endpoints for fetching/resolving discrepancies
+    - `frontend/src/components/AIAnalysisSection.jsx` - React component
+    - `migrations/add_case_analyses.sql` - Database migration
+- **Bug fixes during testing:**
+  - **Upset bid handling:** Include event descriptions in AI prompt (more reliable than OCR for bids)
+  - **Bid discrepancy logic:** Only flag when AI value > DB value (DB higher = upset bid already captured)
+  - **OCR extraction fix:** Event descriptions now authoritative over OCR bids (fixed $9M phantom bid bug)
+    - Root cause: OCR read "M94 512 26.90" as $9,451,226.90 (spaces removed)
+    - Fix: Always prefer event description bids over OCR extraction
+- **Cases tested:** 1876 (25SP000050-910), 932 (24SP001996-910), 427 (22SP001110-910)
+- **Known issues:**
+  - AI sometimes misattributes document sources (hallucinated document names)
+  - AI confused "TOTAL PAYOFF" with "default_amount" - prompt may need clarification
+- **Status:** Feature branch pushed to GitHub, NOT merged to main
+
+### Previous Session Changes (Dec 18 - Session 14)
 - **Dashboard UI updates:**
   - Replaced "Current Bid" column with "Max Bid" (shows `our_max_bid` from bid ladder)
   - Changed "Min Next Bid" text color from orange to green (#52c41a)

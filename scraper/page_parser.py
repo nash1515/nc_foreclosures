@@ -37,6 +37,7 @@ SALE_DOCUMENT_INDICATORS = [
     'petition to lease',
     'petition to mortgage',
     'petition for partition',  # Partition of real property - leads to sale
+    'order for sale',  # Court order approving sale (appears before Report of Sale)
     "ward's estate",
     "incompetent's estate",
     "minor's estate",
@@ -367,15 +368,70 @@ def parse_case_detail(page_content):
         event_description = None
         lines = [l.strip() for l in event_text.split('\n') if l.strip()]
         event_type_index = None
+
+        # Skip patterns - metadata and non-event-type content
+        skip_patterns = ['Index', 'Created', 'Filed By', 'Against', 'A document is available',
+                        'Click here', 'Receipt #']
+
         for i, line in enumerate(lines):
             # Event types are usually capitalized phrases
             # Allow letters, spaces, parens, numbers, slashes, hyphens (for types like "Chapter 45", "Sale/Resale")
             if (re.match(r'^[A-Z][a-zA-Z\s()/\-0-9]+$', line) and
                 5 < len(line) < 100 and
-                not any(skip in line for skip in ['Index', 'Created', 'Filed By', 'Against'])):
+                not any(skip in line for skip in skip_patterns)):
                 event_type = line
                 event_type_index = i
                 break
+
+        # Fallback: Try to concatenate adjacent short lines that might form an event type
+        # This handles cases where portal splits "Order" and "for Sale of Ward's Property" into separate elements
+        if event_type is None:
+            # Find lines after the date that might be event type fragments
+            date_found = False
+            potential_fragments = []
+            fragment_start_index = None
+
+            for i, line in enumerate(lines):
+                # Skip until we're past the date
+                if re.match(r'^\d{2}/\d{2}/\d{4}$', line):
+                    date_found = True
+                    continue
+                if not date_found:
+                    continue
+
+                # Stop at metadata
+                if any(skip in line for skip in skip_patterns):
+                    break
+                # Skip dates and times
+                if re.match(r'^\d{2}/\d{2}/\d{4}', line):
+                    break
+
+                # Collect short fragments that could be part of event type
+                # "Order" (5 chars) followed by "for Sale of Ward's Real Property"
+                if len(line) <= 50 and not re.match(r'^\d+$', line):
+                    if fragment_start_index is None:
+                        fragment_start_index = i
+                    potential_fragments.append(line)
+
+                    # Try combining collected fragments
+                    combined = ' '.join(potential_fragments)
+                    # Check if combined text looks like an event type (starts with capital, reasonable length)
+                    if (re.match(r'^[A-Z]', combined) and
+                        5 < len(combined) < 150 and
+                        not any(skip in combined for skip in skip_patterns)):
+                        # Verify it's not just a party name or address
+                        if not re.search(r'\d{5}$', combined):  # Not ending in zip code
+                            event_type = combined
+                            event_type_index = fragment_start_index
+                            # Don't break yet - try to get more complete event type
+
+                    # Stop after collecting enough fragments
+                    if len(potential_fragments) >= 4:
+                        break
+                else:
+                    # Non-fragment line - stop collecting
+                    if potential_fragments:
+                        break
 
         # Extract event description - the line(s) after event type that contain details
         # Examples: "1508 Beacon Village Drive, Raleigh 27604" for Report of Sale
