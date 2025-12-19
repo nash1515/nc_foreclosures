@@ -1323,13 +1323,22 @@ def extract_all_from_case(case_id: int) -> Dict[str, Any]:
     if not result['property_address']:
         result['property_address'] = _find_address_in_event_descriptions(case_id)
 
-    # Fallback: check event descriptions for bid amounts
-    # Event descriptions (e.g., "Bid Amount $9,830.00") are often more reliable than OCR
+    # PRIORITY: Event descriptions are the authoritative source for bid amounts
+    # They come directly from the court portal as structured data, while OCR
+    # can produce wildly incorrect values from garbled text (e.g., phone numbers
+    # or malformed amounts like "M94 512 26.90" becoming $9,451,226.90)
     event_bid = _find_bid_in_event_descriptions(case_id)
     if event_bid:
-        # Use event bid if no bid found from documents, OR if event bid is higher
-        # (event descriptions show the most recent upset bids)
-        if result['current_bid_amount'] is None or event_bid > result['current_bid_amount']:
+        # Always use event bid when available - it's authoritative
+        # Only use OCR bid if no event description contains bid info
+        if result['current_bid_amount'] is None:
+            result['current_bid_amount'] = event_bid
+        else:
+            # Event bid exists AND OCR bid exists - prefer event bid
+            # Log if there's a significant discrepancy for debugging
+            ocr_bid = result['current_bid_amount']
+            if abs(ocr_bid - event_bid) > Decimal('100'):
+                logger.info(f"  Bid discrepancy for case {case_id}: OCR={ocr_bid}, Event={event_bid}. Using event bid.")
             result['current_bid_amount'] = event_bid
 
     # Final fallback: Use Claude Vision OCR for Report of Sale / Upset Bid documents
