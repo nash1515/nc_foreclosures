@@ -43,7 +43,17 @@ cd frontend && npm run dev -- --host &
 - **Claude Vision OCR:** Fallback for handwritten bid amounts on Report of Sale/Upset Bid documents
 - **AI Analysis Module:** IN PROGRESS on `feature/ai-analysis` branch (22 commits, not merged)
 
-### Recent Session Changes (Dec 19 - Session 16)
+### Recent Session Changes (Dec 19 - Session 17)
+- **Case Detail page layout update:**
+  - Bid Information and Team Notes now side-by-side in same row
+  - Team Notes card height matches Bid Information card
+  - AI Analysis section moved directly under those two tiles
+  - Parties/Contacts/Events pushed below AI Analysis
+- **Files changed:**
+  - `frontend/src/pages/CaseDetail.jsx` - Layout reorganization
+  - `frontend/src/components/NotesCard.jsx` - Added style prop for height matching
+
+### Previous Session Changes (Dec 19 - Session 16)
 - **Root cause analysis: Case 25SP001804-910 missing from dashboard**
   - Case was in `skipped_cases` table, dismissed on Dec 12
   - New "Report of Sale" event added Dec 18 - but dismissed cases are never re-checked

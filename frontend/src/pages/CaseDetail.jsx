@@ -268,13 +268,13 @@ function CaseDetail() {
         </Row>
       </Card>
 
-      <Row gutter={16}>
-        {/* Left Column - Bid Info & Parties */}
+      {/* Row 1: Bid Information + Team Notes side by side */}
+      <Row gutter={16} style={{ marginBottom: 16 }}>
         <Col xs={24} lg={12}>
-          {/* Bid Information - Top Left */}
+          {/* Bid Information */}
           <Card
             title="Bid Information"
-            style={{ marginBottom: 16 }}
+            style={{ height: '100%' }}
             extra={
               <Space size={4}>
                 {bidCardSaveState === 'saving' && (
@@ -385,7 +385,31 @@ function CaseDetail() {
               />
             )}
           </Card>
+        </Col>
+        <Col xs={24} lg={12}>
+          {/* Team Notes - matches height of Bid Information */}
+          <NotesCard
+            initialNotes={teamNotes}
+            onSave={handleNotesSave}
+            style={{ height: '100%' }}
+          />
+        </Col>
+      </Row>
 
+      {/* AI Analysis Section - directly under Bid Info + Notes */}
+      {caseData?.classification === 'upset_bid' && (
+        <div style={{ marginBottom: 16 }}>
+          <AIAnalysisSection
+            caseId={id}
+            initialAnalysis={analysis}
+            onAnalysisUpdate={setAnalysis}
+          />
+        </div>
+      )}
+
+      {/* Row 2: Parties, Contacts, Events */}
+      <Row gutter={16}>
+        <Col xs={24} lg={12}>
           {/* Parties */}
           <Card title="Parties" style={{ marginBottom: 16 }}>
             {c.parties && Object.keys(c.parties).length > 0 ? (
@@ -426,14 +450,7 @@ function CaseDetail() {
           )}
         </Col>
 
-        {/* Right Column - Notes & Events */}
         <Col xs={24} lg={12}>
-          {/* Team Notes */}
-          <NotesCard
-            initialNotes={teamNotes}
-            onSave={handleNotesSave}
-          />
-
           {/* Attorney Info */}
           {(c.attorney_name || c.trustee_name) && (
             <Card title="Contacts" style={{ marginBottom: 16 }}>
@@ -478,17 +495,6 @@ function CaseDetail() {
           </Card>
         </Col>
       </Row>
-
-      {/* AI Analysis Section - only show for upset_bid cases */}
-      {caseData?.classification === 'upset_bid' && (
-        <div style={{ marginTop: 24 }}>
-          <AIAnalysisSection
-            caseId={id}
-            initialAnalysis={analysis}
-            onAnalysisUpdate={setAnalysis}
-          />
-        </div>
-      )}
     </div>
   );
 }

@@ -11,8 +11,9 @@ const { Text } = Typography;
  *
  * @param {string} initialNotes - Initial notes value from API
  * @param {Function} onSave - Async function to save notes (receives notes string)
+ * @param {Object} style - Optional style override for the card
  */
-function NotesCard({ initialNotes, onSave }) {
+function NotesCard({ initialNotes, onSave, style }) {
   const [notes, setNotes] = useState(initialNotes || '');
 
   // Memoize save function to prevent re-renders
@@ -47,7 +48,7 @@ function NotesCard({ initialNotes, onSave }) {
           )}
         </Space>
       }
-      style={{ marginBottom: 16 }}
+      style={{ marginBottom: 16, ...style }}
     >
       <TextArea
         value={notes}
