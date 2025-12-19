@@ -26,7 +26,8 @@ def get_analysis(case_id):
 
         return jsonify({
             'status': analysis.status,
-            'summary': analysis.summary,
+            'summary': analysis.summary,  # Legacy - executive summary for backward compatibility
+            'comprehensive_analysis': analysis.comprehensive_analysis,  # New 5-section structure
             'financials': analysis.financials,
             'red_flags': analysis.red_flags or [],
             'discrepancies': analysis.discrepancies or [],

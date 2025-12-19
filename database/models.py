@@ -293,7 +293,8 @@ class CaseAnalysis(Base):
     case_id = Column(Integer, ForeignKey('cases.id', ondelete='CASCADE'), nullable=False, unique=True)
 
     # Analysis outputs
-    summary = Column(Text)
+    summary = Column(Text)  # Legacy - kept for backward compatibility
+    comprehensive_analysis = Column(JSONB)  # New 5-section analysis structure
     financials = Column(JSONB)
     red_flags = Column(JSONB)
     defendant_name = Column(String(255))

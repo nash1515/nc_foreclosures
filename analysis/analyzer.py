@@ -126,11 +126,19 @@ def analyze_case(case_id: int) -> Dict[str, Any]:
             if 'parse_error' in parsed:
                 raise ValueError(f"Failed to parse AI response: {parsed['parse_error']}")
 
-            # I1: Validate required fields
-            required_keys = ['summary', 'financials', 'confirmations']
+            # I1: Validate required fields - now expects comprehensive_analysis instead of summary
+            required_keys = ['comprehensive_analysis', 'financials', 'confirmations']
             missing = [k for k in required_keys if k not in parsed]
             if missing:
                 raise ValueError(f"AI response missing required fields: {missing}")
+
+            # Validate comprehensive_analysis structure
+            comp_analysis = parsed.get('comprehensive_analysis', {})
+            required_sections = ['executive_summary', 'chronological_timeline', 'parties_analysis',
+                               'legal_procedural_analysis', 'conclusion_and_takeaways']
+            missing_sections = [s for s in required_sections if s not in comp_analysis]
+            if missing_sections:
+                logger.warning(f"Comprehensive analysis missing sections: {missing_sections}")
 
             # Generate discrepancies
             discrepancies = _generate_discrepancies(
@@ -139,7 +147,10 @@ def analyze_case(case_id: int) -> Dict[str, Any]:
             )
 
             # Update analysis record
-            analysis.summary = parsed.get('summary')
+            # Store comprehensive analysis as JSONB
+            analysis.comprehensive_analysis = parsed.get('comprehensive_analysis')
+            # Legacy summary field - extract executive_summary for backward compatibility
+            analysis.summary = parsed.get('comprehensive_analysis', {}).get('executive_summary')
             analysis.financials = parsed.get('financials')
             analysis.red_flags = parsed.get('red_flags', [])
             analysis.defendant_name = parsed.get('confirmations', {}).get('defendant_name')
@@ -185,7 +196,7 @@ def _call_claude_api(prompt: str) -> Dict[str, Any]:
 
         response = client.messages.create(
             model=MODEL_NAME,
-            max_tokens=4096,
+            max_tokens=8192,  # Increased for comprehensive 5-section analysis
             messages=[
                 {"role": "user", "content": prompt}
             ]

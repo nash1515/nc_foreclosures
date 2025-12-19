@@ -25,6 +25,18 @@ RED_FLAG_CATEGORIES = {
     ]
 }
 
+# Key NC foreclosure statutes for reference
+NC_FORECLOSURE_STATUTES = """
+**Key NC Foreclosure Statutes:**
+- G.S. 45-21.16: Power of sale foreclosure requirements
+- G.S. 45-21.17: Notice of hearing requirements
+- G.S. 45-21.21: Posting and publication requirements
+- G.S. 45-21.27: Upset bid period (10 days, extends if falls on weekend/holiday)
+- G.S. 45-21.29: Confirmation of sale
+- G.S. 45-21.31: Deficiency judgment provisions
+- G.S. 45-21.33: Trustee's deed requirements
+"""
+
 
 def build_analysis_prompt(
     case_number: str,
@@ -79,31 +91,27 @@ def build_analysis_prompt(
         red_flags_reference.append(f"**{category.title()}:** {', '.join(flags)}")
     red_flags_text = "\n".join(red_flags_reference)
 
-    prompt = f"""You are analyzing a North Carolina foreclosure case. Extract key information from the court documents provided.
+    prompt = f"""You are an expert analyst reviewing a North Carolina foreclosure case. Generate a comprehensive legal analysis from the court documents and events provided.
 
 ## CASE INFORMATION
 - Case Number: {case_number}
 - County: {county}
 
-## NC UPSET BID PROCESS (IMPORTANT)
-In North Carolina, after a foreclosure sale, there is a 10-day upset bid period. During this time:
+## NC FORECLOSURE LEGAL FRAMEWORK
+{NC_FORECLOSURE_STATUTES}
+
+**NC Upset Bid Process (G.S. 45-21.27):**
+- After a foreclosure sale, there is a 10-day upset bid period
 - Anyone can submit a higher bid (minimum 5% increase) to purchase the property
 - Each upset bid restarts the 10-day period
-- Documents titled "Report of Upset Bid" or "Upset Bid Deposit" indicate a new, higher bid was placed
-- The MOST RECENT bid is the current winning bid
-
-When extracting bid amounts:
-- Look for ALL bid events in the documents (initial sale + any upset bids)
-- Extract the HIGHEST/MOST RECENT bid amount as current_bid_amount
-- If you see "Report of Upset Bid" documents, those contain newer bids than "Report of Sale"
+- If the 10th day falls on a weekend or court holiday, the deadline extends to the next business day
+- Documents titled "Report of Upset Bid" indicate a new, higher bid was placed
 
 ## CURRENT DATABASE VALUES (for comparison)
 - Property Address: {current_db_values.get('property_address', 'Not recorded')}
 - Current Bid Amount: ${current_db_values.get('current_bid_amount', 'Not recorded')}
 - Minimum Next Bid: ${current_db_values.get('minimum_next_bid', 'Not recorded')}
 - Defendant Names: {', '.join(current_db_values.get('defendant_names', [])) or 'Not recorded'}
-
-Note: If the database bid amount is HIGHER than the initial sale bid in documents, this likely means an upset bid occurred that we already captured.
 
 ## DOCUMENTS TO ANALYZE
 {documents_text}
@@ -115,29 +123,94 @@ Note: If the database bid amount is HIGHER than the initial sale bid in document
 
 ## ANALYSIS INSTRUCTIONS
 
-Analyze all documents and provide a JSON response with the following structure:
+Generate a comprehensive JSON analysis with the following structure. Write in clear, professional prose for narrative sections.
 
 ```json
 {{
-  "summary": "2-3 sentence plain-language summary of this foreclosure case",
+  "comprehensive_analysis": {{
+    "executive_summary": "<A single paragraph (4-6 sentences) providing a complete overview of this foreclosure case. Include: who the parties are, the property involved, the nature of the default, key events that occurred, current status, and outcome or expected resolution. This should give a reader complete context without reading further.>",
+
+    "chronological_timeline": [
+      {{
+        "date": "<YYYY-MM-DD or approximate>",
+        "event": "<What happened>",
+        "significance": "<Why this matters to the case - only include if the event advances the foreclosure narrative>",
+        "source": "<Document name or 'Portal Event'>"
+      }}
+    ],
+
+    "parties_analysis": {{
+      "plaintiff": {{
+        "identity": "<Name and role (lender, servicer, trustee, etc.)>",
+        "actions_taken": ["<List of significant actions/filings by plaintiff>"],
+        "strategy_assessment": "<INFERRED: Analysis of plaintiff's approach, timing, and effectiveness. Clearly label this as analytical inference.>"
+      }},
+      "defendant": {{
+        "identity": "<Name(s) and relationship to property (owner, borrower, etc.)>",
+        "actions_taken": ["<List of responses, filings, or lack thereof>"],
+        "strategy_assessment": "<INFERRED: Analysis of defendant's response or lack thereof, any defenses raised, effectiveness. Clearly label this as analytical inference.>"
+      }},
+      "other_parties": [
+        {{
+          "name": "<Party name>",
+          "role": "<Role in case (junior lienholder, tenant, etc.)>",
+          "relevance": "<How they affect the case>"
+        }}
+      ]
+    }},
+
+    "legal_procedural_analysis": {{
+      "key_legal_issues": [
+        {{
+          "issue": "<Legal issue or question>",
+          "resolution": "<How it was resolved or current status>",
+          "applicable_statute": "<NC G.S. citation if applicable>"
+        }}
+      ],
+      "procedural_compliance": {{
+        "notice_requirements": "<Assessment of whether proper notices were given per G.S. 45-21.16/17>",
+        "posting_publication": "<Assessment of posting/publication compliance per G.S. 45-21.21>",
+        "sale_procedure": "<Assessment of sale procedure compliance>",
+        "irregularities_noted": ["<Any procedural issues or irregularities found>"]
+      }},
+      "rulings_and_orders": [
+        {{
+          "date": "<Date of ruling>",
+          "ruling": "<What was ordered>",
+          "impact": "<Effect on case progression>"
+        }}
+      ]
+    }},
+
+    "conclusion_and_takeaways": {{
+      "case_outcome": "<Current status or final resolution of the case>",
+      "key_takeaways": [
+        "<Most important point 1>",
+        "<Most important point 2>",
+        "<Most important point 3>"
+      ],
+      "investment_considerations": "<For a potential upset bidder: key risks, title concerns, or opportunities identified>"
+    }}
+  }},
 
   "financials": {{
-    "mortgage_amount": <number or null>,
-    "lender": "<lender name or null>",
-    "default_amount": <number or null>,
+    "mortgage_amount": <number or null - the original loan amount being foreclosed>,
+    "lender": "<lender/servicer name or null>",
+    "default_amount": <number or null - the amount needed to cure the default, NOT the total payoff>,
+    "total_debt": <number or null - total amount owed including principal, interest, fees>,
     "liens": [
-      {{"type": "<mortgage/tax/hoa/judgment/other>", "holder": "<name>", "amount": <number or null>, "notes": "<any details>"}}
+      {{"type": "<mortgage/tax/hoa/judgment/other>", "holder": "<name>", "amount": <number or null>, "priority": "<senior/junior/unknown>", "notes": "<any details>"}}
     ],
     "gaps": ["<list of financial information NOT found in documents>"]
   }},
 
   "red_flags": [
-    {{"category": "<procedural|financial|property>", "description": "<specific issue found>", "severity": "<high|medium|low>", "source_document": "<document name>"}}
+    {{"category": "<procedural|financial|property>", "description": "<specific issue found>", "severity": "<high|medium|low>", "source_document": "<document name>", "investment_impact": "<how this affects a potential bidder>"}}
   ],
 
   "confirmations": {{
     "property_address": "<address extracted from documents>",
-    "current_bid_amount": <HIGHEST/MOST RECENT bid amount found in documents>,
+    "current_bid_amount": <HIGHEST/MOST RECENT bid amount found - prefer event data over OCR>,
     "minimum_next_bid": <minimum next bid from MOST RECENT bid document>,
     "defendant_name": "<primary defendant name>"
   }},
@@ -146,19 +219,31 @@ Analyze all documents and provide a JSON response with the following structure:
   "deed_page": "<deed page number if found, or null>",
 
   "document_contributions": [
-    {{"document_name": "<name>", "contributed_to": ["<summary|financials|red_flags|confirmations|deed_info>"], "key_extractions": ["<brief notes on what was extracted>"]}}
+    {{"document_name": "<name>", "contributed_to": ["<sections this document informed>"], "key_extractions": ["<brief notes on what was extracted>"]}}
   ]
 }}
 ```
+
+## TIMELINE GUIDELINES
+- Include only events that advance the foreclosure narrative (filing, service, hearings, sale, bids)
+- EXCLUDE mundane procedural events like routine filings, administrative entries, or duplicate notices
+- Combine portal events with significant dates extracted from documents
+- Order chronologically
+
+## FINANCIAL EXTRACTION GUIDELINES
+- **default_amount**: The amount needed to CURE the default (reinstate the loan), NOT the total payoff
+- **total_debt**: The full amount owed (principal + interest + fees + costs)
+- These are different numbers - a borrower can cure default for less than total payoff
+- If you see "Amount Required to Cure Default" vs "Total Payoff" - use the former for default_amount
 
 ## RED FLAGS TO WATCH FOR
 {red_flags_text}
 
 ## IMPORTANT NOTES
-1. For financials.gaps, explicitly list what you could NOT find (e.g., "No second mortgage information", "Tax lien status unknown")
-2. For red_flags, only include issues you actually found evidence of in the documents
-3. For confirmations, extract the values exactly as they appear in documents
-4. For document_contributions, track which documents provided which information
+1. Write narrative sections in clear, professional prose - not bullet points
+2. For INFERRED analysis, explicitly label it as inference vs. documented fact
+3. Cite specific NC statutes when relevant to legal issues
+4. For confirmations, prefer event data (bid amounts) over OCR-extracted values
 5. If a value cannot be determined, use null (not a string "null")
 6. For amounts, use numbers without currency symbols or commas
 
