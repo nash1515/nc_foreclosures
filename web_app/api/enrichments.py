@@ -1,6 +1,7 @@
 """API endpoints for enrichment operations."""
 
 import logging
+from datetime import datetime
 from flask import Blueprint, jsonify, request, g
 
 from database.connection import get_session
@@ -102,7 +103,6 @@ def resolve_review_item(log_id):
         notes = data.get('notes', '')
 
         # Mark as resolved
-        from datetime import datetime
         log.resolved_at = datetime.now()
         log.resolved_by = g.user.id if hasattr(g, 'user') and g.user else None
         log.resolution_notes = notes
