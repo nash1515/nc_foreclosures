@@ -138,7 +138,7 @@ class WakeREEnricher(BaseEnricher):
         if parsed.get('city'):
             etj = ETJ_CODES.get(parsed['city'].lower())
 
-        # Try to find single match
+        # Try to find single match with strict criteria (stnum + prefix + name + etj)
         match = match_address_result(
             results,
             stnum=parsed['stnum'],
@@ -150,6 +150,15 @@ class WakeREEnricher(BaseEnricher):
         if match:
             account_id = match['account_id']
             url = build_account_url(account_id)
+            self._save_success(case_id, url, account_id)
+            return EnrichmentResult(success=True, url=url, account_id=account_id)
+
+        # If exactly 1 result from API, accept it even if ETJ didn't match
+        # (mailing city often differs from ETJ jurisdiction in unincorporated areas)
+        if len(results) == 1:
+            account_id = results[0]['account_id']
+            url = build_account_url(account_id)
+            logger.info(f"Case {case_id}: accepting single result despite ETJ mismatch")
             self._save_success(case_id, url, account_id)
             return EnrichmentResult(success=True, url=url, account_id=account_id)
 
