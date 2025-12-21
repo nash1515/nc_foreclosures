@@ -1,7 +1,7 @@
 """SQLAlchemy models for enrichment data."""
 
 from sqlalchemy import Column, Integer, String, Text, TIMESTAMP, ForeignKey
-from sqlalchemy.dialects.postgresql import JSON
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -57,7 +57,7 @@ class EnrichmentReviewLog(Base):
     search_method = Column(String(20), nullable=False)
     search_value = Column(Text, nullable=False)
     matches_found = Column(Integer, nullable=False)
-    raw_results = Column(JSON)
+    raw_results = Column(JSONB)
     resolution_notes = Column(Text)
     resolved_at = Column(TIMESTAMP)
     resolved_by = Column(Integer, ForeignKey('users.id'))
