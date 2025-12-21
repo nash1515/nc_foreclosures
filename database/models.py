@@ -59,6 +59,7 @@ class Case(Base):
     case_url = Column(Text)
     style = Column(Text)  # Full case title (e.g., "FORECLOSURE (HOA) - Mark Dwayne Ellis")
     property_address = Column(Text)
+    parcel_id = Column(String(20))  # County parcel/PIN number (10-digit for Wake County)
     current_bid_amount = Column(DECIMAL(12, 2))
     minimum_next_bid = Column(DECIMAL(12, 2))  # NC law: current_bid * 1.05
     next_bid_deadline = Column(TIMESTAMP)
