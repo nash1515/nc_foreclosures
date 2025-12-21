@@ -10,6 +10,7 @@ Classification states:
 
 from datetime import datetime, timedelta, time
 from typing import Optional, List
+from threading import Thread
 
 from database.connection import get_session
 from database.models import Case, CaseEvent, Document
@@ -17,6 +18,38 @@ from common.logger import setup_logger
 from common.business_days import calculate_upset_bid_deadline
 
 logger = setup_logger(__name__)
+
+
+# =============================================================================
+# ENRICHMENT TRIGGER
+# =============================================================================
+
+def _trigger_wake_enrichment_async(case_id: int, case_number: str, county_code: str):
+    """
+    Trigger Wake RE enrichment in background thread.
+
+    This is called when a case transitions to upset_bid status in Wake County.
+    Runs asynchronously to avoid blocking the classification process.
+
+    Args:
+        case_id: Database ID of the case
+        case_number: Case number for logging
+        county_code: County code to verify eligibility
+    """
+    try:
+        # Import here to avoid circular dependency
+        from enrichments.wake_re import enrich_case
+        logger.info(f"  Starting async Wake RE enrichment for case {case_number}")
+        result = enrich_case(case_id)
+
+        if result.get('success'):
+            logger.info(f"  Wake RE enrichment succeeded for {case_number}: {result.get('url')}")
+        elif result.get('review_needed'):
+            logger.warning(f"  Wake RE enrichment needs review for {case_number}: {result.get('error')}")
+        else:
+            logger.error(f"  Wake RE enrichment failed for {case_number}: {result.get('error')}")
+    except Exception as e:
+        logger.error(f"  Async Wake RE enrichment failed for case {case_number}: {e}")
 
 
 # =============================================================================
@@ -563,6 +596,15 @@ def update_case_classification(case_id: int) -> Optional[str]:
 
                 if old_classification != classification:
                     logger.info(f"  Case {case_id}: {old_classification} -> {classification}")
+
+                    # Trigger async Wake RE enrichment when case becomes upset_bid in Wake County
+                    if classification == 'upset_bid' and case.county_code == '910':
+                        Thread(
+                            target=_trigger_wake_enrichment_async,
+                            args=(case.id, case.case_number, case.county_code),
+                            daemon=True
+                        ).start()
+                        logger.info(f"  Case {case.case_number}: Queued Wake RE enrichment")
 
                 return classification
 
