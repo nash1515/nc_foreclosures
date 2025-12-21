@@ -43,7 +43,7 @@ class WakeREEnricher(BaseEnricher):
         """
         # Fetch case
         with get_session() as session:
-            case = session.query(Case).get(case_id)
+            case = session.get(Case, case_id)
             if not case:
                 return EnrichmentResult(success=False, error=f"Case {case_id} not found")
 

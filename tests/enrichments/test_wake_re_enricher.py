@@ -77,12 +77,12 @@ def test_case_with_parcel(test_app):
 
     # Yield the case (re-fetch to avoid detached instance issues)
     with get_session() as session:
-        case = session.query(Case).get(case_id)
+        case = session.get(Case, case_id)
         yield case
 
     # Cleanup
     with get_session() as session:
-        case = session.query(Case).get(case_id)
+        case = session.get(Case, case_id)
         if case:
             session.delete(case)
             session.commit()
@@ -107,12 +107,12 @@ def test_case_with_address(test_app):
 
     # Yield the case (re-fetch to avoid detached instance issues)
     with get_session() as session:
-        case = session.query(Case).get(case_id)
+        case = session.get(Case, case_id)
         yield case
 
     # Cleanup
     with get_session() as session:
-        case = session.query(Case).get(case_id)
+        case = session.get(Case, case_id)
         if case:
             session.delete(case)
             session.commit()
