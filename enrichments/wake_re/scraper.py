@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 # Request settings
 REQUEST_TIMEOUT = 30
-MAX_RETRIES = 1
+MAX_RETRIES = 3
 RETRY_DELAY = 2
 
 
