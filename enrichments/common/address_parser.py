@@ -139,6 +139,31 @@ def parse_address(address: str) -> dict:
     if len(parts) > 1:
         result['city'] = parts[1].strip()
 
+    # Handle malformed addresses where city is missing comma separator
+    # e.g., "4317 Scaup Court Raleigh, NC, 27616" - "Raleigh" got merged with street
+    # Check if 'city' looks like a state abbreviation (2 letters)
+    if result['city'] and len(result['city']) == 2 and result['city'].isalpha():
+        # City is likely the state - check if a city name is at end of street name
+        known_cities = [
+            'Raleigh', 'Durham', 'Cary', 'Apex', 'Holly Springs', 'Morrisville',
+            'Garner', 'Wake Forest', 'Fuquay-Varina', 'Fuquay Varina', 'Knightdale',
+            'Wendell', 'Zebulon', 'Rolesville', 'Clayton', 'Sanford', 'Pittsboro',
+            'Hillsborough', 'Chapel Hill', 'Carrboro', 'Lillington', 'Angier',
+        ]
+        # Check if normalized street name ends with a city name
+        for city in known_cities:
+            city_upper = city.upper()
+            if result['name'] and result['name'].endswith(city_upper):
+                # Found city at end of street name - extract it
+                name_without_city = result['name'][:-len(city_upper)].strip()
+                # Re-normalize to strip street type that may now be at end
+                result['name'] = normalize_street_name(name_without_city)
+                result['city'] = city
+                # Move current 'city' (actually state) to state field
+                if len(parts) > 1 and len(parts[1].strip()) == 2:
+                    result['state'] = parts[1].strip().upper()
+                break
+
     # Parse state and zip (third part)
     if len(parts) > 2:
         state_zip = parts[2].strip()
