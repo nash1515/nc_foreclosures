@@ -33,17 +33,35 @@ cd frontend && npm run dev -- --host &
 - Frontend: http://localhost:5173
 - API: http://localhost:5001
 
-## Current Status (Dec 19, 2025)
+## Current Status (Dec 21, 2025)
 
 - **2,156 cases** across 6 counties (Wake, Durham, Harnett, Lee, Orange, Chatham)
-- **Active upset_bid cases:** 43
+- **Active upset_bid cases:** 42 (18 Wake, 24 other counties)
 - **Scheduler running** 5 AM Mon-Fri (3-day lookback on Mondays) + **catch-up logic on startup**
 - **Frontend:** React + Flask API (Dashboard, Admin tab for admins, Case Detail with bid ladder)
 - **Review Queue:** Fixed skipped cases filter (7-day lookback), Approve/Reject working
 - **Claude Vision OCR:** Fallback for handwritten bid amounts on Report of Sale/Upset Bid documents
 - **AI Analysis Module:** MERGED to main - comprehensive 4-section analysis
+- **Wake RE Enrichment:** 13/18 Wake cases enriched, router in place for other counties
 
-### Recent Session Changes (Dec 19 - Session 18)
+### Recent Session Changes (Dec 21 - Session 19)
+- **County Router for Enrichments:**
+  - Added `enrichments/router.py` to dispatch to county-specific enrichers
+  - Routes based on case_number suffix (e.g., `-910` → Wake, `-310` → Durham)
+  - Returns `skipped: True` for counties without implemented enrichers
+  - Updated `classifier.py` to trigger enrichment for ALL upset_bid cases (router handles filtering)
+- **Data cleanup:**
+  - Deleted 16 orphaned test records from enrichments table
+  - Added NOT NULL constraint on `enrichments.case_id` to prevent future orphans
+- **Enrichment status:**
+  - Wake County: 13/18 upset_bid cases enriched, 5 need review
+  - Other counties: 24 cases waiting for enricher implementation
+- **Files changed:**
+  - `enrichments/router.py` (NEW) - County-based enrichment router
+  - `enrichments/__init__.py` - Export enrich_case from router
+  - `extraction/classifier.py` - Generic enrichment trigger for all upset_bid cases
+
+### Previous Session Changes (Dec 19 - Session 18)
 - **AI Analysis Module merged to main:**
   - Enhanced prompt with comprehensive 4-section analysis structure:
     - I. Executive Summary (4-6 sentence overview)
