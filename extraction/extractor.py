@@ -69,7 +69,9 @@ ADDRESS_PATTERNS = [
     # Use non-greedy match and limit street address capture to 60 chars to avoid capturing legal text
     (r'Address\s+of\s+Property[:\s]+(\d+[^,\n]{1,60},\s*[A-Za-z\s]+,\s*(?:NC|North\s+Carolina)\s*\d{5}(?:-\d{4})?)', 'address_of_property'),
     # Pattern 8: Multi-line after "Address of property:"
-    (r'Address\s+of\s+Property[:\s]+\n*\s*(\d+[^\n]+)\n+\s*([A-Z][A-Za-z\s]+,\s*NC\s*\d{5})', 'address_of_property_multiline'),
+    # Stop at street type to avoid capturing text from adjacent columns in two-column OCR layouts
+    # (e.g., "5505 Lake Garden Court                       Credit Union" from two-column Notice of Sale)
+    (r'Address\s+of\s+Property[:\s]+\n*\s*(\d+[^\n]{1,50}?(?:Street|St|Road|Rd|Drive|Dr|Lane|Ln|Court|Ct|Circle|Cir|Way|Avenue|Ave|Boulevard|Blvd|Place|Pl|Terrace|Ter|Trail|Trl))\s*\n+\s*([A-Z][A-Za-z\s]+,\s*NC\s*\d{5})', 'address_of_property_multiline'),
 
     # MEDIUM PRIORITY: Common property description patterns
     # Pattern 9: "commonly known as" or "known as"
