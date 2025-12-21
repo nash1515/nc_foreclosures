@@ -17,12 +17,20 @@ STREET_TYPES = [
     'Pl.', 'Ter.', 'Trl.', 'Pkwy.', 'Hwy.',
 ]
 
-# Directional prefixes
+# Directional prefixes (single and compound)
+# Note: Compound prefixes like NE/SE must be checked separately from single prefixes
+# to avoid false positives (e.g., "South Ridge" should not extract "S" prefix)
 DIRECTION_PREFIXES = {
-    'N': 'N', 'N.': 'N', 'North': 'N',
-    'S': 'S', 'S.': 'S', 'South': 'S',
-    'E': 'E', 'E.': 'E', 'East': 'E',
-    'W': 'W', 'W.': 'W', 'West': 'W',
+    # Single directions (abbreviations only - full words like "South" are ambiguous)
+    'N': 'N', 'N.': 'N',
+    'S': 'S', 'S.': 'S',
+    'E': 'E', 'E.': 'E',
+    'W': 'W', 'W.': 'W',
+    # Compound directions (these are unambiguous)
+    'NE': 'NE', 'N.E.': 'NE', 'NE.': 'NE',
+    'NW': 'NW', 'N.W.': 'NW', 'NW.': 'NW',
+    'SE': 'SE', 'S.E.': 'SE', 'SE.': 'SE',
+    'SW': 'SW', 'S.W.': 'SW', 'SW.': 'SW',
 }
 
 
