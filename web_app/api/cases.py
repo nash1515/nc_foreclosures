@@ -6,6 +6,7 @@ from flask_dance.contrib.google import google
 from sqlalchemy import or_, func
 from database.connection import get_session
 from database.models import Case, Party, Watchlist, User
+from enrichments.common.models import Enrichment
 from datetime import datetime, date, time
 from web_app.auth.middleware import require_auth
 
@@ -420,8 +421,10 @@ def get_upset_bids():
     county_filter = request.args.get('county', '').strip()
 
     with get_session() as db_session:
-        # Get all upset_bid cases, ordered by deadline (soonest first)
-        query = db_session.query(Case).filter(
+        # Get all upset_bid cases with enrichment data, ordered by deadline (soonest first)
+        query = db_session.query(Case, Enrichment).outerjoin(
+            Enrichment, Case.id == Enrichment.case_id
+        ).filter(
             Case.classification == 'upset_bid'
         )
 
@@ -429,23 +432,26 @@ def get_upset_bids():
         if county_filter:
             query = query.filter(Case.county_code == county_filter)
 
-        cases = query.order_by(
+        results = query.order_by(
             Case.next_bid_deadline.asc().nullslast()
         ).all()
 
         today = date.today()
 
+        # Extract case IDs from results for watchlist query
+        case_ids = [case.id for case, _ in results]
+
         # Get watchlist status
         watchlist_case_ids = set()
-        if user_id:
+        if user_id and case_ids:
             watchlist_items = db_session.query(Watchlist.case_id).filter(
                 Watchlist.user_id == user_id,
-                Watchlist.case_id.in_([c.id for c in cases])
+                Watchlist.case_id.in_(case_ids)
             ).all()
             watchlist_case_ids = {w.case_id for w in watchlist_items}
 
         result = []
-        for case in cases:
+        for case, enrichment in results:
             # Calculate days until deadline
             days_remaining = None
             urgency = 'normal'
@@ -486,7 +492,8 @@ def get_upset_bids():
                 'sale_date': case.sale_date.isoformat() if case.sale_date else None,
                 'is_watchlisted': case.id in watchlist_case_ids,
                 'case_url': case.case_url,
-                'our_max_bid': float(case.our_max_bid) if case.our_max_bid else None
+                'our_max_bid': float(case.our_max_bid) if case.our_max_bid else None,
+                'wake_re_url': enrichment.wake_re_url if enrichment else None
             })
 
         return jsonify({

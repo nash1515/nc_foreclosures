@@ -296,8 +296,19 @@ function Dashboard() {
               </span>
             </Tooltip>
 
-            <Tooltip title="Property Info - Coming soon">
-              <span style={{ cursor: 'not-allowed', opacity: 0.4, display: 'inline-flex', alignItems: 'center' }}>
+            <Tooltip title={record.wake_re_url ? "Wake County Property" : "Coming soon"}>
+              <span
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (record.wake_re_url) window.open(record.wake_re_url, '_blank');
+                }}
+                style={{
+                  cursor: record.wake_re_url ? 'pointer' : 'not-allowed',
+                  opacity: record.wake_re_url ? 1 : 0.4,
+                  display: 'inline-flex',
+                  alignItems: 'center'
+                }}
+              >
                 <HomeOutlined style={{ fontSize: 16 }} />
               </span>
             </Tooltip>
