@@ -5,7 +5,7 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import Any, Dict, Optional
 
-from database.connection import Session
+from database.connection import get_session
 from enrichments.common.models import Enrichment, EnrichmentReviewLog
 
 
@@ -30,7 +30,7 @@ class EnrichmentResult:
         self.review_needed = review_needed
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert result to dictionary."""
+        """Convert result to dictionary for JSON serialization."""
         return {
             'success': self.success,
             'url': self.url,
@@ -80,23 +80,6 @@ class BaseEnricher(ABC):
         """
         pass
 
-    def _get_or_create_enrichment(self, case_id: int) -> Enrichment:
-        """
-        Get existing enrichment record or create new one.
-
-        Args:
-            case_id: Case database ID
-
-        Returns:
-            Enrichment record (new or existing)
-        """
-        session = Session()
-        enrichment = session.query(Enrichment).filter_by(case_id=case_id).first()
-        if not enrichment:
-            enrichment = Enrichment(case_id=case_id)
-            session.add(enrichment)
-        return enrichment
-
     def _log_review(
         self,
         case_id: int,
@@ -118,17 +101,17 @@ class BaseEnricher(ABC):
         Returns:
             Created review log entry
         """
-        session = Session()
-        log = EnrichmentReviewLog(
-            case_id=case_id,
-            enrichment_type=self.enrichment_type,
-            search_method=search_method,
-            search_value=search_value,
-            matches_found=matches_found,
-            raw_results=raw_results,
-        )
-        session.add(log)
-        session.commit()
+        with get_session() as session:
+            log = EnrichmentReviewLog(
+                case_id=case_id,
+                enrichment_type=self.enrichment_type,
+                search_method=search_method,
+                search_value=search_value,
+                matches_found=matches_found,
+                raw_results=raw_results,
+            )
+            session.add(log)
+            # Commit handled by context manager
 
         logger.warning(
             f"Case {case_id}: {matches_found} matches for {search_method}='{search_value}' - logged for review"
@@ -150,13 +133,17 @@ class BaseEnricher(ABC):
             url: URL to the external resource
             account_id: External account/reference ID
         """
-        session = Session()
-        enrichment = self._get_or_create_enrichment(case_id)
+        with get_session() as session:
+            # Get or create enrichment record
+            enrichment = session.query(Enrichment).filter_by(case_id=case_id).first()
+            if not enrichment:
+                enrichment = Enrichment(case_id=case_id)
+                session.add(enrichment)
 
-        # Set type-specific fields (subclass implements)
-        self._set_enrichment_fields(enrichment, url, account_id, error=None)
+            # Set type-specific fields (subclass implements)
+            self._set_enrichment_fields(enrichment, url, account_id, error=None)
+            # Commit handled by context manager
 
-        session.commit()
         logger.info(f"Case {case_id}: {self.enrichment_type} enrichment succeeded - {url}")
 
     def _save_error(
@@ -171,10 +158,14 @@ class BaseEnricher(ABC):
             case_id: Case database ID
             error: Error message
         """
-        session = Session()
-        enrichment = self._get_or_create_enrichment(case_id)
+        with get_session() as session:
+            # Get or create enrichment record
+            enrichment = session.query(Enrichment).filter_by(case_id=case_id).first()
+            if not enrichment:
+                enrichment = Enrichment(case_id=case_id)
+                session.add(enrichment)
 
-        self._set_enrichment_fields(enrichment, url=None, account_id=None, error=error)
+            self._set_enrichment_fields(enrichment, url=None, account_id=None, error=error)
+            # Commit handled by context manager
 
-        session.commit()
         logger.error(f"Case {case_id}: {self.enrichment_type} enrichment failed - {error}")
