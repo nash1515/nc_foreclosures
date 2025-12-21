@@ -42,7 +42,7 @@ cd frontend && npm run dev -- --host &
 - **Review Queue:** Fixed skipped cases filter (7-day lookback), Approve/Reject working
 - **Claude Vision OCR:** Fallback for handwritten bid amounts on Report of Sale/Upset Bid documents
 - **AI Analysis Module:** MERGED to main - comprehensive 4-section analysis
-- **Wake RE Enrichment:** 13/18 Wake cases enriched, router in place for other counties
+- **Wake RE Enrichment:** 18/18 Wake cases enriched ✓, router in place for other counties
 
 ### Recent Session Changes (Dec 21 - Session 19)
 - **County Router for Enrichments:**
@@ -50,15 +50,26 @@ cd frontend && npm run dev -- --host &
   - Routes based on case_number suffix (e.g., `-910` → Wake, `-310` → Durham)
   - Returns `skipped: True` for counties without implemented enrichers
   - Updated `classifier.py` to trigger enrichment for ALL upset_bid cases (router handles filtering)
+- **Wake RE Enrichment - 18/18 cases now enriched:**
+  - Fixed address extraction bug: Two-column OCR bleed captured "Credit Union" from adjacent column
+    - Pattern 8 now stops at street type designator instead of newline
+  - Fixed same account_id matching: Condos with multiple rows (834 and 834-3D) now recognized as single match
+  - Fixed malformed addresses: Parser now detects city names merged with street (missing comma separator)
+  - Added two-step AddressSearch for directional prefixes (N/S/E/W/NE/NW/SE/SW):
+    - Step 1: GET AddressSearch.asp to get list of street variations
+    - Step 2: POST with selected locid to get property results
 - **Data cleanup:**
   - Deleted 16 orphaned test records from enrichments table
   - Added NOT NULL constraint on `enrichments.case_id` to prevent future orphans
-- **Enrichment status:**
-  - Wake County: 13/18 upset_bid cases enriched, 5 need review
-  - Other counties: 24 cases waiting for enricher implementation
 - **Files changed:**
   - `enrichments/router.py` (NEW) - County-based enrichment router
   - `enrichments/__init__.py` - Export enrich_case from router
+  - `enrichments/common/address_parser.py` - Handle malformed addresses with missing city comma
+  - `enrichments/wake_re/config.py` - Add AddressSearch URL templates
+  - `enrichments/wake_re/url_builder.py` - Add build_address_search_url()
+  - `enrichments/wake_re/scraper.py` - Add two-step search, same account_id matching
+  - `enrichments/wake_re/enricher.py` - Route to two-step search when prefix present
+  - `extraction/extractor.py` - Fix Pattern 8 to stop at street type
   - `extraction/classifier.py` - Generic enrichment trigger for all upset_bid cases
 
 ### Previous Session Changes (Dec 19 - Session 18)
