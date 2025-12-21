@@ -14,6 +14,7 @@ from enrichments.wake_re.url_builder import build_account_url, parse_parcel_id
 from enrichments.wake_re.scraper import (
     fetch_pinlist_results,
     fetch_validate_address_results,
+    fetch_address_search_with_prefix,
     match_address_result,
 )
 
@@ -126,8 +127,17 @@ class WakeREEnricher(BaseEnricher):
             return EnrichmentResult(success=False, error=error)
 
         # Fetch address search results
+        # Use two-step AddressSearch if prefix is present, otherwise use ValidateAddress
         try:
-            results = fetch_validate_address_results(parsed['stnum'], parsed['name'])
+            if parsed.get('prefix'):
+                logger.debug(f"Using two-step AddressSearch for prefix '{parsed['prefix']}'")
+                results = fetch_address_search_with_prefix(
+                    parsed['stnum'],
+                    parsed['name'],
+                    parsed['prefix'],
+                )
+            else:
+                results = fetch_validate_address_results(parsed['stnum'], parsed['name'])
         except Exception as e:
             error = f"Address search error: {e}"
             self._save_error(case_id, error)

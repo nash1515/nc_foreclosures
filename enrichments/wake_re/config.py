@@ -13,6 +13,15 @@ VALIDATE_ADDRESS_URL_TEMPLATE = (
     "?stnum={stnum}&stname={stname}&locidList=&spg="
 )
 
+# AddressSearch is used for addresses with directional prefixes (N/S/E/W)
+# It returns a list of streets to select from, then you POST to get results
+ADDRESS_SEARCH_URL_TEMPLATE = (
+    f"{BASE_URL}/AddressSearch.asp"
+    "?stnum={stnum}&stname={stname}&locidList=&spg="
+)
+
+ADDRESS_SEARCH_POST_URL = f"{BASE_URL}/AddressSearch.asp"
+
 ACCOUNT_URL_TEMPLATE = f"{BASE_URL}/Account.asp?id={{account_id}}"
 
 # ETJ (city) code mapping - discovered dynamically, seeded with known values

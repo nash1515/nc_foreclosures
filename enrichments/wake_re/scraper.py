@@ -11,7 +11,9 @@ from bs4 import BeautifulSoup
 from enrichments.wake_re.url_builder import (
     build_pinlist_url,
     build_validate_address_url,
+    build_address_search_url,
 )
+from enrichments.wake_re.config import ADDRESS_SEARCH_POST_URL
 
 
 logger = logging.getLogger(__name__)
@@ -235,3 +237,164 @@ def fetch_validate_address_results(stnum: str, stname: str) -> List[Dict[str, st
     logger.debug(f"Fetching ValidateAddress: {url}")
     html = _fetch_with_retry(url)
     return parse_validate_address_html(html)
+
+
+def parse_address_search_streets(html: str) -> List[Dict[str, str]]:
+    """
+    Parse AddressSearch street selection page.
+
+    Returns list of streets with their locid values for checkbox selection.
+    Each row has: Checkbox | Pfx | Street Name | St Type | Sfx | ETJ | Low Num | High Num
+
+    Args:
+        html: Raw HTML from AddressSearch.asp
+
+    Returns:
+        List of dicts with street info and locid
+    """
+    results = []
+    soup = BeautifulSoup(html, 'html.parser')
+
+    # Find all checkboxes (name is 'c1' with value being the locid)
+    for checkbox in soup.find_all('input', {'type': 'checkbox'}):
+        locid = checkbox.get('value')
+        if not locid:
+            continue
+
+        # Find parent row
+        row = checkbox.find_parent('tr')
+        if not row:
+            continue
+
+        cells = row.find_all('td')
+        if len(cells) < 7:
+            continue
+
+        # Parse based on expected column order
+        # Checkbox(0) | Pfx(1) | Street Name(2) | St Type(3) | Sfx(4) | ETJ(5) | Low Num(6) | High Num(7)
+        try:
+            result = {
+                'locid': locid,
+                'prefix': cells[1].get_text(strip=True),
+                'street_name': cells[2].get_text(strip=True),
+                'street_type': cells[3].get_text(strip=True),
+                'suffix': cells[4].get_text(strip=True),
+                'etj': cells[5].get_text(strip=True),
+                'low_num': cells[6].get_text(strip=True) if len(cells) > 6 else '',
+                'high_num': cells[7].get_text(strip=True) if len(cells) > 7 else '',
+            }
+            results.append(result)
+        except (IndexError, AttributeError) as e:
+            logger.warning(f"Failed to parse street row: {e}")
+            continue
+
+    return results
+
+
+def find_matching_street(
+    streets: List[Dict[str, str]],
+    prefix: str,
+    street_name: str,
+    stnum: str,
+) -> Optional[Dict[str, str]]:
+    """
+    Find the street matching our search criteria.
+
+    Args:
+        streets: List of street options from parse_address_search_streets
+        prefix: Directional prefix to match (N/S/E/W/NE/NW/SE/SW)
+        street_name: Street name to match
+        stnum: Street number (to verify it's in range)
+
+    Returns:
+        Matching street dict or None
+    """
+    stnum_int = int(stnum) if stnum.isdigit() else 0
+
+    for street in streets:
+        # Match prefix
+        if street.get('prefix', '').upper() != prefix.upper():
+            continue
+
+        # Match street name
+        if street.get('street_name', '').upper() != street_name.upper():
+            continue
+
+        # Verify street number is in range (if range is provided)
+        low = street.get('low_num', '')
+        high = street.get('high_num', '')
+        if low and high and stnum_int:
+            try:
+                low_int = int(low)
+                high_int = int(high)
+                if not (low_int <= stnum_int <= high_int):
+                    continue
+            except ValueError:
+                pass  # Skip range check if values aren't valid numbers
+
+        return street
+
+    return None
+
+
+def fetch_address_search_with_prefix(
+    stnum: str,
+    stname: str,
+    prefix: str,
+) -> List[Dict[str, str]]:
+    """
+    Two-step address search for addresses with directional prefixes.
+
+    Step 1: GET AddressSearch.asp to get list of street variations
+    Step 2: POST with selected locid to get property results
+
+    Args:
+        stnum: Street number (e.g., "303")
+        stname: Street name without prefix/type (e.g., "MAYNARD")
+        prefix: Directional prefix (e.g., "SE")
+
+    Returns:
+        List of property match results (same format as ValidateAddress)
+
+    Raises:
+        requests.RequestException: On network error
+    """
+    # Step 1: Get street selection page
+    url = build_address_search_url(stnum, stname)
+    logger.debug(f"Fetching AddressSearch (step 1): {url}")
+    html = _fetch_with_retry(url)
+
+    # Parse available streets
+    streets = parse_address_search_streets(html)
+    if not streets:
+        logger.warning(f"No streets found in AddressSearch for {stnum} {stname}")
+        return []
+
+    # Find matching street with our prefix
+    matching_street = find_matching_street(streets, prefix, stname, stnum)
+    if not matching_street:
+        logger.warning(f"No street matching prefix '{prefix}' for {stnum} {stname}")
+        return []
+
+    locid = matching_street['locid']
+    logger.debug(f"Found matching street with locid={locid}: {matching_street}")
+
+    # Step 2: POST to get property results
+    # The form uses JavaScript to set locidList, then submits
+    form_data = {
+        'stype': 'addr',
+        'stnum': stnum,
+        'stname': stname.lower(),
+        'locidList': locid,  # Selected street locid(s)
+    }
+
+    logger.debug(f"POSTing to AddressSearch (step 2) with locid={locid}")
+    response = requests.post(
+        ADDRESS_SEARCH_POST_URL,
+        data=form_data,
+        timeout=REQUEST_TIMEOUT,
+    )
+    response.raise_for_status()
+
+    # Parse results (same format as ValidateAddress)
+    return parse_validate_address_html(response.text)

@@ -6,6 +6,7 @@ from urllib.parse import quote_plus
 from enrichments.wake_re.config import (
     PINLIST_URL_TEMPLATE,
     VALIDATE_ADDRESS_URL_TEMPLATE,
+    ADDRESS_SEARCH_URL_TEMPLATE,
     ACCOUNT_URL_TEMPLATE,
     PARCEL_ID_LENGTH,
 )
@@ -76,6 +77,29 @@ def build_validate_address_url(stnum: str, stname: str) -> str:
     encoded_stname = quote_plus(stname.lower())
 
     return VALIDATE_ADDRESS_URL_TEMPLATE.format(
+        stnum=stnum,
+        stname=encoded_stname,
+    )
+
+
+def build_address_search_url(stnum: str, stname: str) -> str:
+    """
+    Build AddressSearch URL from address components.
+
+    This endpoint is used when the address has a directional prefix (N/S/E/W).
+    It returns a list of street variations to select from.
+
+    Args:
+        stnum: Street number (e.g., "303")
+        stname: Street name without type suffix or prefix (e.g., "maynard")
+
+    Returns:
+        Full URL with URL-encoded parameters
+    """
+    # URL encode with + for spaces
+    encoded_stname = quote_plus(stname.lower())
+
+    return ADDRESS_SEARCH_URL_TEMPLATE.format(
         stnum=stnum,
         stname=encoded_stname,
     )
