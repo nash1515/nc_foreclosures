@@ -46,7 +46,6 @@ Create a Wake County Real Estate enrichment module that automatically fetches st
 
 - Scraping dynamic property data (assessed value, tax info, etc.) - only fetching static URLs
 - Real-time on-demand lookups during page render
-- Historical backfill of existing cases (Phase 1 focuses on new `upset_bid` cases only)
 
 ---
 
@@ -622,25 +621,29 @@ def _classify_case(case):
         logger.info(f"Case {case.case_number}: {case.classification} → {new_classification}")
         case.classification = new_classification
 
-        # Trigger Wake RE enrichment on upset_bid promotion
+        # Queue Wake RE enrichment on upset_bid promotion (ASYNC - don't block)
         if new_classification == 'upset_bid' and case.county_code == '910':
             try:
-                from enrichments.wake_re import enrich_case
-                result = enrich_case(case.id)
-                if result['success']:
-                    logger.info(f"Wake RE enrichment succeeded: {result['url']}")
-                elif result['review_needed']:
-                    logger.warning(f"Wake RE enrichment needs review: {result['error']}")
-                else:
-                    logger.error(f"Wake RE enrichment failed: {result['error']}")
+                # Option 1: Background task queue (if using Celery/RQ)
+                from enrichments.wake_re.tasks import enrich_case_async
+                enrich_case_async.delay(case.id)
+                logger.info(f"Queued Wake RE enrichment for case {case.case_number}")
+
+                # Option 2: Thread-based (simpler, no dependencies)
+                # from threading import Thread
+                # from enrichments.wake_re import enrich_case
+                # Thread(target=enrich_case, args=(case.id,), daemon=True).start()
+
             except Exception as e:
-                logger.error(f"Wake RE enrichment error: {e}", exc_info=True)
+                logger.error(f"Failed to queue Wake RE enrichment: {e}", exc_info=True)
 ```
 
 **Design notes:**
+- **ASYNC execution:** Enrichment runs in background, doesn't block upset_bid promotion
 - Non-blocking: Enrichment errors don't prevent classification
 - County-specific: Only runs for Wake County (`county_code == '910'`)
 - Logged results: All outcomes logged for debugging
+- **Implementation choice:** Use Celery/RQ for production, or simple threading for MVP
 
 ### Trigger 2: On-Demand API Endpoint
 
@@ -1164,15 +1167,19 @@ def test_enrich_case_address_fallback(mock_get):
    - Resolve button to manually select account
 
 2. ✅ Bulk enrichment tools
+   - **One-time backfill script:** `scripts/backfill_wake_enrichments.py`
+     - Enrich all existing Wake County `upset_bid` cases
+     - Progress tracking and error reporting
+     - Resume capability (skip already-enriched cases)
    - Admin endpoint: `POST /api/admin/enrich-all-wake`
-   - Script: `scripts/backfill_wake_enrichments.py`
+   - Individual retry endpoint: `POST /api/enrichments/wake-re/<case_id>`
 
 3. ✅ Monitoring & alerts
    - Daily enrichment success rate
    - Review queue size alerts
    - Error trend analysis
 
-**Deliverable:** Production-ready admin tools
+**Deliverable:** Production-ready admin tools with historical backfill complete
 
 ### Phase 5: Documentation & Handoff (Week 3)
 
@@ -1303,13 +1310,18 @@ This would enable dynamic enrichment routing without code changes.
 - `docs/SESSION_HISTORY.md` - Detailed session logs
 - `extraction/README.md` - Extraction pipeline documentation
 
-### Questions for User
+### Design Decisions (Resolved)
 
-1. **Backfill priority:** Should we enrich all existing `upset_bid` cases immediately, or only new cases going forward?
-2. **Review queue workflow:** Who will handle manual resolution of ambiguous cases? Need admin training?
-3. **Performance:** Should enrichment run synchronously (blocking) or asynchronously (background task)?
-4. **Error notifications:** Email alerts for high review queue volume, or just dashboard warnings?
-5. **Parcel ID extraction:** Prefer OCR-only, AI-only, or hybrid approach?
+1. **Backfill priority:** YES - Enrich all existing `upset_bid` cases via one-time backfill script, then enrich all future cases automatically
+2. **Review queue workflow:** Owner (user) will handle manual resolution of ambiguous cases
+3. **Performance:** ASYNC - Queue enrichment task in background, don't block classification or upset_bid promotion
+4. **Parcel ID extraction:** Hybrid approach (OCR-based first, AI-based as backup)
+
+### Open Questions
+
+1. **Error notifications:** Email alerts for high review queue volume, or just dashboard warnings?
+2. **Refresh strategy:** Should we re-enrich cases periodically (e.g., if property ownership changes)?
+3. **Rate limiting:** Do we need to throttle requests to Wake County portal to avoid IP blocking?
 
 ---
 
