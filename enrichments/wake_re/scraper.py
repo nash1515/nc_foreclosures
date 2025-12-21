@@ -179,9 +179,17 @@ def match_address_result(
 
         matches.append(row)
 
-    # Only return if exactly one match
+    # Return if exactly one match
     if len(matches) == 1:
         return matches[0]
+
+    # If multiple matches, check if they all have the same account_id
+    # (e.g., condos where 834 and 834-3D are same property)
+    if len(matches) > 1:
+        account_ids = set(m.get('account_id') for m in matches)
+        if len(account_ids) == 1:
+            logger.debug(f"Multiple rows ({len(matches)}) but same account_id, returning first match")
+            return matches[0]
 
     return None
 
