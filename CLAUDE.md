@@ -33,18 +33,39 @@ cd frontend && npm run dev -- --host &
 - Frontend: http://localhost:5173
 - API: http://localhost:5001
 
-## Current Status (Dec 21, 2025)
+## Current Status (Dec 22, 2025)
 
 - **2,156 cases** across 6 counties (Wake, Durham, Harnett, Lee, Orange, Chatham)
-- **Active upset_bid cases:** 42 (18 Wake, 24 other counties)
+- **Active upset_bid cases:** 42 (18 Wake, 7 Durham, 17 other counties)
 - **Scheduler running** 5 AM Mon-Fri (3-day lookback on Mondays) + **catch-up logic on startup**
 - **Frontend:** React + Flask API (Dashboard, Admin tab for admins, Case Detail with bid ladder)
 - **Review Queue:** Fixed skipped cases filter (7-day lookback), Approve/Reject working
 - **Claude Vision OCR:** Fallback for handwritten bid amounts on Report of Sale/Upset Bid documents
 - **AI Analysis Module:** MERGED to main - comprehensive 4-section analysis
-- **Wake RE Enrichment:** 18/18 Wake cases enriched ✓, router in place for other counties
+- **County RE Enrichment:** Wake 18/18 ✓, Durham 6/7 ✓ (router dispatches by county code)
 
-### Recent Session Changes (Dec 21 - Session 19)
+### Recent Session Changes (Dec 22 - Session 20)
+- **Durham County RE Enrichment:**
+  - New `enrichments/durham_re/` module with Playwright browser automation
+  - Searches Durham Tax/CAMA portal (`taxcama.dconc.gov`) by address
+  - Uses headless Chromium, clicks "Location Address" tab, handles page redirect
+  - Extracts `PARCELPK` from property link, captures final PropertySummary URL
+  - 6/7 Durham upset_bid cases enriched (1 case has invalid address - logged for review)
+  - Added `durham_re_parcelpk`, `durham_re_url`, `durham_re_enriched_at`, `durham_re_error` columns
+- **Frontend updates:**
+  - Dashboard Property Info icon now shows Wake or Durham RE links based on county
+  - Case Detail Quick Links section shows separate Wake RE / Durham RE buttons
+  - API endpoints return both `wake_re_url` and `durham_re_url`
+- **Files changed:**
+  - `enrichments/durham_re/` (NEW) - config.py, url_builder.py, scraper.py, enricher.py, __init__.py
+  - `enrichments/router.py` - Added Durham to IMPLEMENTED_COUNTIES, routing logic
+  - `enrichments/common/models.py` - Added Durham RE columns to Enrichment model
+  - `migrations/add_durham_re_columns.sql` (NEW) - Schema migration
+  - `web_app/api/cases.py` - Return durham_re_url in API responses
+  - `frontend/src/pages/Dashboard.jsx` - Property Info icon shows Wake/Durham RE
+  - `frontend/src/pages/CaseDetail.jsx` - Quick Links with Wake RE / Durham RE buttons
+
+### Previous Session Changes (Dec 21 - Session 19)
 - **County Router for Enrichments:**
   - Added `enrichments/router.py` to dispatch to county-specific enrichers
   - Routes based on case_number suffix (e.g., `-910` → Wake, `-310` → Durham)
@@ -545,9 +566,9 @@ npm install && npm run dev -- --port 5174
 ```
 
 ## Next Priorities
-1. PropWire enrichment (next quicklink)
-2. County Deed enrichment
-3. County Property Info enrichment
+1. Other county RE enrichments (Harnett, Lee, Orange, Chatham)
+2. PropWire enrichment (next quicklink)
+3. County Deed enrichment
 
 ## Session Commands
 - **"Wrap up session"** - Update CLAUDE.md + commit/push + review todos + give handoff
