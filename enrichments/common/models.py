@@ -46,6 +46,12 @@ class Enrichment(Base):
     orange_re_enriched_at = Column(TIMESTAMP)
     orange_re_error = Column(Text)
 
+    # Chatham County RE
+    chatham_re_parcel_id = Column(String(20))
+    chatham_re_url = Column(Text)
+    chatham_re_enriched_at = Column(TIMESTAMP)
+    chatham_re_error = Column(Text)
+
     # Future enrichments
     propwire_url = Column(Text)
     propwire_enriched_at = Column(TIMESTAMP)

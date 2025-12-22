@@ -42,9 +42,33 @@ cd frontend && npm run dev -- --host &
 - **Review Queue:** Fixed skipped cases filter (7-day lookback), Approve/Reject working
 - **Claude Vision OCR:** Fallback for handwritten bid amounts on Report of Sale/Upset Bid documents
 - **AI Analysis Module:** MERGED to main - comprehensive 4-section analysis
-- **County RE Enrichment:** Wake 18/18 ✓, Durham 6/7 ✓, Harnett ✓, Lee ✓, Orange 2/2 ✓ (router dispatches by county code)
+- **County RE Enrichment:** ALL 6 COUNTIES COMPLETE ✓ (Wake, Durham, Harnett, Lee, Orange, Chatham)
 
-### Recent Session Changes (Dec 22 - Session 22)
+### Recent Session Changes (Dec 22 - Session 23)
+- **Chatham County RE Enrichment - Fully implemented:**
+  - DEVNET wEdge portal at `chathamnc.devnetwedge.com`
+  - **Simplest implementation:** HTTP requests + BeautifulSoup (no Playwright needed)
+  - Search URL: `https://chathamnc.devnetwedge.com/search/quick?q={street_number}`
+  - Property URL: `https://chathamnc.devnetwedge.com/parcel/view/{parcel_id}/2025`
+  - Parcel ID format: 7 digits (e.g., `0074237`)
+  - Search strategy: Query by street number only, filter results by street name match
+- **Data fix:**
+  - Case 25SP000165-180: Corrected address from hearing location (40 East Chatham Street) to actual property (4902 Devils Tramping Ground Rd, Bear Creek)
+- **Test results:**
+  - 2 Chatham County upset_bid cases, both with addresses
+  - Successfully enriched: 1225 April Loop (0074237), 4902 Devils Tramping Ground Rd (0004054)
+  - **2/2 Chatham County upset_bid cases enriched**
+- **Files created:**
+  - `enrichments/chatham_re/` (NEW) - config.py, url_builder.py, scraper.py, enricher.py, __init__.py
+  - `migrations/add_chatham_re_columns.sql` (NEW) - Schema migration
+- **Files changed:**
+  - `enrichments/common/models.py` - Added Chatham RE columns to Enrichment model
+  - `enrichments/router.py` - Added Chatham (180) to IMPLEMENTED_COUNTIES, routing logic
+  - `web_app/api/cases.py` - Return chatham_re_url in API responses
+  - `frontend/src/pages/Dashboard.jsx` - Property Info icon shows all 6 county RE links
+  - `frontend/src/pages/CaseDetail.jsx` - Quick Links with Chatham RE button
+
+### Previous Session Changes (Dec 22 - Session 22)
 - **Orange County RE Enrichment - Fully implemented:**
   - Spatialest portal at `property.spatialest.com/nc/orange/`
   - Playwright automation: Type address in search combobox → Click Search
@@ -614,9 +638,9 @@ npm install && npm run dev -- --port 5174
 ```
 
 ## Next Priorities
-1. Chatham County RE enrichment (last remaining county)
-2. PropWire enrichment (next quicklink)
-3. County Deed enrichment
+1. PropWire enrichment (next quicklink)
+2. County Deed enrichment
+3. Harnett County RE enrichment testing (module exists but untested)
 
 ## Session Commands
 - **"Wrap up session"** - Update CLAUDE.md + commit/push + review todos + give handoff

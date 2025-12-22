@@ -302,17 +302,18 @@ function Dashboard() {
               record.harnett_re_url ? "Harnett County Property" :
               record.lee_re_url ? "Lee County Property" :
               record.orange_re_url ? "Orange County Property" :
+              record.chatham_re_url ? "Chatham County Property" :
               "Coming soon"
             }>
               <span
                 onClick={(e) => {
                   e.stopPropagation();
-                  const url = record.wake_re_url || record.durham_re_url || record.harnett_re_url || record.lee_re_url || record.orange_re_url;
+                  const url = record.wake_re_url || record.durham_re_url || record.harnett_re_url || record.lee_re_url || record.orange_re_url || record.chatham_re_url;
                   if (url) window.open(url, '_blank');
                 }}
                 style={{
-                  cursor: (record.wake_re_url || record.durham_re_url || record.harnett_re_url || record.lee_re_url || record.orange_re_url) ? 'pointer' : 'not-allowed',
-                  opacity: (record.wake_re_url || record.durham_re_url || record.harnett_re_url || record.lee_re_url || record.orange_re_url) ? 1 : 0.4,
+                  cursor: (record.wake_re_url || record.durham_re_url || record.harnett_re_url || record.lee_re_url || record.orange_re_url || record.chatham_re_url) ? 'pointer' : 'not-allowed',
+                  opacity: (record.wake_re_url || record.durham_re_url || record.harnett_re_url || record.lee_re_url || record.orange_re_url || record.chatham_re_url) ? 1 : 0.4,
                   display: 'inline-flex',
                   alignItems: 'center'
                 }}

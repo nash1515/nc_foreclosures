@@ -294,6 +294,13 @@ function CaseDetail() {
                       </Button>
                     </a>
                   )}
+                  {c.chatham_re_url && (
+                    <a href={c.chatham_re_url} target="_blank" rel="noopener noreferrer">
+                      <Button size="small" icon={<LinkOutlined />}>
+                        Chatham RE
+                      </Button>
+                    </a>
+                  )}
                   <Button size="small" icon={<LinkOutlined />} disabled>Propwire</Button>
                   <Button size="small" icon={<FileTextOutlined />} disabled>Deed</Button>
                 </Space>

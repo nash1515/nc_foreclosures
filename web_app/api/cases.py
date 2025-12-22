@@ -280,7 +280,8 @@ def get_case(case_id):
             'durham_re_url': enrichment.durham_re_url if enrichment else None,
             'harnett_re_url': enrichment.harnett_re_url if enrichment else None,
             'lee_re_url': enrichment.lee_re_url if enrichment else None,
-            'orange_re_url': enrichment.orange_re_url if enrichment else None
+            'orange_re_url': enrichment.orange_re_url if enrichment else None,
+            'chatham_re_url': enrichment.chatham_re_url if enrichment else None
         })
 
 
@@ -507,7 +508,8 @@ def get_upset_bids():
                 'durham_re_url': enrichment.durham_re_url if enrichment else None,
                 'harnett_re_url': enrichment.harnett_re_url if enrichment else None,
                 'lee_re_url': enrichment.lee_re_url if enrichment else None,
-                'orange_re_url': enrichment.orange_re_url if enrichment else None
+                'orange_re_url': enrichment.orange_re_url if enrichment else None,
+                'chatham_re_url': enrichment.chatham_re_url if enrichment else None
             })
 
         return jsonify({

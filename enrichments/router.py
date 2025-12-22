@@ -19,11 +19,11 @@ COUNTY_ENRICHERS = {
     '420': 'harnett_re',   # Harnett County
     '520': 'lee_re',       # Lee County
     '670': 'orange_re',    # Orange County
-    '180': 'chatham_re',   # Chatham County (not implemented)
+    '180': 'chatham_re',   # Chatham County
 }
 
 # Counties with implemented enrichers
-IMPLEMENTED_COUNTIES = {'910', '310', '420', '520', '670'}  # Wake, Durham, Harnett, Lee, Orange
+IMPLEMENTED_COUNTIES = {'910', '310', '420', '520', '670', '180'}  # Wake, Durham, Harnett, Lee, Orange, Chatham
 
 
 def get_county_code(case_id: int) -> str | None:
@@ -88,6 +88,10 @@ def enrich_case(case_id: int) -> dict:
     if county_code == '670':
         from enrichments.orange_re import enrich_case as orange_enrich
         return orange_enrich(case_id)
+
+    if county_code == '180':
+        from enrichments.chatham_re import enrich_case as chatham_enrich
+        return chatham_enrich(case_id)
 
     # This shouldn't happen if IMPLEMENTED_COUNTIES is kept in sync
     return {'success': False, 'error': f'Enricher routing error for county {county_code}'}
