@@ -273,6 +273,27 @@ function CaseDetail() {
                       </Button>
                     </a>
                   )}
+                  {c.harnett_re_url && (
+                    <a href={c.harnett_re_url} target="_blank" rel="noopener noreferrer">
+                      <Button size="small" icon={<LinkOutlined />}>
+                        Harnett RE
+                      </Button>
+                    </a>
+                  )}
+                  {c.lee_re_url && (
+                    <a href={c.lee_re_url} target="_blank" rel="noopener noreferrer">
+                      <Button size="small" icon={<LinkOutlined />}>
+                        Lee RE
+                      </Button>
+                    </a>
+                  )}
+                  {c.orange_re_url && (
+                    <a href={c.orange_re_url} target="_blank" rel="noopener noreferrer">
+                      <Button size="small" icon={<LinkOutlined />}>
+                        Orange RE
+                      </Button>
+                    </a>
+                  )}
                   <Button size="small" icon={<LinkOutlined />} disabled>Propwire</Button>
                   <Button size="small" icon={<FileTextOutlined />} disabled>Deed</Button>
                 </Space>

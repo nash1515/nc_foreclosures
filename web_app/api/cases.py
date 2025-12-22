@@ -277,7 +277,10 @@ def get_case(case_id):
             'is_watchlisted': is_watchlisted,
             'photo_url': None,  # Placeholder for future enrichment
             'wake_re_url': enrichment.wake_re_url if enrichment else None,
-            'durham_re_url': enrichment.durham_re_url if enrichment else None
+            'durham_re_url': enrichment.durham_re_url if enrichment else None,
+            'harnett_re_url': enrichment.harnett_re_url if enrichment else None,
+            'lee_re_url': enrichment.lee_re_url if enrichment else None,
+            'orange_re_url': enrichment.orange_re_url if enrichment else None
         })
 
 
@@ -501,7 +504,10 @@ def get_upset_bids():
                 'case_url': case.case_url,
                 'our_max_bid': float(case.our_max_bid) if case.our_max_bid else None,
                 'wake_re_url': enrichment.wake_re_url if enrichment else None,
-                'durham_re_url': enrichment.durham_re_url if enrichment else None
+                'durham_re_url': enrichment.durham_re_url if enrichment else None,
+                'harnett_re_url': enrichment.harnett_re_url if enrichment else None,
+                'lee_re_url': enrichment.lee_re_url if enrichment else None,
+                'orange_re_url': enrichment.orange_re_url if enrichment else None
             })
 
         return jsonify({

@@ -28,6 +28,24 @@ class Enrichment(Base):
     durham_re_enriched_at = Column(TIMESTAMP)
     durham_re_error = Column(Text)
 
+    # Harnett County RE
+    harnett_re_prid = Column(String(20))
+    harnett_re_url = Column(Text)
+    harnett_re_enriched_at = Column(TIMESTAMP)
+    harnett_re_error = Column(Text)
+
+    # Lee County RE
+    lee_re_account_id = Column(String(30))
+    lee_re_url = Column(Text)
+    lee_re_enriched_at = Column(TIMESTAMP)
+    lee_re_error = Column(Text)
+
+    # Orange County RE
+    orange_re_parcel_id = Column(String(20))
+    orange_re_url = Column(Text)
+    orange_re_enriched_at = Column(TIMESTAMP)
+    orange_re_error = Column(Text)
+
     # Future enrichments
     propwire_url = Column(Text)
     propwire_enriched_at = Column(TIMESTAMP)

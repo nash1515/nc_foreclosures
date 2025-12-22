@@ -42,9 +42,37 @@ cd frontend && npm run dev -- --host &
 - **Review Queue:** Fixed skipped cases filter (7-day lookback), Approve/Reject working
 - **Claude Vision OCR:** Fallback for handwritten bid amounts on Report of Sale/Upset Bid documents
 - **AI Analysis Module:** MERGED to main - comprehensive 4-section analysis
-- **County RE Enrichment:** Wake 18/18 ✓, Durham 6/7 ✓, Harnett ✓, Lee ✓ (router dispatches by county code)
+- **County RE Enrichment:** Wake 18/18 ✓, Durham 6/7 ✓, Harnett ✓, Lee ✓, Orange 2/2 ✓ (router dispatches by county code)
 
-### Recent Session Changes (Dec 22 - Session 21)
+### Recent Session Changes (Dec 22 - Session 22)
+- **Orange County RE Enrichment - Fully implemented:**
+  - Spatialest portal at `property.spatialest.com/nc/orange/`
+  - Playwright automation: Type address in search combobox → Click Search
+  - Portal auto-navigates to property page for single matches
+  - **Key insight:** Portal is SPA - extracts Parcel ID from page content (not URL)
+  - Direct URL format: `https://property.spatialest.com/nc/orange/#/property/{10-digit-parcel-id}`
+  - Added street name cleanup to handle addresses without comma before city
+    - Strips street type suffixes (Way, Dr, St, etc.)
+    - Removes NC city names incorrectly appended to street name
+- **Test results:**
+  - 2 Orange County upset_bid cases, both with addresses
+  - Successfully enriched: 641 Ethel Christine Way (9767585618), 9506 Coach Way (9759144323)
+  - **2/2 Orange County upset_bid cases enriched**
+- **Frontend updates:**
+  - Dashboard Links column now shows Orange RE and Lee RE
+  - Case Detail Quick Links section shows Orange RE / Lee RE buttons
+  - API endpoints return `orange_re_url` and `lee_re_url`
+- **Files created:**
+  - `enrichments/orange_re/` (NEW) - config.py, url_builder.py, scraper.py, enricher.py, __init__.py
+  - `migrations/add_orange_re_columns.sql` (NEW) - Schema migration
+- **Files changed:**
+  - `enrichments/common/models.py` - Added Orange RE columns to Enrichment model
+  - `enrichments/router.py` - Added Orange (670) to IMPLEMENTED_COUNTIES, routing logic
+  - `web_app/api/cases.py` - Return orange_re_url and lee_re_url in API responses
+  - `frontend/src/pages/Dashboard.jsx` - Property Info icon shows all 5 county RE links
+  - `frontend/src/pages/CaseDetail.jsx` - Quick Links with Lee RE / Orange RE buttons
+
+### Previous Session Changes (Dec 22 - Session 21)
 - **Lee County RE Enrichment - Fully implemented:**
   - Tyler Technologies portal at `taxaccess.leecountync.gov`
   - Uses role-based Playwright locators (`get_by_role`) for form fields
@@ -586,7 +614,7 @@ npm install && npm run dev -- --port 5174
 ```
 
 ## Next Priorities
-1. Other county RE enrichments (Orange, Chatham - remaining 2 counties)
+1. Chatham County RE enrichment (last remaining county)
 2. PropWire enrichment (next quicklink)
 3. County Deed enrichment
 
