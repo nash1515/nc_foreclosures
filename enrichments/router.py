@@ -15,15 +15,15 @@ logger = logging.getLogger(__name__)
 # Each county has its own GIS/Real Estate portal with different URL structures
 COUNTY_ENRICHERS = {
     '910': 'wake_re',      # Wake County
-    '310': 'durham_re',    # Durham County (not implemented)
-    '410': 'harnett_re',   # Harnett County (not implemented)
-    '530': 'lee_re',       # Lee County (not implemented)
-    '680': 'orange_re',    # Orange County (not implemented)
+    '310': 'durham_re',    # Durham County
+    '420': 'harnett_re',   # Harnett County
+    '520': 'lee_re',       # Lee County
+    '670': 'orange_re',    # Orange County (not implemented)
     '180': 'chatham_re',   # Chatham County (not implemented)
 }
 
 # Counties with implemented enrichers
-IMPLEMENTED_COUNTIES = {'910', '310'}  # Wake and Durham
+IMPLEMENTED_COUNTIES = {'910', '310', '420', '520'}  # Wake, Durham, Harnett, Lee
 
 
 def get_county_code(case_id: int) -> str | None:
@@ -76,6 +76,14 @@ def enrich_case(case_id: int) -> dict:
     if county_code == '310':
         from enrichments.durham_re import enrich_case as durham_enrich
         return durham_enrich(case_id)
+
+    if county_code == '420':
+        from enrichments.harnett_re import enrich_case as harnett_enrich
+        return harnett_enrich(case_id)
+
+    if county_code == '520':
+        from enrichments.lee_re import enrich_case as lee_enrich
+        return lee_enrich(case_id)
 
     # This shouldn't happen if IMPLEMENTED_COUNTIES is kept in sync
     return {'success': False, 'error': f'Enricher routing error for county {county_code}'}

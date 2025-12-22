@@ -42,9 +42,29 @@ cd frontend && npm run dev -- --host &
 - **Review Queue:** Fixed skipped cases filter (7-day lookback), Approve/Reject working
 - **Claude Vision OCR:** Fallback for handwritten bid amounts on Report of Sale/Upset Bid documents
 - **AI Analysis Module:** MERGED to main - comprehensive 4-section analysis
-- **County RE Enrichment:** Wake 18/18 ✓, Durham 6/7 ✓ (router dispatches by county code)
+- **County RE Enrichment:** Wake 18/18 ✓, Durham 6/7 ✓, Harnett ✓, Lee ✓ (router dispatches by county code)
 
-### Recent Session Changes (Dec 22 - Session 20)
+### Recent Session Changes (Dec 22 - Session 21)
+- **Lee County RE Enrichment - Fully implemented:**
+  - Tyler Technologies portal at `taxaccess.leecountync.gov`
+  - Uses role-based Playwright locators (`get_by_role`) for form fields
+  - **Direction dropdown handling:** Addresses with N/S/E/W prefix use separate `-DIR-` dropdown
+    - "103 W Harrington Ave" → street_number=103, direction=WEST, street_name=Harrington
+  - Extracts 12-digit parcel ID directly from search results (no click-through needed)
+  - Session-based URLs stored (portal doesn't support direct parcel linking)
+- **Key fixes during implementation:**
+  - Fixed county code from '530' to '520' in config
+  - Changed from `page.content()` to `page.locator('body').inner_text()` for reliable text extraction
+  - Added `wait_for_selector('text=Displaying')` for dynamic result loading
+- **Test results:**
+  - 134 Lee County cases total, 73 with addresses
+  - Successfully tested: 22 Thoroughfare Branch, 103 W Harrington, 5004 Pheasant Cir
+- **Files changed:**
+  - `enrichments/lee_re/config.py` - Fixed county code to '520'
+  - `enrichments/lee_re/scraper.py` - Complete rewrite with direction dropdown support
+  - `enrichments/lee_re/enricher.py` - Pass direction separately to scraper
+
+### Previous Session Changes (Dec 22 - Session 20)
 - **Durham County RE Enrichment:**
   - New `enrichments/durham_re/` module with Playwright browser automation
   - Searches Durham Tax/CAMA portal (`taxcama.dconc.gov`) by address
@@ -566,7 +586,7 @@ npm install && npm run dev -- --port 5174
 ```
 
 ## Next Priorities
-1. Other county RE enrichments (Harnett, Lee, Orange, Chatham)
+1. Other county RE enrichments (Orange, Chatham - remaining 2 counties)
 2. PropWire enrichment (next quicklink)
 3. County Deed enrichment
 
