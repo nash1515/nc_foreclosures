@@ -259,6 +259,20 @@ function CaseDetail() {
                       Zillow
                     </Button>
                   </Tooltip>
+                  {c.wake_re_url && (
+                    <a href={c.wake_re_url} target="_blank" rel="noopener noreferrer">
+                      <Button size="small" icon={<LinkOutlined />}>
+                        Wake RE
+                      </Button>
+                    </a>
+                  )}
+                  {c.durham_re_url && (
+                    <a href={c.durham_re_url} target="_blank" rel="noopener noreferrer">
+                      <Button size="small" icon={<LinkOutlined />}>
+                        Durham RE
+                      </Button>
+                    </a>
+                  )}
                   <Button size="small" icon={<LinkOutlined />} disabled>Propwire</Button>
                   <Button size="small" icon={<FileTextOutlined />} disabled>Deed</Button>
                 </Space>

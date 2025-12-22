@@ -185,10 +185,15 @@ def get_case(case_id):
     user_id = get_current_user_id()
 
     with get_session() as db_session:
-        case = db_session.query(Case).filter_by(id=case_id).first()
+        # Join with enrichments to get URLs
+        result = db_session.query(Case, Enrichment).outerjoin(
+            Enrichment, Case.id == Enrichment.case_id
+        ).filter(Case.id == case_id).first()
 
-        if not case:
+        if not result:
             return jsonify({'error': 'Case not found'}), 404
+
+        case, enrichment = result
 
         # Check if watchlisted
         is_watchlisted = False
@@ -270,7 +275,9 @@ def get_case(case_id):
             'hearings': hearings,
             'upset_bidders': upset_bidders,
             'is_watchlisted': is_watchlisted,
-            'photo_url': None  # Placeholder for future enrichment
+            'photo_url': None,  # Placeholder for future enrichment
+            'wake_re_url': enrichment.wake_re_url if enrichment else None,
+            'durham_re_url': enrichment.durham_re_url if enrichment else None
         })
 
 
@@ -493,7 +500,8 @@ def get_upset_bids():
                 'is_watchlisted': case.id in watchlist_case_ids,
                 'case_url': case.case_url,
                 'our_max_bid': float(case.our_max_bid) if case.our_max_bid else None,
-                'wake_re_url': enrichment.wake_re_url if enrichment else None
+                'wake_re_url': enrichment.wake_re_url if enrichment else None,
+                'durham_re_url': enrichment.durham_re_url if enrichment else None
             })
 
         return jsonify({

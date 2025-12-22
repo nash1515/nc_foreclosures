@@ -296,15 +296,20 @@ function Dashboard() {
               </span>
             </Tooltip>
 
-            <Tooltip title={record.wake_re_url ? "Wake County Property" : "Coming soon"}>
+            <Tooltip title={
+              record.wake_re_url ? "Wake County Property" :
+              record.durham_re_url ? "Durham County Property" :
+              "Coming soon"
+            }>
               <span
                 onClick={(e) => {
                   e.stopPropagation();
-                  if (record.wake_re_url) window.open(record.wake_re_url, '_blank');
+                  const url = record.wake_re_url || record.durham_re_url;
+                  if (url) window.open(url, '_blank');
                 }}
                 style={{
-                  cursor: record.wake_re_url ? 'pointer' : 'not-allowed',
-                  opacity: record.wake_re_url ? 1 : 0.4,
+                  cursor: (record.wake_re_url || record.durham_re_url) ? 'pointer' : 'not-allowed',
+                  opacity: (record.wake_re_url || record.durham_re_url) ? 1 : 0.4,
                   display: 'inline-flex',
                   alignItems: 'center'
                 }}

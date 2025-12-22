@@ -22,6 +22,12 @@ class Enrichment(Base):
     wake_re_enriched_at = Column(TIMESTAMP)
     wake_re_error = Column(Text)
 
+    # Durham County RE
+    durham_re_parcelpk = Column(String(20))
+    durham_re_url = Column(Text)
+    durham_re_enriched_at = Column(TIMESTAMP)
+    durham_re_error = Column(Text)
+
     # Future enrichments
     propwire_url = Column(Text)
     propwire_enriched_at = Column(TIMESTAMP)

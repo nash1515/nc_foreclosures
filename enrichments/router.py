@@ -23,7 +23,7 @@ COUNTY_ENRICHERS = {
 }
 
 # Counties with implemented enrichers
-IMPLEMENTED_COUNTIES = {'910'}  # Only Wake for now
+IMPLEMENTED_COUNTIES = {'910', '310'}  # Wake and Durham
 
 
 def get_county_code(case_id: int) -> str | None:
@@ -72,6 +72,10 @@ def enrich_case(case_id: int) -> dict:
     if county_code == '910':
         from enrichments.wake_re import enrich_case as wake_enrich
         return wake_enrich(case_id)
+
+    if county_code == '310':
+        from enrichments.durham_re import enrich_case as durham_enrich
+        return durham_enrich(case_id)
 
     # This shouldn't happen if IMPLEMENTED_COUNTIES is kept in sync
     return {'success': False, 'error': f'Enricher routing error for county {county_code}'}
