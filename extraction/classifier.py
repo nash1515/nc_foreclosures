@@ -594,6 +594,15 @@ def update_case_classification(case_id: int) -> Optional[str]:
             if case:
                 old_classification = case.classification
                 case.classification = classification
+
+                # Track when case transitions to closed_sold for grace period monitoring
+                if classification == 'closed_sold' and old_classification != 'closed_sold':
+                    case.closed_sold_at = datetime.now()
+                    logger.debug(f"  Case {case_id}: Set closed_sold_at timestamp")
+                elif classification != 'closed_sold' and old_classification == 'closed_sold':
+                    case.closed_sold_at = None
+                    logger.debug(f"  Case {case_id}: Cleared closed_sold_at timestamp")
+
                 session.commit()
 
                 if old_classification != classification:

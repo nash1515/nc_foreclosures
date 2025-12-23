@@ -373,6 +373,72 @@ def run_stale_reclassification(dry_run: bool = False) -> Dict:
         return {'error': str(e)}
 
 
+def run_grace_period_monitoring(dry_run: bool = False) -> Dict:
+    """
+    Monitor recently-closed cases for late upset bids.
+
+    Cases that transitioned to closed_sold within the last 5 days are
+    re-monitored to catch late-filed events like:
+    - Upset Bid Filed (new upset bid)
+    - Report of Sale (someone won previous bid round)
+
+    Args:
+        dry_run: If True, show what would be done
+
+    Returns:
+        Dict with monitoring results
+    """
+    logger.info("=" * 60)
+    logger.info("TASK 7: Grace Period Monitoring")
+    logger.info("=" * 60)
+
+    GRACE_PERIOD_DAYS = 5
+    cutoff = datetime.now() - timedelta(days=GRACE_PERIOD_DAYS)
+
+    with get_session() as session:
+        grace_period_cases = session.query(Case).filter(
+            Case.classification == 'closed_sold',
+            Case.closed_sold_at.isnot(None),
+            Case.closed_sold_at >= cutoff,
+            Case.case_url.isnot(None)
+        ).all()
+
+        # Detach from session for processing
+        session.expunge_all()
+
+    logger.info(f"Cases in {GRACE_PERIOD_DAYS}-day grace period: {len(grace_period_cases)}")
+
+    if dry_run:
+        logger.info("[DRY RUN] Would monitor the following cases:")
+        for case in grace_period_cases:
+            days_ago = (datetime.now() - case.closed_sold_at).days
+            logger.info(f"  {case.case_number} (closed {days_ago} days ago)")
+        return {
+            'dry_run': True,
+            'grace_period_cases': len(grace_period_cases)
+        }
+
+    if len(grace_period_cases) == 0:
+        logger.info("No cases in grace period")
+        return {'cases_checked': 0, 'events_added': 0, 'classifications_changed': 0}
+
+    try:
+        # Use the existing CaseMonitor to re-check these cases
+        monitor = CaseMonitor(max_workers=8, headless=False)
+        results = monitor.run(cases=grace_period_cases, dry_run=False)
+
+        logger.info(f"Grace period monitoring complete:")
+        logger.info(f"  Cases checked: {results.get('cases_checked', 0)}")
+        logger.info(f"  New events found: {results.get('events_added', 0)}")
+        logger.info(f"  Classifications changed: {results.get('classifications_changed', 0)}")
+
+        return results
+
+    except Exception as e:
+        logger.error(f"Grace period monitoring failed: {e}")
+        return {'error': str(e)}
+
+
 def run_daily_tasks(
     target_date: Optional[datetime.date] = None,
     search_new: bool = True,
@@ -426,6 +492,7 @@ def run_daily_tasks(
         'upset_bid_validation': None,
         'stale_reclassification': None,
         'self_diagnosis': None,
+        'grace_period_monitoring': None,
         'errors': []
     }
 
@@ -570,6 +637,21 @@ def run_daily_tasks(
     except Exception as e:
         logger.error(f"Task 6 failed: {e}")
         results['errors'].append(f"ai_analysis_queue: {e}")
+        task_logger.complete_task(task_id, status='failed', error_message=str(e))
+
+    # Task 7: Grace Period Monitoring
+    task_id = task_logger.start_task('grace_period_monitoring')
+    try:
+        results['grace_period_monitoring'] = run_grace_period_monitoring(dry_run)
+        task_logger.complete_task(
+            task_id,
+            items_checked=results['grace_period_monitoring'].get('cases_checked', 0),
+            items_found=results['grace_period_monitoring'].get('events_added', 0),
+            items_processed=results['grace_period_monitoring'].get('classifications_changed', 0)
+        )
+    except Exception as e:
+        logger.error(f"Task 7 failed: {e}")
+        results['errors'].append(f"grace_period_monitoring: {e}")
         task_logger.complete_task(task_id, status='failed', error_message=str(e))
 
     # Summary

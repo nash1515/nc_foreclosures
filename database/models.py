@@ -77,6 +77,9 @@ class Case(Base):
     our_max_bid = Column(DECIMAL(12, 2))
     team_notes = Column(Text)
 
+    # Grace period monitoring
+    closed_sold_at = Column(TIMESTAMP)  # When case transitioned to closed_sold
+
     reviewed_at = Column(TIMESTAMP)
     last_scraped_at = Column(TIMESTAMP)
     created_at = Column(TIMESTAMP, server_default=func.current_timestamp())
