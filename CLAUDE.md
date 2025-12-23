@@ -33,18 +33,43 @@ cd frontend && npm run dev -- --host &
 - Frontend: http://localhost:5173
 - API: http://localhost:5001
 
-## Current Status (Dec 22, 2025)
+## Current Status (Dec 23, 2025)
 
-- **2,156 cases** across 6 counties (Wake, Durham, Harnett, Lee, Orange, Chatham)
-- **Active upset_bid cases:** 42 (18 Wake, 7 Durham, 17 other counties)
+- **2,254 cases** across 6 counties (Wake, Durham, Harnett, Lee, Orange, Chatham)
+- **Active upset_bid cases:** 38 (17 Wake, 7 Durham, 10 Harnett, 2 Orange, 2 Chatham)
 - **Scheduler running** 5 AM Mon-Fri (3-day lookback on Mondays) + **catch-up logic on startup**
 - **Frontend:** React + Flask API (Dashboard, Admin tab for admins, Case Detail with bid ladder)
 - **Review Queue:** Fixed skipped cases filter (7-day lookback), Approve/Reject working
 - **Claude Vision OCR:** Fallback for handwritten bid amounts on Report of Sale/Upset Bid documents
 - **AI Analysis Module:** MERGED to main - comprehensive 4-section analysis
 - **County RE Enrichment:** ALL 6 COUNTIES COMPLETE ✓ (Wake, Durham, Harnett, Lee, Orange, Chatham)
+- **Grace Period Monitoring:** NEW - Monitors closed_sold cases for 5 days to catch late upset bids
 
-### Recent Session Changes (Dec 22 - Session 23)
+### Recent Session Changes (Dec 23 - Session 24)
+- **Grace Period Monitoring for Closed Sold Cases:**
+  - **Root cause:** Case 25SP002519-910 had upset bid filed 12/22 but system missed it - case was already `closed_sold`
+  - **Problem:** Once classified as `closed_sold`, cases were never monitored again
+  - **Solution:** 5-day grace period after classification to catch late-filed events
+  - New `closed_sold_at` timestamp column tracks when cases transition
+  - Task 7 in daily_scrape.py monitors grace period cases with full re-monitor
+  - If new sale events detected, case automatically reclassifies back to `upset_bid`
+- **Written Month Date Format Support:**
+  - **Root cause:** Case 25SP002755-910 (Shield Circle) had no deadline - OCR showed "January 2, 2026" but patterns only handled "1/2/2026"
+  - Added pattern for written month format in UPSET_DEADLINE_PATTERNS
+  - Updated `extract_upset_deadline()` to parse: %B %d, %Y, %B %d %Y, %b %d, %Y, %b %d %Y
+- **Cases fixed:**
+  - 25SP002519-910 (Lake Anne Drive): Added 2 new events, new party (Kay York), reclassified to upset_bid, deadline Jan 2, 2026, bid $475k
+  - 25SP002755-910 (Shield Circle): Set deadline Jan 2, 2026, sale_date 12/22/2025
+- **Files created:**
+  - `migrations/add_closed_sold_at.sql` - Schema migration for grace period tracking
+  - `docs/plans/2025-12-23-grace-period-monitoring-design.md` - Design document
+- **Files changed:**
+  - `database/models.py` - Added `closed_sold_at` column to Case model
+  - `extraction/classifier.py` - Track timestamp on classification changes
+  - `extraction/extractor.py` - Added written month format patterns for deadline extraction
+  - `scraper/daily_scrape.py` - Added Task 7 for grace period monitoring
+
+### Previous Session Changes (Dec 22 - Session 23)
 - **Chatham County RE Enrichment - Fully implemented:**
   - DEVNET wEdge portal at `chathamnc.devnetwedge.com`
   - **Simplest implementation:** HTTP requests + BeautifulSoup (no Playwright needed)
