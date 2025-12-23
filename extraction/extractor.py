@@ -284,6 +284,8 @@ UPSET_DEADLINE_PATTERNS = [
     # Bidirectional: date appears BEFORE "Last Day to Bid" label (clerk stamp format)
     # Matches: "12/29/2025\nLast Day to Bid:"
     r'(\d{1,2}/\d{1,2}/\d{4})[\s\S]{0,30}?Last\s*Day\s*(?:to|for)?\s*Bid',
+    # Written month format: "Last Day for Upset Bid: January 2, 2026" or "Jan 2, 2026"
+    r'Last\s+Day\s+(?:for\s+)?Upset\s+Bid[:\s]+([A-Z][a-z]{2,}\s+\d{1,2},?\s+\d{4})',
 ]
 
 # Sale Date patterns
@@ -485,10 +487,17 @@ def extract_upset_deadline(ocr_text: str) -> Optional[datetime]:
         match = re.search(pattern, ocr_text, re.IGNORECASE)
         if match:
             date_str = match.group(1)
-            try:
-                return datetime.strptime(date_str, '%m/%d/%Y')
-            except ValueError:
-                continue
+            # Try multiple date formats:
+            # - %m/%d/%Y: 1/2/2026
+            # - %B %d, %Y: January 2, 2026
+            # - %B %d %Y: January 2 2026
+            # - %b %d, %Y: Jan 2, 2026
+            # - %b %d %Y: Jan 2 2026
+            for fmt in ['%m/%d/%Y', '%B %d, %Y', '%B %d %Y', '%b %d, %Y', '%b %d %Y']:
+                try:
+                    return datetime.strptime(date_str, fmt)
+                except ValueError:
+                    continue
 
     return None
 
