@@ -509,7 +509,8 @@ def get_upset_bids():
                 'harnett_re_url': enrichment.harnett_re_url if enrichment else None,
                 'lee_re_url': enrichment.lee_re_url if enrichment else None,
                 'orange_re_url': enrichment.orange_re_url if enrichment else None,
-                'chatham_re_url': enrichment.chatham_re_url if enrichment else None
+                'chatham_re_url': enrichment.chatham_re_url if enrichment else None,
+                'deed_url': enrichment.deed_url if enrichment else None
             })
 
         return jsonify({
