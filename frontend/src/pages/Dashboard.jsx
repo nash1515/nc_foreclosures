@@ -290,8 +290,19 @@ function Dashboard() {
               </span>
             </Tooltip>
 
-            <Tooltip title="Deed - Coming soon">
-              <span style={{ cursor: 'not-allowed', opacity: 0.4, display: 'inline-flex', alignItems: 'center' }}>
+            <Tooltip title={record.deed_url ? "View Deed Record" : "Deed - Coming soon"}>
+              <span
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (record.deed_url) window.open(record.deed_url, '_blank');
+                }}
+                style={{
+                  cursor: record.deed_url ? 'pointer' : 'not-allowed',
+                  opacity: record.deed_url ? 1 : 0.4,
+                  display: 'inline-flex',
+                  alignItems: 'center'
+                }}
+              >
                 <FileTextOutlined style={{ fontSize: 16 }} />
               </span>
             </Tooltip>
