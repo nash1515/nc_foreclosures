@@ -215,8 +215,8 @@ Generate a comprehensive JSON analysis with the following structure. Write in cl
     "defendant_name": "<primary defendant name>"
   }},
 
-  "deed_book": "<deed book number if found, or null>",
-  "deed_page": "<deed page number if found, or null>",
+  "deed_book": "<Deed Book number for the property's deed of trust - NOT Book of Maps or Plat Book>",
+  "deed_page": "<Deed Page number corresponding to the Deed Book above>",
 
   "document_contributions": [
     {{"document_name": "<name>", "contributed_to": ["<sections this document informed>"], "key_extractions": ["<brief notes on what was extracted>"]}}
@@ -238,6 +238,13 @@ Generate a comprehensive JSON analysis with the following structure. Write in cl
 
 ## RED FLAGS TO WATCH FOR
 {red_flags_text}
+
+## DEED BOOK vs BOOK OF MAPS/PLAT BOOK
+- **Deed Book**: Records property ownership transfers and deeds of trust (mortgages). This is what we need.
+- **Book of Maps** (Wake County) / **Plat Book** (other counties): Records subdivision plat maps showing lot boundaries. Do NOT extract these.
+- Example Deed reference: "recorded in Deed Book 15704, Page 1495" - EXTRACT THIS
+- Example Plat reference: "as shown on map recorded in Book of Maps 2007, Page 1270" - IGNORE THIS
+- Look for the deed of trust that secures the loan being foreclosed.
 
 ## IMPORTANT NOTES
 1. Write narrative sections in clear, professional prose - not bullet points
