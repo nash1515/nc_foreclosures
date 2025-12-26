@@ -169,6 +169,18 @@ def analyze_case(case_id: int) -> Dict[str, Any]:
             analysis.completed_at = datetime.now()
             analysis.error_message = None
 
+            # Trigger deed enrichment if book/page extracted
+            if analysis.deed_book and analysis.deed_page:
+                try:
+                    from enrichments.deed import enrich_deed
+                    deed_result = enrich_deed(case_id, analysis.deed_book, analysis.deed_page)
+                    if deed_result.get('success'):
+                        logger.info(f"Deed URL generated for case_id={case_id}")
+                    else:
+                        logger.warning(f"Deed enrichment failed for case_id={case_id}: {deed_result.get('error')}")
+                except Exception as e:
+                    logger.error(f"Deed enrichment error for case_id={case_id}: {e}")
+
             session.commit()
 
             logger.info(f"Completed AI analysis for case_id={case_id}, cost={analysis.cost_cents} cents")
