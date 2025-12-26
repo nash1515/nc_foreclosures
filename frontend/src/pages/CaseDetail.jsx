@@ -302,7 +302,15 @@ function CaseDetail() {
                     </a>
                   )}
                   <Button size="small" icon={<LinkOutlined />} disabled>Propwire</Button>
-                  <Button size="small" icon={<FileTextOutlined />} disabled>Deed</Button>
+                  {c.deed_url ? (
+                    <a href={c.deed_url} target="_blank" rel="noopener noreferrer">
+                      <Button size="small" icon={<FileTextOutlined />}>
+                        Deed
+                      </Button>
+                    </a>
+                  ) : (
+                    <Button size="small" icon={<FileTextOutlined />} disabled>Deed</Button>
+                  )}
                 </Space>
               </div>
             </div>
