@@ -206,8 +206,8 @@ REPORT_OF_SALE_BID_PATTERNS = [
     r'for\s+the\s+sum\s+of\s*\$\s*([\d,]+\.?\d*)',
     # Generic "sold for $X" pattern
     r'sold\s+for\s*\$\s*([\d,]+\.?\d*)',
-    # Offer to purchase format (limit search to 200 chars to avoid matching minimum_next_bid)
-    r'offer\s+to\s+purchase[^$]{0,200}\$\s*([\d,]+\.?\d*)',
+    # Offer to purchase format (limit search to 50 chars to avoid matching minimum_next_bid)
+    r'offer\s+to\s+purchase[^$]{0,50}\$\s*([\d,]+\.?\d*)',
 ]
 
 # Date of sale patterns for Report of Sale
@@ -610,8 +610,8 @@ def extract_upset_bid_data(ocr_text: str) -> Dict[str, Any]:
         )
         if min_next_match:
             # Look for a dollar amount after this label
-            # The amount should be within 200 chars (allows for spacing and next label)
-            after_label = ocr_text[min_next_match.end():min_next_match.end()+200]
+            # The amount should be within 50 chars to avoid capturing garbage text
+            after_label = ocr_text[min_next_match.end():min_next_match.end()+50]
             amt_match = re.search(r'\$?\s*(\d[\d,\.\s]+\.\d{2})', after_label)
             if amt_match:
                 min_amt = clean_amount(amt_match.group(1))
@@ -629,8 +629,8 @@ def extract_upset_bid_data(ocr_text: str) -> Dict[str, Any]:
             ocr_text, re.IGNORECASE
         )
         if deposit_next_match:
-            # Look for ALL dollar amounts after this label (within next line)
-            after_label = ocr_text[deposit_next_match.end():deposit_next_match.end()+200]
+            # Look for ALL dollar amounts after this label (within next line, tightened to 100 chars)
+            after_label = ocr_text[deposit_next_match.end():deposit_next_match.end()+100]
             amt_matches = list(re.finditer(r'\$?\s*(\d[\d,\.\s]+\.\d{2})', after_label))
             # The deposit is the LAST (rightmost) amount in the columnar row
             if amt_matches:
@@ -907,9 +907,9 @@ def extract_report_of_sale_data(ocr_text: str) -> Dict[str, Any]:
     # Fallback: If no direct bid amount found, try to extract "Minimum Amount of Next Upset Bid"
     # and back-calculate the current bid (current_bid = minimum_next_bid / 1.05)
     if result['initial_bid'] is None:
-        # Allow 200 chars for whitespace - AOC forms have heavy right-alignment (105+ chars common)
+        # Allow 50 chars for whitespace - Tighten proximity window to avoid garbage text
         # Handle OCR typos: "Upsat" instead of "Upset"
-        minimum_next_pattern = r'Minimum\s+Amount.*?(?:of\s+)?Next\s+Ups[ae]t\s+Bid[\s\S]{0,200}?\$?\s*(\d[\d,\.\s]+\.\d{2})'
+        minimum_next_pattern = r'Minimum\s+Amount.*?(?:of\s+)?Next\s+Ups[ae]t\s+Bid[\s\S]{0,50}?\$?\s*(\d[\d,\.\s]+\.\d{2})'
         match = re.search(minimum_next_pattern, ocr_text, re.IGNORECASE | re.DOTALL)
         if match:
             minimum_next_bid = clean_amount(match.group(1))
@@ -1307,6 +1307,16 @@ def extract_all_from_case(case_id: int) -> Dict[str, Any]:
         if result['property_address']:
             result['address_quality'] = 0  # Event descriptions are high quality
 
+    # PRIORITY 1: Event descriptions are the authoritative source for bid amounts
+    # Check event descriptions BEFORE OCR extraction to prevent garbage OCR from being used
+    # Event descriptions come directly from the court portal as structured data, while OCR
+    # can produce wildly incorrect values from garbled text (e.g., phone numbers
+    # or malformed amounts like "M94 512 26.90" becoming $9,451,226.90)
+    event_bid = _find_bid_in_event_descriptions(case_id)
+    if event_bid:
+        result['current_bid_amount'] = event_bid
+        logger.debug(f"  Using authoritative event bid: ${event_bid}")
+
     # For property_address: search ALL documents in priority order
     with get_session() as session:
         documents = session.query(Document).filter_by(case_id=case_id).all()
@@ -1317,40 +1327,28 @@ def extract_all_from_case(case_id: int) -> Dict[str, Any]:
             result['address_quality'] = quality
 
         # For other fields: use first non-null value from any document
+        # SKIP current_bid_amount if event bid already found (event bid is authoritative)
         for doc in documents:
             if not doc.ocr_text:
                 continue
 
             doc_data = extract_from_document(doc.ocr_text)
 
-            # Merge data, preferring non-null values (skip property_address - handled above)
+            # Merge data, preferring non-null values
             for key, value in doc_data.items():
                 if key == 'property_address':
-                    continue  # Already handled with priority search
+                    continue  # Already handled with priority search above
+                if key == 'current_bid_amount' and event_bid:
+                    # Cross-validate OCR bid against authoritative event bid
+                    if value and abs(value - event_bid) > event_bid * Decimal('0.1'):
+                        logger.warning(f"  OCR bid discrepancy for case {case_id}: OCR=${value}, Event=${event_bid} (>10% diff). Using event bid.")
+                    continue  # Skip OCR bid - event bid already set
                 if value is not None and result[key] is None:
                     result[key] = value
 
     # Fallback: check event descriptions for addresses (for non-special-proceeding cases)
     if not result['property_address']:
         result['property_address'] = _find_address_in_event_descriptions(case_id)
-
-    # PRIORITY: Event descriptions are the authoritative source for bid amounts
-    # They come directly from the court portal as structured data, while OCR
-    # can produce wildly incorrect values from garbled text (e.g., phone numbers
-    # or malformed amounts like "M94 512 26.90" becoming $9,451,226.90)
-    event_bid = _find_bid_in_event_descriptions(case_id)
-    if event_bid:
-        # Always use event bid when available - it's authoritative
-        # Only use OCR bid if no event description contains bid info
-        if result['current_bid_amount'] is None:
-            result['current_bid_amount'] = event_bid
-        else:
-            # Event bid exists AND OCR bid exists - prefer event bid
-            # Log if there's a significant discrepancy for debugging
-            ocr_bid = result['current_bid_amount']
-            if abs(ocr_bid - event_bid) > Decimal('100'):
-                logger.info(f"  Bid discrepancy for case {case_id}: OCR={ocr_bid}, Event={event_bid}. Using event bid.")
-            result['current_bid_amount'] = event_bid
 
     # Final fallback: Use Claude Vision OCR for Report of Sale / Upset Bid documents
     # This handles cases where Tesseract fails to read handwritten bid amounts
