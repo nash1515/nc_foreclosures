@@ -14,8 +14,9 @@ import { fetchAnalysis } from '../api/analysis';
 import { useAutoSave } from '../hooks/useAutoSave';
 import NotesCard from '../components/NotesCard';
 import AIAnalysisSection from '../components/AIAnalysisSection';
-import { formatZillowUrl } from '../utils/urlHelpers';
+import { formatZillowUrl, formatGoogleMapsUrl } from '../utils/urlHelpers';
 import { ZillowIcon } from '../assets/ZillowIcon';
+import { GoogleMapsIcon } from '../assets/GoogleMapsIcon';
 import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
@@ -257,6 +258,16 @@ function CaseDetail() {
                       onClick={() => c.property_address && window.open(formatZillowUrl(c.property_address), '_blank')}
                     >
                       Zillow
+                    </Button>
+                  </Tooltip>
+                  <Tooltip title={c.property_address ? "View on Google Maps" : "No address available"}>
+                    <Button
+                      size="small"
+                      icon={<GoogleMapsIcon size={14} style={{ opacity: c.property_address ? 1 : 0.4 }} />}
+                      disabled={!c.property_address}
+                      onClick={() => c.property_address && window.open(formatGoogleMapsUrl(c.property_address), '_blank')}
+                    >
+                      Maps
                     </Button>
                   </Tooltip>
                   {c.wake_re_url && (

@@ -10,10 +10,11 @@ import {
   StarOutlined, StarFilled, FileTextOutlined
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { formatZillowUrl } from '../utils/urlHelpers';
+import { formatZillowUrl, formatGoogleMapsUrl } from '../utils/urlHelpers';
 import { ZillowIcon } from '../assets/ZillowIcon';
 import { PropWireIcon } from '../assets/PropWireIcon';
 import { GavelIcon } from '../assets/GavelIcon';
+import { GoogleMapsIcon } from '../assets/GoogleMapsIcon';
 
 const { Title, Text } = Typography;
 
@@ -281,6 +282,23 @@ function Dashboard() {
                 }}
               >
                 <ZillowIcon size={16} />
+              </span>
+            </Tooltip>
+
+            <Tooltip title={hasAddress ? "View on Google Maps" : "No address available"}>
+              <span
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (hasAddress) window.open(formatGoogleMapsUrl(record.property_address), '_blank');
+                }}
+                style={{
+                  cursor: hasAddress ? 'pointer' : 'not-allowed',
+                  opacity: hasAddress ? 1 : 0.4,
+                  display: 'inline-flex',
+                  alignItems: 'center'
+                }}
+              >
+                <GoogleMapsIcon size={16} />
               </span>
             </Tooltip>
 

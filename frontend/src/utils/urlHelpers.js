@@ -8,3 +8,9 @@ export const formatZillowUrl = (address) => {
 
   return `https://www.zillow.com/homes/${encoded}_rb/`;
 };
+
+export const formatGoogleMapsUrl = (address) => {
+  if (!address) return null;
+  const encoded = encodeURIComponent(address);
+  return `https://www.google.com/maps/search/?api=1&query=${encoded}`;
+};
