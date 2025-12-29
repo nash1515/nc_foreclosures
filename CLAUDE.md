@@ -33,19 +33,51 @@ cd frontend && npm run dev -- --host &
 - Frontend: http://localhost:5173
 - API: http://localhost:5001
 
-## Current Status (Dec 23, 2025)
+## Current Status (Dec 29, 2025)
 
 - **2,254 cases** across 6 counties (Wake, Durham, Harnett, Lee, Orange, Chatham)
-- **Active upset_bid cases:** 38 (17 Wake, 7 Durham, 10 Harnett, 2 Orange, 2 Chatham)
+- **Active upset_bid cases:** 39
 - **Scheduler running** 5 AM Mon-Fri (3-day lookback on Mondays) + **catch-up logic on startup**
 - **Frontend:** React + Flask API (Dashboard, Admin tab for admins, Case Detail with bid ladder)
 - **Review Queue:** Fixed skipped cases filter (7-day lookback), Approve/Reject working
 - **Claude Vision OCR:** Fallback for handwritten bid amounts on Report of Sale/Upset Bid documents
 - **AI Analysis Module:** MERGED to main - comprehensive 4-section analysis
 - **County RE Enrichment:** ALL 6 COUNTIES COMPLETE ✓ (Wake, Durham, Harnett, Lee, Orange, Chatham)
-- **Grace Period Monitoring:** NEW - Monitors closed_sold cases for 5 days to catch late upset bids
+- **Deed Enrichment:** NEW - 35/39 upset_bid cases have deed URLs (90% extraction rate)
+- **Grace Period Monitoring:** Monitors closed_sold cases for 5 days to catch late upset bids
 
-### Recent Session Changes (Dec 23 - Session 24)
+### Recent Session Changes (Dec 29 - Session 25)
+- **Deed Enrichment Feature - MERGED to main:**
+  - AI extracts Deed Book/Page from documents during analysis
+  - County deed URL builders generate direct links to NC Register of Deeds
+  - Supported counties: Wake, Durham, Orange, Chatham, Harnett, Lee, Johnston, Mecklenburg, Guilford
+  - **90% success rate**: 35/39 upset_bid cases have deed URLs
+- **Smart Document Filtering for AI Analysis:**
+  - **Root cause:** Cases with 300+ docs exceeded Claude's 200K token limit
+  - Case 25SP000393-420 (309 docs) and 25SP000628-310 (324 docs) were failing
+  - **Solution:** Priority-based document selection with 150K token budget
+  - Document priority tiers: Notice of Hearing/Deed of Trust (1) > Report of Sale/Upset Bid (2) > Affidavits (3) > Checks/Receipts (4)
+  - Content hash deduplication removes duplicate documents
+  - Both previously-failing cases now extract correctly
+- **Root Cause Analysis for Missing Deed Data (4 cases):**
+  - 25SP001154-910: HOA foreclosure - no deed of trust exists (correct behavior)
+  - 25SP000193-310: OCR corruption - page "271" read as "2712016011181"
+  - 25SP000213-420: Estate sale with multiple tracts - conflicting deed books
+  - 25SP002123-910: Handwritten fields not OCR'd
+- **Files created:**
+  - `enrichments/deed/` (NEW) - router.py, url_builders.py, __init__.py
+  - `scripts/backfill_deed_urls.py` - Backfill script for existing cases
+  - `docs/plans/2025-12-26-deed-enrichment-design.md` - Design document
+  - `docs/plans/2025-12-26-deed-enrichment-implementation.md` - Implementation plan
+  - `docs/plans/2025-12-26-smart-document-filtering-design.md` - Token limit fix design
+- **Files changed:**
+  - `analysis/prompt_builder.py` - Smart document filtering + deed extraction prompt
+  - `analysis/analyzer.py` - Deed enrichment trigger + session handling fix
+  - `frontend/src/pages/Dashboard.jsx` - Deed link in Links column
+  - `frontend/src/pages/CaseDetail.jsx` - Deed button in Quick Links
+  - `web_app/api/cases.py` - Return deed_url in API responses
+
+### Previous Session Changes (Dec 23 - Session 24)
 - **Grace Period Monitoring for Closed Sold Cases:**
   - **Root cause:** Case 25SP002519-910 had upset bid filed 12/22 but system missed it - case was already `closed_sold`
   - **Problem:** Once classified as `closed_sold`, cases were never monitored again
