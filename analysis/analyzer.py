@@ -169,11 +169,21 @@ def analyze_case(case_id: int) -> Dict[str, Any]:
             analysis.completed_at = datetime.now()
             analysis.error_message = None
 
-            # Trigger deed enrichment if book/page extracted
-            if analysis.deed_book and analysis.deed_page:
+            # Capture values before commit (session closes after enrich_deed)
+            cost_cents = analysis.cost_cents
+            deed_book = analysis.deed_book
+            deed_page = analysis.deed_page
+            discrepancy_count = len(discrepancies)
+
+            session.commit()
+
+            logger.info(f"Completed AI analysis for case_id={case_id}, cost={cost_cents} cents")
+
+            # Trigger deed enrichment if book/page extracted (after commit to avoid session conflicts)
+            if deed_book and deed_page:
                 try:
                     from enrichments.deed import enrich_deed
-                    deed_result = enrich_deed(case_id, analysis.deed_book, analysis.deed_page)
+                    deed_result = enrich_deed(case_id, deed_book, deed_page)
                     if deed_result.get('success'):
                         logger.info(f"Deed URL generated for case_id={case_id}")
                     else:
@@ -181,15 +191,11 @@ def analyze_case(case_id: int) -> Dict[str, Any]:
                 except Exception as e:
                     logger.error(f"Deed enrichment error for case_id={case_id}: {e}")
 
-            session.commit()
-
-            logger.info(f"Completed AI analysis for case_id={case_id}, cost={analysis.cost_cents} cents")
-
             return {
                 'status': 'completed',
                 'case_id': case_id,
-                'cost_cents': analysis.cost_cents,
-                'discrepancies_found': len(discrepancies)
+                'cost_cents': cost_cents,
+                'discrepancies_found': discrepancy_count
             }
 
         except Exception as e:
