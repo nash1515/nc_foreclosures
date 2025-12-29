@@ -46,7 +46,22 @@ cd frontend && npm run dev -- --host &
 - **Deed Enrichment:** NEW - 35/39 upset_bid cases have deed URLs (90% extraction rate)
 - **Grace Period Monitoring:** Monitors closed_sold cases for 5 days to catch late upset bids
 
-### Recent Session Changes (Dec 29 - Session 25)
+### Recent Session Changes (Dec 29 - Session 26)
+- **OCR Bid Extraction Bug Fix (Case 24SP001996-910):**
+  - **Root cause:** Dashboard showed $9,451,227 instead of correct $314,665
+  - OCR extracted phone number "M94 512 26.90" from fax cover sheet as bid
+  - Pattern `[\s\S]{0,200}?` allowed matching text 200 chars from label
+  - Spaces removed → "9451226.90" treated as minimum_next_bid
+  - **Fixes implemented:**
+    - Tightened regex proximity windows from 200→50 chars
+    - Event descriptions now checked FIRST (authoritative source)
+    - Added cross-validation: warn if OCR differs >10% from event bid
+    - Event bid always takes precedence over OCR extraction
+  - **Data fix:** Corrected case 24SP001996-910: current_bid=$299,680.58, min_next=$314,664.61
+- **Files changed:**
+  - `extraction/extractor.py` - Pattern proximity fixes + event-first bid extraction
+
+### Previous Session Changes (Dec 29 - Session 25)
 - **Deed Enrichment Feature - MERGED to main:**
   - AI extracts Deed Book/Page from documents during analysis
   - County deed URL builders generate direct links to NC Register of Deeds
