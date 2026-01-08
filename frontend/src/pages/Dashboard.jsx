@@ -18,6 +18,20 @@ import { GoogleMapsIcon } from '../assets/GoogleMapsIcon';
 
 const { Title, Text } = Typography;
 
+// Helper function to get county deed search URL based on case number suffix
+const getCountyDeedSearchUrl = (caseNumber) => {
+  const suffix = caseNumber?.slice(-3);
+  const searchUrls = {
+    '910': 'https://rodrecords.wake.gov/web/web/integration/search',
+    '310': 'https://rodweb.dconc.gov/web/search/DOCSEARCH5S1',
+    '420': 'https://us6.courthousecomputersystems.com/HarnettNC/',
+    '520': 'https://ustaxdata.com/nc/lee/',
+    '670': 'https://rod.orangecountync.gov/',
+    '180': 'https://www.chathamnc.org/government/departments-programs-i-z/register-of-deeds',
+  };
+  return searchUrls[suffix] || null;
+};
+
 // Color scheme for urgency levels
 const urgencyColors = {
   expired: { bg: '#fff1f0', border: '#ffa39e', text: '#cf1322', tag: 'error' },
@@ -209,6 +223,25 @@ function Dashboard() {
       )
     },
     {
+      title: 'Type',
+      key: 'type',
+      width: 80,
+      align: 'center',
+      render: (_, record) => {
+        const typeConfig = {
+          'Mortgage': { label: 'MTG', color: 'default' },
+          'HOA': { label: 'HOA', color: 'orange' },
+          'Estate': { label: 'EST', color: 'purple' }
+        };
+        const config = typeConfig[record.foreclosure_type] || typeConfig['Mortgage'];
+        return (
+          <Tag color={config.color}>
+            {config.label}
+          </Tag>
+        );
+      }
+    },
+    {
       title: 'Property Address',
       dataIndex: 'property_address',
       key: 'property',
@@ -223,12 +256,40 @@ function Dashboard() {
       title: 'Max Bid',
       key: 'max_bid',
       align: 'right',
-      width: 120,
+      width: 100,
       render: (_, record) => (
         <Text strong style={{ color: record.our_max_bid ? '#52c41a' : '#8c8c8c' }}>
           {record.our_max_bid ? formatCurrency(record.our_max_bid) : '-'}
         </Text>
       )
+    },
+    {
+      title: 'Est. Sale',
+      key: 'estimated_sale_price',
+      align: 'right',
+      width: 100,
+      render: (_, record) => (
+        <Text style={{ color: record.estimated_sale_price ? '#1890ff' : '#8c8c8c' }}>
+          {record.estimated_sale_price ? formatCurrency(record.estimated_sale_price) : '-'}
+        </Text>
+      )
+    },
+    {
+      title: 'Est. Profit',
+      key: 'estimated_profit',
+      align: 'right',
+      width: 100,
+      render: (_, record) => {
+        if (!record.estimated_profit && record.estimated_profit !== 0) {
+          return <Text style={{ color: '#8c8c8c' }}>-</Text>;
+        }
+        const isPositive = record.estimated_profit >= 0;
+        return (
+          <Text strong style={{ color: isPositive ? '#52c41a' : '#ff4d4f' }}>
+            {isPositive ? '+' : ''}{formatCurrency(record.estimated_profit)}
+          </Text>
+        );
+      }
     },
     {
       title: 'Min Next Bid',
@@ -308,15 +369,16 @@ function Dashboard() {
               </span>
             </Tooltip>
 
-            <Tooltip title={record.deed_url ? "View Deed Record" : "Deed - Coming soon"}>
+            <Tooltip title={record.deed_url ? "View Deed Record" : "Search County Deeds"}>
               <span
                 onClick={(e) => {
                   e.stopPropagation();
-                  if (record.deed_url) window.open(record.deed_url, '_blank');
+                  const deedUrl = record.deed_url || getCountyDeedSearchUrl(record.case_number);
+                  if (deedUrl) window.open(deedUrl, '_blank');
                 }}
                 style={{
-                  cursor: record.deed_url ? 'pointer' : 'not-allowed',
-                  opacity: record.deed_url ? 1 : 0.4,
+                  cursor: 'pointer',
+                  opacity: 1,
                   display: 'inline-flex',
                   alignItems: 'center'
                 }}

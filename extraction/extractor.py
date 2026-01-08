@@ -59,6 +59,8 @@ ADDRESS_PATTERNS = [
     (r'real\s+property\s+located\s+at[:\s]+([0-9]+[^,]+,\s*[A-Za-z\s]+,\s*(?:NC|North\s+Carolina)\s*\d{5})', 'located_at'),
     # Pattern 4: "property secured by" (from mortgage documents)
     (r'property\s+secured\s+by[:\s]+([0-9]+[^,]+,\s*[A-Za-z\s]+,\s*(?:NC|North\s+Carolina)\s*\d{5})', 'secured_by'),
+    # Pattern 4b: "for real property described as" (Report of Private Sale / estate sales)
+    (r'for\s+real\s+property\s+described\s+as\s+([0-9]+[^,\n]+,\s*[A-Za-z\s]+,?\s*(?:NC|North\s+Carolina)\s*\d{5})', 'real_property_described'),
 
     # HIGH PRIORITY: Standard foreclosure document headers
     # Pattern 5: After "ADDRESS/LOCATION OF PROPERTY" header
@@ -208,6 +210,8 @@ REPORT_OF_SALE_BID_PATTERNS = [
     r'sold\s+for\s*\$\s*([\d,]+\.?\d*)',
     # Offer to purchase format (limit search to 50 chars to avoid matching minimum_next_bid)
     r'offer\s+to\s+purchase[^$]{0,50}\$\s*([\d,]+\.?\d*)',
+    # Report of Private Sale (estate sales): "The total purchase price is $X"
+    r'[Tt]he\s+total\s+purchase\s+price\s+is\s*\$\s*([\d,]+\.?\d*)',
 ]
 
 # Date of sale patterns for Report of Sale
@@ -262,6 +266,10 @@ MINIMUM_NEXT_UPSET_PATTERNS = [
     # Handle OCR typos: "Am junt" = "Amount", "Bat" = "Bid", "Upsat" = "Upset"
     r'[*\"]?[Mm]inimum\s*[Aa]m[ou\s]*[nrt]*\s*(?:[Oo]f)?\s*[Nn]ext\s*[Uu]ps[ae]t[!\s]*[Bb][adit]*[\s\S]{1,100}?' + DOLLAR_AMOUNT,
     r'Next\s*(?:Minimum)?\s*[Uu]ps[ae]t\s*B[id]*[\s\S]{1,50}?' + DOLLAR_AMOUNT,
+    # Report of Private Sale (estate sales): "Next upset bid amount: $X"
+    r'[Nn]ext\s+upset\s+bid\s+amount[:\s]*\$\s*([\d,]+\.?\d*)',
+    # Commissioner Sale / Partition format: "Upset Bid Amt. Required $ 136,500.00"
+    r'[Uu]pset\s+[Bb]id\s+[Aa]mt\.?\s+[Rr]equired\s*\$\s*([\d,]+\.?\d*)',
 ]
 
 # Deposit required for next upset bid
@@ -286,6 +294,10 @@ UPSET_DEADLINE_PATTERNS = [
     r'(\d{1,2}/\d{1,2}/\d{4})[\s\S]{0,30}?Last\s*Day\s*(?:to|for)?\s*Bid',
     # Written month format: "Last Day for Upset Bid: January 2, 2026" or "Jan 2, 2026"
     r'Last\s+Day\s+(?:for\s+)?Upset\s+Bid[:\s]+([A-Z][a-z]{2,}\s+\d{1,2},?\s+\d{4})',
+    # Report of Private Sale (estate sales): "Last Date for upset bids: January 15, 2026"
+    r'Last\s+Date\s+for\s+upset\s+bids[:\s]+([A-Z][a-z]{2,}\s+\d{1,2},?\s+\d{4})',
+    # Commissioner Sale / Partition format: "Last Day for Upset Bid 1/8/2026" (no colon)
+    r'Last\s+Day\s+for\s+Upset\s+Bid\s+(\d{1,2}/\d{1,2}/\d{4})',
 ]
 
 # Sale Date patterns

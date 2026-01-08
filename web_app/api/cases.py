@@ -269,6 +269,8 @@ def get_case(case_id):
             'our_initial_bid': float(case.our_initial_bid) if case.our_initial_bid else None,
             'our_second_bid': float(case.our_second_bid) if case.our_second_bid else None,
             'our_max_bid': float(case.our_max_bid) if case.our_max_bid else None,
+            'estimated_sale_price': float(case.estimated_sale_price) if case.estimated_sale_price else None,
+            'estimated_profit': float(case.estimated_sale_price - case.our_max_bid) if case.estimated_sale_price and case.our_max_bid else None,
             'team_notes': case.team_notes,
             'parties': parties,
             'events': events,
@@ -490,6 +492,13 @@ def get_upset_bids():
                 elif delta <= 5:
                     urgency = 'warning'   # 3-5 days
 
+            # Determine foreclosure type
+            foreclosure_type = 'Mortgage'  # Default
+            if case.style and 'HOA' in case.style.upper():
+                foreclosure_type = 'HOA'
+            elif case.case_type == 'Special Proceeding' and (not case.style or 'Foreclosure' not in case.style):
+                foreclosure_type = 'Estate'
+
             result.append({
                 'id': case.id,
                 'case_number': case.case_number,
@@ -505,6 +514,9 @@ def get_upset_bids():
                 'is_watchlisted': case.id in watchlist_case_ids,
                 'case_url': case.case_url,
                 'our_max_bid': float(case.our_max_bid) if case.our_max_bid else None,
+                'estimated_sale_price': float(case.estimated_sale_price) if case.estimated_sale_price else None,
+                'estimated_profit': float(case.estimated_sale_price - case.our_max_bid) if case.estimated_sale_price and case.our_max_bid else None,
+                'foreclosure_type': foreclosure_type,
                 'wake_re_url': enrichment.wake_re_url if enrichment else None,
                 'durham_re_url': enrichment.durham_re_url if enrichment else None,
                 'harnett_re_url': enrichment.harnett_re_url if enrichment else None,
@@ -530,6 +542,7 @@ def update_case(case_id):
         "our_initial_bid": 50000,
         "our_second_bid": 55000,
         "our_max_bid": 60000,
+        "estimated_sale_price": 150000,
         "team_notes": "Property looks good. Needs roof work (~15k)."
     }
     """
@@ -542,6 +555,7 @@ def update_case(case_id):
     our_initial_bid = data.get('our_initial_bid')
     our_second_bid = data.get('our_second_bid')
     our_max_bid = data.get('our_max_bid')
+    estimated_sale_price = data.get('estimated_sale_price')
     team_notes = data.get('team_notes')
 
     with get_session() as db_session:
@@ -569,15 +583,24 @@ def update_case(case_id):
             case.our_second_bid = our_second_bid
         if our_max_bid is not None:
             case.our_max_bid = our_max_bid
+        if estimated_sale_price is not None:
+            case.estimated_sale_price = estimated_sale_price
         if team_notes is not None:
             case.team_notes = team_notes
 
         # Return only the updated collaboration fields
         # (Avoids lazy-loading relationships which causes session issues)
+        # Calculate estimated_profit for response
+        est_profit = None
+        if case.estimated_sale_price and case.our_max_bid:
+            est_profit = float(case.estimated_sale_price - case.our_max_bid)
+
         return jsonify({
             'id': case.id,
             'our_initial_bid': float(case.our_initial_bid) if case.our_initial_bid else None,
             'our_second_bid': float(case.our_second_bid) if case.our_second_bid else None,
             'our_max_bid': float(case.our_max_bid) if case.our_max_bid else None,
+            'estimated_sale_price': float(case.estimated_sale_price) if case.estimated_sale_price else None,
+            'estimated_profit': est_profit,
             'team_notes': case.team_notes
         })
