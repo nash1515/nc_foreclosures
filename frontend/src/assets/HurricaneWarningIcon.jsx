@@ -5,7 +5,7 @@ import React from 'react';
  * Maritime signal flag - red with black square center, wind-blown appearance
  * Official hurricane warning flag as per NOAA standards
  */
-const HurricaneWarningIcon = ({ size = 16, style = {} }) => {
+export const HurricaneWarningIcon = ({ size = 16, style = {} }) => {
   return (
     <svg
       width={size}
@@ -85,5 +85,3 @@ const HurricaneWarningIcon = ({ size = 16, style = {} }) => {
     </svg>
   );
 };
-
-export default HurricaneWarningIcon;
