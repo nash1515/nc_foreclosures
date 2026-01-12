@@ -575,7 +575,7 @@ def update_case(case_id):
                 second = our_second_bid if our_second_bid is not None else case.our_second_bid
                 max_bid = our_max_bid if our_max_bid is not None else case.our_max_bid
 
-                if not all([est_price, initial, second, max_bid]):
+                if any(x is None for x in [est_price, initial, second, max_bid]):
                     return jsonify({
                         'error': 'Complete Est. Sale Price and Bid Ladder before marking interested'
                     }), 400
