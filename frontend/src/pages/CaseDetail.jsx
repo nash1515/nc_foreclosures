@@ -40,6 +40,7 @@ function CaseDetail() {
   const [ourInitialBid, setOurInitialBid] = useState(null);
   const [ourSecondBid, setOurSecondBid] = useState(null);
   const [ourMaxBid, setOurMaxBid] = useState(null);
+  const [estimatedSalePrice, setEstimatedSalePrice] = useState(null);
   const [bidValidationError, setBidValidationError] = useState(null);
 
   // Team notes state
@@ -47,6 +48,11 @@ function CaseDetail() {
 
   // Analysis state
   const [analysis, setAnalysis] = useState(null);
+
+  // Interest status state
+  const [interestStatus, setInterestStatus] = useState(null);
+  const [interestError, setInterestError] = useState(null);
+  const [interestSaving, setInterestSaving] = useState(false);
 
   useEffect(() => {
     async function loadCase() {
@@ -59,9 +65,13 @@ function CaseDetail() {
         setOurInitialBid(data.our_initial_bid);
         setOurSecondBid(data.our_second_bid);
         setOurMaxBid(data.our_max_bid);
+        setEstimatedSalePrice(data.estimated_sale_price);
 
         // Initialize team notes
         setTeamNotes(data.team_notes || '');
+
+        // Initialize interest status
+        setInterestStatus(data.interest_status || null);
 
         // Fetch analysis data if case is upset_bid
         if (data.classification === 'upset_bid') {
@@ -150,15 +160,21 @@ function CaseDetail() {
     (value) => handleBidSave({ our_max_bid: value }),
     ourMaxBid
   );
+  const { saveState: estimatedSalePriceSaveState } = useAutoSave(
+    (value) => handleBidSave({ estimated_sale_price: value }),
+    estimatedSalePrice
+  );
 
   // Unified save state for the card (show if any field is saving/saved)
   const bidCardSaveState = initialBidSaveState === 'saving' ||
                            secondBidSaveState === 'saving' ||
-                           maxBidSaveState === 'saving'
+                           maxBidSaveState === 'saving' ||
+                           estimatedSalePriceSaveState === 'saving'
                            ? 'saving'
                            : initialBidSaveState === 'saved' ||
                              secondBidSaveState === 'saved' ||
-                             maxBidSaveState === 'saved'
+                             maxBidSaveState === 'saved' ||
+                             estimatedSalePriceSaveState === 'saved'
                            ? 'saved'
                            : 'idle';
 
@@ -172,6 +188,37 @@ function CaseDetail() {
       throw err;
     }
   }, [id]);
+
+  // Handle interest status change
+  const handleInterestChange = async (newStatus) => {
+    setInterestError(null);
+
+    // If clicking the same status, clear it (toggle off)
+    const statusToSet = newStatus === interestStatus ? '' : newStatus;
+
+    setInterestSaving(true);
+    try {
+      const response = await fetch(`/api/cases/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ interest_status: statusToSet })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setInterestError(data.error || 'Failed to update');
+        return;
+      }
+
+      setInterestStatus(data.interest_status || null);
+    } catch (err) {
+      setInterestError('Network error');
+    } finally {
+      setInterestSaving(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -373,20 +420,36 @@ function CaseDetail() {
                   </div>
                 </div>
               </Col>
-              {/* Column 2: Sale Date & Deadline */}
+              {/* Column 2: Estimated Sale Price & Profit */}
               <Col xs={8}>
-                <div style={{ marginBottom: 12 }}>
-                  <Text type="secondary" style={{ fontSize: 11 }}>Sale Date</Text>
-                  <div>
-                    <Text strong>{c.sale_date ? dayjs(c.sale_date).format('MMM D, YYYY') : '-'}</Text>
-                  </div>
+                <div style={{ marginBottom: 8 }}>
+                  <Text type="secondary" style={{ fontSize: 11 }}>Est. Sale Price</Text>
+                  <InputNumber
+                    value={estimatedSalePrice}
+                    onChange={setEstimatedSalePrice}
+                    formatter={value => `$${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+                    parser={value => value.replace(/\$\s?|(,*)/g, '')}
+                    style={{ width: '100%' }}
+                    size="small"
+                    min={0}
+                    step={1000}
+                    placeholder="Est. Sale Price"
+                  />
                 </div>
                 <div>
-                  <Text type="secondary" style={{ fontSize: 11 }}>Bid Deadline</Text>
+                  <Text type="secondary" style={{ fontSize: 11 }}>Est. Profit</Text>
                   <div>
-                    <Text strong style={{ color: daysUntilDeadline !== null && daysUntilDeadline <= 3 ? '#ff4d4f' : undefined }}>
-                      {c.next_bid_deadline ? dayjs(c.next_bid_deadline).format('MMM D h:mm A') : '-'}
-                    </Text>
+                    {estimatedSalePrice && ourMaxBid ? (
+                      <Text strong style={{
+                        fontSize: 16,
+                        color: (estimatedSalePrice - ourMaxBid) >= 0 ? '#52c41a' : '#ff4d4f'
+                      }}>
+                        {(estimatedSalePrice - ourMaxBid) >= 0 ? '+' : ''}
+                        ${(estimatedSalePrice - ourMaxBid).toLocaleString()}
+                      </Text>
+                    ) : (
+                      <Text type="secondary">-</Text>
+                    )}
                   </div>
                 </div>
               </Col>
@@ -467,6 +530,39 @@ function CaseDetail() {
           />
         </div>
       )}
+
+      {/* Analysis Decision */}
+      <Card title="Analysis Decision" style={{ marginBottom: 16 }}>
+        <div style={{ textAlign: 'center' }}>
+          <Space size="middle">
+            <Text strong>Interested?</Text>
+            <Button
+              type={interestStatus === 'interested' ? 'primary' : 'default'}
+              style={interestStatus === 'interested' ? {
+                backgroundColor: '#52c41a',
+                borderColor: '#52c41a'
+              } : {}}
+              onClick={() => handleInterestChange('interested')}
+              loading={interestSaving}
+            >
+              Yes
+            </Button>
+            <Button
+              type={interestStatus === 'not_interested' ? 'primary' : 'default'}
+              danger={interestStatus === 'not_interested'}
+              onClick={() => handleInterestChange('not_interested')}
+              loading={interestSaving}
+            >
+              No
+            </Button>
+          </Space>
+          {interestError && (
+            <div style={{ marginTop: 12 }}>
+              <Text type="danger">{interestError}</Text>
+            </div>
+          )}
+        </div>
+      </Card>
 
       {/* Row 2: Parties, Contacts, Events */}
       <Row gutter={16}>
