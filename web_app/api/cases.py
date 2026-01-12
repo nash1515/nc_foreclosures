@@ -557,12 +557,37 @@ def update_case(case_id):
     our_max_bid = data.get('our_max_bid')
     estimated_sale_price = data.get('estimated_sale_price')
     team_notes = data.get('team_notes')
+    interest_status = data.get('interest_status')
 
     with get_session() as db_session:
         # Fetch case first to get current values
         case = db_session.query(Case).filter_by(id=case_id).first()
         if not case:
             return jsonify({'error': 'Case not found'}), 404
+
+        # Validate interest_status transitions
+        if interest_status is not None:
+            if interest_status == 'interested':
+                # Check all required fields are filled
+                # Use incoming values if provided, otherwise fall back to DB values
+                est_price = estimated_sale_price if estimated_sale_price is not None else case.estimated_sale_price
+                initial = our_initial_bid if our_initial_bid is not None else case.our_initial_bid
+                second = our_second_bid if our_second_bid is not None else case.our_second_bid
+                max_bid = our_max_bid if our_max_bid is not None else case.our_max_bid
+
+                if not all([est_price, initial, second, max_bid]):
+                    return jsonify({
+                        'error': 'Complete Est. Sale Price and Bid Ladder before marking interested'
+                    }), 400
+            elif interest_status == 'not_interested':
+                # Check team_notes has content
+                notes = team_notes if team_notes is not None else case.team_notes
+                if not notes or not notes.strip():
+                    return jsonify({
+                        'error': 'Add notes explaining why before marking not interested'
+                    }), 400
+            elif interest_status != '':  # Empty string means clear
+                return jsonify({'error': 'Invalid interest_status value'}), 400
 
         # Merge current DB values with incoming request values
         merged_initial = float(our_initial_bid) if our_initial_bid is not None else (float(case.our_initial_bid) if case.our_initial_bid is not None else None)
@@ -587,6 +612,9 @@ def update_case(case_id):
             case.estimated_sale_price = estimated_sale_price
         if team_notes is not None:
             case.team_notes = team_notes
+        if interest_status is not None:
+            # Empty string clears the status (back to not reviewed)
+            case.interest_status = interest_status if interest_status else None
 
         # Return only the updated collaboration fields
         # (Avoids lazy-loading relationships which causes session issues)
@@ -602,5 +630,6 @@ def update_case(case_id):
             'our_max_bid': float(case.our_max_bid) if case.our_max_bid else None,
             'estimated_sale_price': float(case.estimated_sale_price) if case.estimated_sale_price else None,
             'estimated_profit': est_profit,
-            'team_notes': case.team_notes
+            'team_notes': case.team_notes,
+            'interest_status': case.interest_status
         })
