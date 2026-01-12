@@ -2,133 +2,404 @@
 
 Detailed session-by-session history for NC Foreclosures project. This file preserves context for debugging and understanding past decisions.
 
-## Dec 13, 2025 - Session 4
+---
 
-### Focus: OCR/Extraction Pipeline Reliability
+## Session 27 (Jan 12, 2026) - Interest Tracking Feature
 
-### Root Cause Analysis
-Conducted systematic debugging to identify why OCR and extraction were not completing:
+**Interest Tracking - Complete implementation:**
+- Track whether cases have been manually analyzed with "Interested? Yes/No" decision
+- Three-state system: Not Reviewed → Interested → Not Interested
 
-1. **OCR skip logic** - Documents with any ocr_text (even empty) were skipped on retry
-2. **Extraction coupling** - Extraction only triggered by OCR completion, no independent retry
-3. **Conditional OCR tasks** - Task 1.5 skipped when `cases_processed == 0`
-4. **Selective document OCR** - Only upset_bid/sale documents were OCR'd
-5. **Silent error handling** - 9+ bare `except:` blocks swallowing failures
-6. **No extraction tracking** - No way to identify documents needing extraction
+**Database:**
+- Added `interest_status` column (VARCHAR(20)) to `cases` table
+- Values: NULL (not reviewed), 'interested', 'not_interested'
+- Added index `idx_cases_interest_status` for filtering
 
-### Fixes Implemented
+**API Validation:**
+- "Yes" (Interested) requires: Est. Sale Price + Our Initial + Our 2nd + Our Max bid fields
+- "No" (Not Interested) requires: Team Notes must have text content
+- Empty string clears status back to NULL (not reviewed)
 
-| Fix | File(s) | Change |
-|-----|---------|--------|
-| 1 | `ocr/processor.py` | Return False for <50 chars, allow retry |
-| 2 | `database/models.py`, `extractor.py` | Added `extraction_attempted_at` tracking |
-| 3 | `scraper/daily_scrape.py` | Removed `cases_processed > 0` condition |
-| 4 | `scraper/case_monitor.py` | OCR all documents, not just upset_bid/sale |
-| 5 | 3 files | Replaced 9 bare `except:` with logging |
-| 6 | `extractor.py` | Added `get_documents_needing_extraction()` |
+**Dashboard:**
+- New "Review" column before Links
+- Hurricane warning flag icon (custom SVG - red flag, black square, wind-blown) = not reviewed
+- Green check = interested
+- Red X = not interested
 
-### Database Changes
-- Added `extraction_attempted_at` column to documents table
-- Added partial index `idx_documents_extraction_pending`
-- Deleted 68 orphaned document records (files never existed)
+**Case Detail:**
+- "Analysis Decision" card below Team Notes
+- Yes/No toggle buttons (green/red when active)
+- Click active button to clear (revert to not reviewed)
+- Validation error messages display below buttons
 
-### Commits
-- `5bed81b` - fix: improve OCR/extraction reliability with 6 targeted fixes
+**Files created/modified:**
+- `migrations/add_interest_status.sql` - Database migration
+- `database/models.py` - Added interest_status field
+- `web_app/api/cases.py` - Validation logic + response updates
+- `frontend/src/assets/HurricaneWarningIcon.jsx` - Custom SVG component
+- `frontend/src/pages/Dashboard.jsx` - Review column
+- `frontend/src/pages/CaseDetail.jsx` - Analysis Decision card
 
-### Results
-- All 37 upset_bid cases: 100% complete data (address, bid, sale_date, deadline)
-- All documents in upset_bid cases: 100% OCR coverage
-- Orphaned documents: 188 → 0
+**Implementation approach:** Used superpowers subagent-driven-development with 9 tasks, code review after each task.
 
-## Session 22 (Dec 8, 2025) - Critical Upset Bid Bug Fixes
+---
 
-**Fixed 7 bugs in upset bid classification:**
+## Session 24 (Dec 23, 2025) - Grace Period Monitoring
 
-1. **Event date extraction** (`case_monitor.py`): Was using NULL dates from HTML-parsed party events; now queries DB for actual "Upset Bid Filed" event dates
-2. **Classifier order of operations** (`classifier.py`): Now checks recent upset bid events BEFORE checking stale deadline
-3. **PDF extraction gate removed** (`case_monitor.py`): Now runs for any case with upset events, not just those already classified
-4. **Stale reclassification** (`classifier.py`): Now updates deadline from recent events instead of wrongly reclassifying to closed_sold
-5. **Event whitespace comparison** (`case_monitor.py`): Added .strip() to fix event deduplication
-6. **download_case_documents args** (`date_range_scrape.py`): Fixed to pass all 4 required arguments
-7. **SQLAlchemy session error** (`classifier.py`): Query within existing session context
+**Grace Period Monitoring for Closed Sold Cases:**
+- **Root cause:** Case 25SP002519-910 had upset bid filed 12/22 but system missed it - case was already `closed_sold`
+- **Problem:** Once classified as `closed_sold`, cases were never monitored again
+- **Solution:** 5-day grace period after classification to catch late-filed events
+- New `closed_sold_at` timestamp column tracks when cases transition
+- Task 7 in daily_scrape.py monitors grace period cases with full re-monitor
+- If new sale events detected, case automatically reclassifies back to `upset_bid`
 
-**Key insight:** Party events ("Upset Bidder") have NULL event_date - must query DB for "Upset Bid Filed" events.
+**Written Month Date Format Support:**
+- **Root cause:** Case 25SP002755-910 (Shield Circle) had no deadline - OCR showed "January 2, 2026" but patterns only handled "1/2/2026"
+- Added pattern for written month format in UPSET_DEADLINE_PATTERNS
+- Updated `extract_upset_deadline()` to parse: %B %d, %Y, %B %d %Y, %b %d, %Y, %b %d %Y
 
-**New module:** `common/business_days.py` - NC court holiday calendar for deadline calculation per NC G.S. 45-21.27
+**Cases fixed:**
+- 25SP002519-910 (Lake Anne Drive): Added 2 new events, new party (Kay York), reclassified to upset_bid, deadline Jan 2, 2026, bid $475k
+- 25SP002755-910 (Shield Circle): Set deadline Jan 2, 2026, sale_date 12/22/2025
 
-## Session 21 (Dec 6, 2025) - Address Extraction Enhancement
+---
 
-- Added 6 new address patterns for HOA and lien foreclosures
-- Attorney address filtering to prevent false positives
-- Results: 10 new addresses extracted, 1 incorrect cleared, 61.6% coverage
+## Session 23 (Dec 22, 2025) - Chatham County RE Enrichment
 
-## Session 20 (Dec 5, 2025) - Dashboard Implementation
+**Chatham County RE Enrichment - Fully implemented:**
+- DEVNET wEdge portal at `chathamnc.devnetwedge.com`
+- **Simplest implementation:** HTTP requests + BeautifulSoup (no Playwright needed)
+- Search URL: `https://chathamnc.devnetwedge.com/search/quick?q={street_number}`
+- Property URL: `https://chathamnc.devnetwedge.com/parcel/view/{parcel_id}/2025`
+- Parcel ID format: 7 digits (e.g., `0074237`)
+- Search strategy: Query by street number only, filter results by street name match
 
-- Dashboard component with stats cards, classification/county breakdowns
-- Upset bid opportunities table with urgency color coding
-- New API endpoints: `/api/cases/stats`, `/api/cases/upset-bids`
+**Data fix:**
+- Case 25SP000165-180: Corrected address from hearing location (40 East Chatham Street) to actual property (4902 Devils Tramping Ground Rd, Bear Creek)
 
-## Session 19 (Dec 5, 2025) - OAuth Fix
+**Test results:** 2/2 Chatham County upset_bid cases enriched
 
-- Restored Google OAuth credentials lost from .env file
-- Documented git worktree workflow for frontend development
+---
 
-## Session 18 (Dec 4, 2025) - Multi-Document Popup Fix
+## Session 22 (Dec 22, 2025) - Orange County RE Enrichment
 
-- Fixed handling of "Document Selector" dialog for events with 2+ documents
-- Portal uses native HTML `<dialog>` elements, not `div[role="dialog"]`
+**Orange County RE Enrichment - Fully implemented:**
+- Spatialest portal at `property.spatialest.com/nc/orange/`
+- Playwright automation: Type address in search combobox → Click Search
+- Portal auto-navigates to property page for single matches
+- **Key insight:** Portal is SPA - extracts Parcel ID from page content (not URL)
+- Direct URL format: `https://property.spatialest.com/nc/orange/#/property/{10-digit-parcel-id}`
+- Added street name cleanup to handle addresses without comma before city
 
-## Session 17 (Dec 4, 2025) - Report of Sale Extraction
+**Test results:** 2/2 Orange County upset_bid cases enriched
 
-- Added AOC-SP-301 (Report of Foreclosure Sale) extraction
-- All upset_bid cases now have complete bid data
-- Daily validation function for upset_bid data quality
+---
 
-## Session 16 (Dec 3, 2025) - Frontend Phase 1
+## Session 21 (Dec 22, 2025) - Lee County RE Enrichment
 
-- React + Vite + Ant Design frontend
-- Flask API with Google OAuth
-- Protected routes, user model
+**Lee County RE Enrichment - Fully implemented:**
+- Tyler Technologies portal at `taxaccess.leecountync.gov`
+- Uses role-based Playwright locators (`get_by_role`) for form fields
+- **Direction dropdown handling:** Addresses with N/S/E/W prefix use separate `-DIR-` dropdown
+  - "103 W Harrington Ave" → street_number=103, direction=WEST, street_name=Harrington
+- Extracts 12-digit parcel ID directly from search results (no click-through needed)
+- Session-based URLs stored (portal doesn't support direct parcel linking)
 
-## Session 15 (Dec 3, 2025) - Scheduler Service
+**Key fixes:** Fixed county code from '530' to '520', changed text extraction method, added wait for dynamic results
 
-- Database-driven scheduler with API configuration
-- Default: 5 AM Mon-Fri
-- systemd service file for production
+---
 
-## Session 14 (Dec 3, 2025) - Partition Sales
+## Session 20 (Dec 22, 2025) - Durham County RE Enrichment
 
-- Expanded case detection to include partition sales (co-owner forced sales)
-- Added upset bid opportunity indicators
+**Durham County RE Enrichment:**
+- New `enrichments/durham_re/` module with Playwright browser automation
+- Searches Durham Tax/CAMA portal (`taxcama.dconc.gov`) by address
+- Uses headless Chromium, clicks "Location Address" tab, handles page redirect
+- Extracts `PARCELPK` from property link, captures final PropertySummary URL
+- 6/7 Durham upset_bid cases enriched (1 case has invalid address)
 
-## Session 13 (Dec 2, 2025) - Bot Detection Fix
+---
 
-- Added Chrome user-agent to all Playwright contexts
-- Fixed county detection from case number suffix
+## Session 19 (Dec 21, 2025) - County Router & Wake RE Fixes
 
-## Session 12 (Dec 2, 2025) - Database Completion
+**County Router for Enrichments:**
+- Added `enrichments/router.py` to dispatch to county-specific enrichers
+- Routes based on case_number suffix (e.g., `-910` → Wake, `-310` → Durham)
+- Returns `skipped: True` for counties without implemented enrichers
 
-- Retry logic with exponential backoff
-- Re-scraped 845 cases with NULL event types
-- Portal URL format migration
+**Wake RE Enrichment - 18/18 cases now enriched:**
+- Fixed address extraction bug: Two-column OCR bleed captured "Credit Union" from adjacent column
+- Fixed same account_id matching: Condos with multiple rows now recognized as single match
+- Fixed malformed addresses: Parser now detects city names merged with street
+- Added two-step AddressSearch for directional prefixes (N/S/E/W/NE/NW/SE/SW)
 
-## Session 11 (Dec 1, 2025) - Daily Scraping System
+---
 
-- `daily_scrape.py` orchestrator
-- `case_monitor.py` for direct URL access (no CAPTCHA)
-- VPN removed (not needed)
+## Session 18 (Dec 19, 2025) - AI Analysis Module Merged
 
-## Sessions 9-10 (Nov 30 - Dec 1, 2025) - Classification & AI
+**AI Analysis Module merged to main:**
+- Enhanced prompt with comprehensive 4-section analysis structure:
+  - I. Executive Summary (4-6 sentence overview)
+  - II. Analysis of Parties (plaintiff/defendant in 2-column layout)
+  - III. Legal & Procedural Analysis (statute citations, compliance review)
+  - IV. Conclusion & Key Takeaways (investment considerations)
+- Removed chronological timeline (too verbose per user feedback)
+- Added NC foreclosure statute references (G.S. 45-21.16 through 45-21.33)
+- Increased max_tokens to 8192 for longer responses
+- Cost: ~$0.31 per case
 
-- 5 classification states defined
-- Claude API integration (haiku model)
-- AI guardrails for upset_bid-only analysis
+**Parcel ID discovery:** Found parcel IDs in 1,033+ documents (potential for QuickLinks integration)
 
-## Sessions 1-8 (Nov 24-27, 2025) - Foundation
+---
+
+## Session 17 (Dec 19, 2025) - Case Detail Layout Update
+
+- Bid Information and Team Notes now side-by-side in same row
+- Team Notes card height matches Bid Information card
+- AI Analysis section moved directly under those two tiles
+- Parties/Contacts/Events pushed below AI Analysis
+
+---
+
+## Session 16 (Dec 19, 2025) - Parser Bug Fix & Case Recovery
+
+**Root cause analysis: Case 25SP001804-910 missing from dashboard**
+- Case was in `skipped_cases` table, dismissed on Dec 12
+- New "Report of Sale" event added Dec 18 - but dismissed cases are never re-checked
+- **Root cause:** Parser bug - event types split across HTML elements weren't captured
+  - Portal rendered: `<div>Order</div><div>for Sale of Ward's Real Property</div>`
+  - Parser saw "Order" (too short) + "for Sale..." (lowercase) → `event_type = NULL`
+- **Impact:** 3,118 events with NULL event_type across 964 cases
+
+**Parser fix:** Added fallback logic to concatenate adjacent short lines that form split event types
+
+**Backfill completed:** Re-parsed 959 cases, fixed 2,411 events (78% of affected)
+
+**Cases recovered:** 25SP001804-910 → `upset_bid`, 25SP002745-910 → `upcoming`
+
+---
+
+## Session 15 (Dec 19, 2025) - AI Analysis Module (Feature Branch)
+
+**AI Analysis Module (feature/ai-analysis branch):**
+- Full implementation of Claude Sonnet-based case analysis
+- Triggers when cases transition to `upset_bid` classification
+- Extracts: Summary, Financial Deep Dive, Red Flags, Data Confirmation, Deed Book/Page, Defendant Name
+- Database-backed queue with `case_analyses` table
+- Frontend: AIAnalysisSection component on Case Detail page
+
+**Bug fixes during testing:**
+- Upset bid handling: Include event descriptions in AI prompt
+- Bid discrepancy logic: Only flag when AI value > DB value
+- OCR extraction fix: Event descriptions now authoritative over OCR bids
+
+---
+
+## Session 14 (Dec 18, 2025) - Dashboard UI Updates
+
+- Replaced "Current Bid" column with "Max Bid" (shows `our_max_bid` from bid ladder)
+- Changed "Min Next Bid" text color from orange to green (#52c41a)
+- Updated quicklink icons: Zillow → bold blue "Z", PropWire → stylized navy "P"
+
+---
+
+## Session 13 (Dec 18, 2025) - AUTH_DISABLED Toggle
+
+**AUTH_DISABLED toggle for development:**
+- Added `AUTH_DISABLED=true` env var to skip OAuth during local development
+- New `web_app/auth/middleware.py` with `@require_auth` decorator
+- When disabled: `/api/auth/me` returns mock admin user, all endpoints accessible
+- Applied `@require_auth` to all API endpoints (previously some were unprotected)
+
+---
+
+## Session 12 (Dec 18, 2025) - Claude Vision OCR Fallback
+
+**Claude Vision OCR fallback for handwritten bid amounts:**
+- Root cause: Tesseract OCR completely fails on handwritten text in court forms
+- Case 25SP000165-180 had blank clerk fields + handwritten "$65,000.00 (Credit Bid)"
+- New module: `ocr/vision_ocr.py` - Converts PDF to images, sends to Claude API
+- Triggers when document is "Report of Sale"/"Upset Bid" type and OCR text has label but no amount
+- Cost: ~$0.01-0.03 per document (only runs when Tesseract fails)
+
+**Pattern fixes:**
+- 25SP000292-310: Added bidirectional deadline pattern (date appears BEFORE label)
+- 25SP000825-310: Fixed "Upsat" OCR typo (`[Uu]ps[ae]t` handles 'a' instead of 'e')
+
+---
+
+## Session 11 (Dec 17, 2025) - Zillow Link Fix & Icon Update
+
+**Fixed Zillow link CAPTCHA issue:**
+- Root cause: Manual URL formatting (`123-Main-St-Raleigh-NC`) looked bot-generated
+- Fix: Changed to proper `encodeURIComponent()` with `+` for spaces
+
+**Updated NC Courts Portal icon:** Replaced gavel icon with scales of justice
+
+---
+
+## Session 10 (Dec 17, 2025) - Scheduler Catch-up Logic
+
+**Scheduler catch-up logic:**
+- Root cause: If system boots after 5 AM, daily scrape was missed entirely until next day
+- Fix: Added `check_for_missed_run()` method in `scheduler_service.py`
+- On startup, checks if today is a scheduled day, past scheduled time, and no run today
+- If all conditions met, executes immediately instead of waiting until tomorrow
+
+**Daily Scrapes page - Acknowledge/Dismiss feature:**
+- Added `acknowledged_at` column to `scrape_logs` table
+- Failed scrapes warning now only shows unacknowledged failures
+- Added "Dismiss" button next to "Retry"
+
+---
+
+## Session 9 (Dec 16, 2025) - Admin UI & Bug Fixes
+
+**Admin UI: Case Monitor feature:**
+- Added Mode radio buttons: "Date Range Scrape" vs "Case Monitor"
+- Case Monitor options: "Dashboard Cases (upset_bid)" or "All Upcoming Cases"
+- New endpoint `POST /api/admin/monitor`
+
+**Fixed NULL classification monitoring gap:**
+- Root cause: Cases with `classification=NULL` were never monitored
+- Fix: Added `or_(Case.classification.is_(None))` to monitoring query filter
+- 156 NULL classification cases now included in daily monitoring
+
+**Fixed address extraction issues:** Added legal keyword validation, fixed pattern matching
+
+---
+
+## Session 8 (Dec 16, 2025) - Bid & Address Extraction Fixes
+
+**Fixed bid extraction from event descriptions (case 25SP001906-910):**
+- Root cause: Event descriptions weren't being fully captured
+- Fix: Changed `page_parser.py` to continue past "A document is available" lines
+- Added `_find_bid_in_event_descriptions()` in `extractor.py`
+
+**Fixed address extraction (case 22SP001110-910):**
+- Reordered `ADDRESS_DOCUMENT_PRIORITY` - Notice of Sale now highest priority
+- Added address quality scoring (0-12 = explicit labels, 13+ = generic patterns)
+
+**Dashboard UI improvements:**
+- Removed "Case Classifications" and "Cases by County" tiles
+- Replaced county dropdown with tabs showing bid counts
+
+---
+
+## Session 7 (Dec 15, 2025) - Stale Reclassification & Petition to Sell
+
+**Fixed stale case reclassification bug:**
+- Root cause: Deadlines stored as midnight (00:00:00) instead of 5 PM courthouse close
+- Fix: Changed `datetime.min.time()` to `time(17, 0, 0)` in `classifier.py`
+
+**Fixed Petition to Sell address extraction:**
+- Added event_description extraction in `page_parser.py`
+- For Special Proceeding cases, event descriptions checked FIRST
+
+**Dashboard improvements:** Added NC Courts Portal link (gavel icon)
+
+---
+
+## Session 6 (Dec 15, 2025) - Zillow QuickLink
+
+**Zillow QuickLink enrichment (Phase 1):**
+- New utility: `frontend/src/utils/urlHelpers.js` - `formatZillowUrl()`
+- New icons: `ZillowIcon.jsx`, `PropWireIcon.jsx`
+- Dashboard: Added "Links" column with 5 icons
+
+---
+
+## Session 5 (Dec 13, 2025) - Collaboration Features
+
+**Phase 3: Collaboration Features implemented:**
+- Team notes with auto-save (1.5s debounce)
+- Bid ladder editing (Initial, 2nd, Max) with validation
+- PATCH /api/cases/<id> endpoint for collaboration fields
+- useAutoSave hook with save-on-unmount
+- NotesCard component
+
+**Case Detail page redesign:**
+- Header: title, property address, county, deadline (compact single line)
+- Bid Information: 3-column layout
+- Notes card on right column
+
+---
+
+## Session 4 (Dec 13, 2025) - OCR/Extraction Pipeline Reliability
+
+**Root Cause Analysis:** Identified 6 root causes for incomplete OCR/extraction
+
+| Fix | Change |
+|-----|--------|
+| 1 | OCR returns False for <50 chars, allowing retry |
+| 2 | Added `extraction_attempted_at` tracking |
+| 3 | Removed `cases_processed > 0` condition from Task 1.5 |
+| 4 | OCR all documents, not just upset_bid/sale |
+| 5 | Replaced 9 bare `except:` with proper logging |
+| 6 | Added `get_documents_needing_extraction()` |
+
+**Results:** All 37 upset_bid cases: 100% complete data and OCR coverage
+
+---
+
+## Session 3 (Dec 13, 2025) - Daily Scrape Tracking
+
+**Fixed Daily Scrape duration bug:**
+- Root cause: Timezone mismatch - `started_at` used PostgreSQL local time, `completed_at` used Python UTC
+- Fix: Changed `datetime.utcnow()` to `datetime.now()`
+
+**Added task-level tracking for daily scrapes:**
+- New `scrape_log_tasks` table tracks individual tasks
+- Each task records: items_checked, items_found, items_processed, duration, status
+
+---
+
+## Session 2 (Dec 13, 2025) - Admin Tab
+
+**Admin Tab implemented (admin only):**
+- Manual Scrape section: date range picker, county checkboxes, party name filter
+- User Management section: add/edit/delete users, role-based access
+- Whitelist auth: users must be added before they can log in
+- `ADMIN_EMAIL` env var seeds first admin on startup
+
+---
+
+## Session 1 (Dec 13, 2025) - Self-Diagnosis System
+
+**Self-diagnosis system for upset_bid cases:**
+- Three-tier healing approach: re-extract → re-OCR → re-scrape
+- Runs as Task 5 in `daily_scrape.py` after all scraping/monitoring
+- Detects missing critical fields: sale_date, upset_deadline, property_address, current_bid
+- Successfully healed 2 cases with missing sale_date on first run
+
+---
+
+## Earlier Sessions (Dec 11-12, 2025)
+
+**Historical backfill completed:** 2020-01-01 to 2025-11-24 (426 chunks, 71 months × 6 counties)
+- Added 353 new cases (1,770 → 2,123 total)
+
+**Unified scraper architecture:**
+- Deleted `initial_scrape.py`, `batch_initial_scrape.py`, `parallel_batch_scrape.py`
+- New scrapers: `batch_scrape.py` and `parallel_scrape.py` with configurable chunking
+
+**Classifier defense-in-depth:** Added `SALE_CONFIRMED_EVENTS` patterns
+
+**Fixed extraction pipeline for monitored cases**
+
+---
+
+## Foundation Sessions (Nov 24 - Dec 10, 2025)
 
 - PostgreSQL + SQLAlchemy setup
 - Playwright scraper with CapSolver CAPTCHA
 - Kendo UI Grid parsing
 - All 6 counties scraped (2020-2025)
 - OCR and extraction modules
+- 5 classification states defined
+- Claude API integration (haiku model)
+- React + Vite + Ant Design frontend
+- Flask API with Google OAuth
+- Scheduler service (5 AM Mon-Fri)
 - 1,716 initial cases
