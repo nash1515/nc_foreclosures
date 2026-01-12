@@ -7,7 +7,7 @@ import {
 import {
   DollarOutlined, ClockCircleOutlined, HomeOutlined,
   WarningOutlined, CheckCircleOutlined, ExclamationCircleOutlined,
-  StarOutlined, StarFilled, FileTextOutlined
+  StarOutlined, StarFilled, FileTextOutlined, CloseCircleOutlined
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { formatZillowUrl, formatGoogleMapsUrl } from '../utils/urlHelpers';
@@ -15,6 +15,7 @@ import { ZillowIcon } from '../assets/ZillowIcon';
 import { PropWireIcon } from '../assets/PropWireIcon';
 import { GavelIcon } from '../assets/GavelIcon';
 import { GoogleMapsIcon } from '../assets/GoogleMapsIcon';
+import { HurricaneWarningIcon } from '../assets/HurricaneWarningIcon';
 
 const { Title, Text } = Typography;
 
@@ -301,6 +302,33 @@ function Dashboard() {
           {formatCurrency(record.minimum_next_bid)}
         </Text>
       )
+    },
+    {
+      title: 'Review',
+      key: 'review_status',
+      width: 60,
+      align: 'center',
+      render: (_, record) => {
+        if (record.interest_status === 'interested') {
+          return (
+            <Tooltip title="Interested">
+              <CheckCircleOutlined style={{ color: '#52c41a', fontSize: 18 }} />
+            </Tooltip>
+          );
+        } else if (record.interest_status === 'not_interested') {
+          return (
+            <Tooltip title="Not Interested">
+              <CloseCircleOutlined style={{ color: '#ff4d4f', fontSize: 18 }} />
+            </Tooltip>
+          );
+        } else {
+          return (
+            <Tooltip title="Not Reviewed">
+              <HurricaneWarningIcon size={18} style={{ display: 'block', margin: '0 auto' }} />
+            </Tooltip>
+          );
+        }
+      }
     },
     {
       title: 'Links',
