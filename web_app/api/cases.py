@@ -272,6 +272,7 @@ def get_case(case_id):
             'estimated_sale_price': float(case.estimated_sale_price) if case.estimated_sale_price else None,
             'estimated_profit': float(case.estimated_sale_price - case.our_max_bid) if case.estimated_sale_price and case.our_max_bid else None,
             'team_notes': case.team_notes,
+            'interest_status': case.interest_status,
             'parties': parties,
             'events': events,
             'hearings': hearings,
