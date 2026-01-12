@@ -75,7 +75,9 @@ class Case(Base):
     our_initial_bid = Column(DECIMAL(12, 2))
     our_second_bid = Column(DECIMAL(12, 2))
     our_max_bid = Column(DECIMAL(12, 2))
+    estimated_sale_price = Column(DECIMAL(12, 2))  # User-entered for profit calculation
     team_notes = Column(Text)
+    interest_status = Column(String(20))  # NULL, 'interested', 'not_interested'
 
     # Grace period monitoring
     closed_sold_at = Column(TIMESTAMP)  # When case transitioned to closed_sold
