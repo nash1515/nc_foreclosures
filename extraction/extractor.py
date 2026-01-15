@@ -118,6 +118,12 @@ REJECT_ADDRESS_CONTEXTS = [
     r'or\s+to\s+the\s+heirs',
     r'service\s+of\s+process',
     r'last\s+known\s+address',
+    # Mailing/Correspondence headers (prevent extracting service addresses)
+    r'VIA\s+(?:FIRST\s+CLASS|CERTIFIED)\s+MAIL',
+    r'CERTIFIED\s+MAIL',
+    r'MAIL\s+RETURN\s+RECEIPT',
+    r'Attn:',  # "Attention:" in mailing headers
+    r'RE:\s*(?:Promissory|Note|Loan|Account)',  # "RE:" in legal correspondence
     # Legal document keywords (indicate legal descriptions, not property addresses)
     r'[Gg]rantor',
     r'[Gg]rantee',
@@ -206,7 +212,10 @@ REPORT_OF_SALE_BID_PATTERNS = [
     r'[Hh]ighest\s*[Bb]id[\s\S]{1,50}?\$?\s*(\d[\d,\.\s]+\.\d{2})',
     # Partition sale format: "for the sum of $X"
     r'for\s+the\s+sum\s+of\s*\$\s*([\d,]+\.?\d*)',
-    # Generic "sold for $X" pattern
+    # Report of Private Sale (estate sales): "property was sold on [date], for $X"
+    # Allow up to 30 chars between "sold" and "for" to capture the date
+    r'(?:property\s+was\s+)?sold\s+(?:on\s+)?[^$]{0,30}?,\s*for\s*\$\s*([\d,]+\.\d{2})',
+    # Generic "sold for $X" pattern (immediate adjacency)
     r'sold\s+for\s*\$\s*([\d,]+\.?\d*)',
     # Offer to purchase format (limit search to 50 chars to avoid matching minimum_next_bid)
     r'offer\s+to\s+purchase[^$]{0,50}\$\s*([\d,]+\.?\d*)',
@@ -220,6 +229,8 @@ REPORT_OF_SALE_DATE_PATTERNS = [
     r'[Dd]ate\s*[Oo]f\s*[Ss]ale[\s:]*(\d{1,2}/\d{1,2}/\d{4})',
     r'[Ss]ale\s*(?:was\s*)?[Hh]eld\s*[Oo]n[\s:]*(\d{1,2}/\d{1,2}/\d{4})',
     r'[Ss]ale\s*[Dd]ate[\s:]*(\d{1,2}/\d{1,2}/\d{4})',
+    # Written date format: "sold on January 6, 2026" (common in private sales)
+    r'sold\s+on\s+([A-Z][a-z]+\s+\d{1,2},?\s+\d{4})',
 ]
 
 
@@ -935,16 +946,21 @@ def extract_report_of_sale_data(ocr_text: str) -> Dict[str, Any]:
         match = re.search(pattern, ocr_text, re.IGNORECASE)
         if match:
             date_str = match.group(1)
-            try:
-                sale_date = datetime.strptime(date_str, '%m/%d/%Y')
-                result['sale_date'] = sale_date.date()
-                # Calculate the upset bid deadline (10 days from sale date, adjusted for weekends/holidays)
-                adjusted_deadline = calculate_upset_bid_deadline(sale_date.date())
-                result['next_deadline'] = datetime.combine(adjusted_deadline, datetime.min.time())
-                logger.debug(f"  Found sale date: {result['sale_date']}, deadline: {adjusted_deadline}")
+            # Try multiple date formats (numeric and written month formats)
+            for fmt in ['%m/%d/%Y', '%B %d, %Y', '%B %d %Y']:
+                try:
+                    sale_date = datetime.strptime(date_str, fmt)
+                    result['sale_date'] = sale_date.date()
+                    # Calculate the upset bid deadline (10 days from sale date, adjusted for weekends/holidays)
+                    adjusted_deadline = calculate_upset_bid_deadline(sale_date.date())
+                    result['next_deadline'] = datetime.combine(adjusted_deadline, datetime.min.time())
+                    logger.debug(f"  Found sale date: {result['sale_date']}, deadline: {adjusted_deadline}")
+                    break
+                except ValueError:
+                    continue
+            # If date was successfully parsed, exit the outer loop
+            if result['sale_date']:
                 break
-            except ValueError:
-                continue
 
     return result
 
