@@ -41,13 +41,17 @@ cd frontend && npm run dev -- --host &
 - **Deed Enrichment:** 90% extraction rate (35/39 upset_bid cases)
 - **Grace Period Monitoring:** 5-day window for closed_sold cases
 
-### Recent Changes (Session 28 - Jan 16)
+### Recent Changes (Session 29 - Jan 16)
+- **Chatham County enrichment fix** - Scraper now searches with full address (e.g., "88 Maple Springs") instead of just street number, fixing false positive matches
+- **Bid ladder unmount save fix** - Fixed race condition where clearing bid fields and quickly navigating away lost the changes; now tracks actual saved values vs pending changes
+
+### Previous Changes (Session 28 - Jan 16)
 - **Bid field clearing fix** - Users can now delete bid data and it stays empty (was reverting)
 - **Address extraction cleanup** - Strip "commonly known as" prefix and truncate after ZIP code
 - **Set-aside monitoring moved to Fridays** - Task 8 now runs on Fridays (scheduler only runs Mon-Fri)
 - **Database cleanup** - Fixed 8 cases with malformed addresses
 
-### Previous Changes (Session 27 - Jan 12)
+### Session 27 (Jan 12)
 - **Interest Tracking feature** - Track case analysis decisions (Interested/Not Interested)
 - Dashboard: New "Review" column with hurricane warning flag (not reviewed), green check (interested), red X (not interested)
 - Case Detail: "Analysis Decision" card with Yes/No toggle buttons

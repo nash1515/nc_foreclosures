@@ -370,19 +370,35 @@ def has_foreclosure_withdrawal(case_id: int, events: List[CaseEvent] = None) -> 
 def get_most_recent_upset_bid_event(case_id: int) -> Optional[CaseEvent]:
     """Get the most recent 'Upset Bid Filed' event with a valid date.
 
+    IMPORTANT: Only returns upset bids from the CURRENT sale cycle.
+    If a sale was set aside and resold, upset bids from the old sale are ignored.
+    This prevents using stale upset bid events to calculate deadlines.
+
     Args:
         case_id: Database ID of the case
 
     Returns:
-        The most recent CaseEvent with type containing 'upset bid filed' and a valid date,
-        or None if no such event exists.
+        The most recent CaseEvent with type containing 'upset bid filed' and a valid date
+        AFTER the most recent sale event, or None if no such event exists.
     """
     with get_session() as session:
-        event = session.query(CaseEvent).filter(
+        # First, get the most recent sale date to filter upset bids to current sale cycle
+        case = session.query(Case).filter_by(id=case_id).first()
+        sale_date = case.sale_date if case else None
+
+        # If we have a sale_date, only consider upset bids AFTER that sale
+        # This handles resales where old upset bids should be ignored
+        query = session.query(CaseEvent).filter(
             CaseEvent.case_id == case_id,
             CaseEvent.event_type.ilike('%upset bid filed%'),
             CaseEvent.event_date.isnot(None)
-        ).order_by(CaseEvent.event_date.desc()).first()
+        )
+
+        if sale_date:
+            # Only upset bids from current sale cycle (after the sale)
+            query = query.filter(CaseEvent.event_date >= sale_date)
+
+        event = query.order_by(CaseEvent.event_date.desc()).first()
 
         if event:
             # Detach from session before returning
@@ -456,6 +472,81 @@ def classify_case(case_id: int) -> Optional[str]:
     sale_event = get_latest_event_of_type(events, SALE_REPORT_EVENTS)
 
     if sale_event:
+        # RESALE DETECTION: Check if this is a new sale after a previous sale was set aside
+        # If a case has a sale event NEWER than its stored sale_date,
+        # the previous sale was set aside and this is a resale - reset the case
+        # This can happen regardless of current classification (upset_bid, closed_sold, etc.)
+        if sale_event.event_date:
+            with get_session() as session:
+                case = session.query(Case).filter_by(id=case_id).first()
+                if case:
+                    sale_event_date = sale_event.event_date.date() if hasattr(sale_event.event_date, 'date') else sale_event.event_date
+
+                    # Determine baseline date: use stored sale_date, or find oldest sale event
+                    baseline_date = case.sale_date
+
+                    if not baseline_date:
+                        # FALLBACK: No stored sale_date - find oldest "Report of Sale" event
+                        # This handles cases where sale_date was never extracted from PDFs
+                        all_sale_events = [e for e in events if e.event_type and
+                                          any(kw in e.event_type.lower() for kw in ['report of sale', 'report of foreclosure sale'])]
+                        if len(all_sale_events) > 1:
+                            # Sort by event_date and use the oldest as baseline
+                            all_sale_events.sort(key=lambda e: e.event_date if e.event_date else date.max)
+                            oldest_sale = all_sale_events[0]
+                            if oldest_sale.event_date:
+                                baseline_date = oldest_sale.event_date.date() if hasattr(oldest_sale.event_date, 'date') else oldest_sale.event_date
+                                logger.info(f"  Case {case_id}: No stored sale_date, using oldest sale event {baseline_date} as baseline")
+
+                    if baseline_date and sale_event_date > baseline_date:
+                        logger.info(f"  Case {case_id}: RESALE DETECTED - new sale {sale_event_date} after previous sale {baseline_date}")
+                        # Reset the case for the new sale cycle
+                        case.sale_date = sale_event_date
+                        case.current_bid_amount = None  # Will be re-extracted from new Report of Sale
+                        case.minimum_next_bid = None
+                        case.next_bid_deadline = None
+                        case.closed_sold_at = None  # Clear so grace period monitoring will pick it up if reclassified
+                        session.commit()
+                        logger.info(f"  Case {case_id}: Reset case data for resale, continuing to reclassify...")
+                    elif not case.sale_date and sale_event_date:
+                        # Populate missing sale_date from the sale event
+                        case.sale_date = sale_event_date
+                        session.commit()
+                        logger.info(f"  Case {case_id}: Populated missing sale_date from event: {sale_event_date}")
+
+        # SALE SET ASIDE CHECK: If the most recent sale was set aside, treat as no sale
+        # This happens when a sale is voided and the case goes back to "upcoming" status
+        sale_was_voided = False
+        set_aside_events = [e for e in events if e.event_type and
+                          any(kw in e.event_type.lower() for kw in ['set aside', 'setting aside', 'order to set aside'])]
+        if set_aside_events and sale_event.event_date:
+            sale_event_date = sale_event.event_date.date() if hasattr(sale_event.event_date, 'date') else sale_event.event_date
+            # Check if any set aside event is AFTER the most recent sale
+            for set_aside in set_aside_events:
+                if set_aside.event_date:
+                    set_aside_date = set_aside.event_date.date() if hasattr(set_aside.event_date, 'date') else set_aside.event_date
+                    if set_aside_date > sale_event_date:
+                        logger.info(f"  Case {case_id}: SALE SET ASIDE - {set_aside_date} after sale {sale_event_date}, treating as no sale")
+                        # Clear sale data since the sale was voided
+                        with get_session() as session:
+                            case = session.query(Case).filter_by(id=case_id).first()
+                            if case:
+                                case.sale_date = None
+                                case.current_bid_amount = None
+                                case.minimum_next_bid = None
+                                case.next_bid_deadline = None
+                                case.closed_sold_at = None
+                                session.commit()
+                        # Skip the sale-based classification - will fall through to upcoming
+                        sale_event = None
+                        sale_was_voided = True
+                        break
+
+        # If sale was voided, skip remaining sale-based logic
+        if sale_was_voided:
+            logger.debug(f"  Case {case_id}: Sale voided, skipping to upcoming classification...")
+            pass  # Fall through to Step 4 (bankruptcy) and Step 5 (upcoming)
+
         # Has sale report - check if within upset period
         # IMPORTANT: Each upset bid resets the 10-day period!
         # So we need to check the LATEST of: sale date, last upset bid date
@@ -487,7 +578,7 @@ def classify_case(case_id: int) -> Optional[str]:
         reference_date = None
         reference_source = None
 
-        if sale_event.event_date:
+        if sale_event and sale_event.event_date:
             reference_date = sale_event.event_date
             reference_source = "sale"
 
@@ -515,20 +606,22 @@ def classify_case(case_id: int) -> Optional[str]:
                     logger.debug(f"  Case {case_id}: Past deadline + has confirmation event -> 'closed_sold' (high confidence)")
                 else:
                     logger.debug(f"  Case {case_id}: Past deadline (from {reference_source} on {reference_date}, deadline {adjusted_deadline}) -> 'closed_sold'")
-                return 'closed_sold'
+                if not sale_was_voided:
+                    return 'closed_sold'
 
         # Has sale but can't determine deadline - check for confirmation event
         # If we have both a sale AND a confirmation, it's definitely closed
         has_confirmation = has_event_type(
             events, SALE_CONFIRMED_EVENTS, exclusions=SALE_CONFIRMED_EXCLUSIONS
         )
-        if has_confirmation:
+        if has_confirmation and not sale_was_voided:
             logger.debug(f"  Case {case_id}: Has sale + confirmation event, unknown deadline -> 'closed_sold'")
             return 'closed_sold'
 
         # Has sale but no confirmation and no deadline - assume closed (legacy behavior)
-        logger.debug(f"  Case {case_id}: Has sale, unknown deadline, no confirmation -> 'closed_sold'")
-        return 'closed_sold'
+        if not sale_was_voided:
+            logger.debug(f"  Case {case_id}: Has sale, unknown deadline, no confirmation -> 'closed_sold'")
+            return 'closed_sold'
 
     # Step 4: No sale yet - check for bankruptcy/stay (case blocked, may resume)
     # Only check bankruptcy if there's no sale - a sale means case proceeded past bankruptcy
@@ -602,6 +695,14 @@ def update_case_classification(case_id: int) -> Optional[str]:
                 elif classification != 'closed_sold' and old_classification == 'closed_sold':
                     case.closed_sold_at = None
                     logger.debug(f"  Case {case_id}: Cleared closed_sold_at timestamp")
+
+                # Ensure upset_bid cases have a valid deadline
+                # This handles resales where deadline was cleared but not recalculated
+                if classification == 'upset_bid' and not case.next_bid_deadline and case.sale_date:
+                    # Calculate deadline from sale date (no upset bids filed yet in current cycle)
+                    adjusted_deadline = calculate_upset_bid_deadline(case.sale_date)
+                    case.next_bid_deadline = datetime.combine(adjusted_deadline, datetime.min.time())
+                    logger.info(f"  Case {case_id}: Set deadline to {adjusted_deadline} from sale date {case.sale_date}")
 
                 session.commit()
 

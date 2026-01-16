@@ -181,13 +181,13 @@ function Dashboard() {
             background: colors.bg,
             border: `1px solid ${colors.border}`,
             borderRadius: 4,
-            padding: '4px 8px',
+            padding: '2px 6px',
             textAlign: 'center'
           }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
               {getUrgencyIcon(record.urgency)}
-              <Text strong style={{ color: colors.text }}>
-                {record.days_remaining === null ? 'No bid deadline' :
+              <Text strong style={{ color: colors.text, fontSize: 13 }}>
+                {record.days_remaining === null ? 'No deadline' :
                  record.urgency === 'expired' ? 'EXPIRED' :
                  record.days_remaining === 0 ? 'TODAY' :
                  record.days_remaining === 1 ? '1 day' :
@@ -218,7 +218,7 @@ function Dashboard() {
             {record.case_number}
           </Link>
           <div>
-            <Tag color="blue" style={{ marginTop: 4 }}>{record.county_name}</Tag>
+            <Tag color="blue" style={{ marginTop: 2 }}>{record.county_name}</Tag>
           </div>
         </div>
       )
@@ -467,13 +467,13 @@ function Dashboard() {
   const upsetPercent = stats ? Math.round((stats.upset_bid?.total / stats.total_cases) * 100) : 0;
 
   return (
-    <div style={{ padding: 24 }}>
-      <div style={{ marginBottom: 24 }}>
-        <Title level={2} style={{ margin: 0 }}>Upset Bid Dashboard</Title>
+    <div style={{ padding: 18 }}>
+      <div style={{ marginBottom: 16 }}>
+        <Title level={3} style={{ margin: 0 }}>Upset Bid Dashboard</Title>
       </div>
 
       {/* Stats Cards */}
-      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+      <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
         <Col xs={24} sm={12} lg={6}>
           <Card>
             <Statistic
@@ -528,7 +528,7 @@ function Dashboard() {
               : `${tab.label} (${countsByCounty[tab.key] || 0})`
           }))}
         />
-        <div style={{ padding: 16 }}>
+        <div style={{ padding: 12 }}>
           {filteredBids.length === 0 ? (
             <Alert
               type="info"
@@ -544,7 +544,7 @@ function Dashboard() {
               columns={columns}
               rowKey="id"
               pagination={false}
-              size="middle"
+              size="small"
               rowClassName={(record) => {
                 if (record.urgency === 'expired') return 'row-expired';
                 if (record.urgency === 'critical') return 'row-critical';

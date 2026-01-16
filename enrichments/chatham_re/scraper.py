@@ -45,11 +45,11 @@ def search_by_address(street_number: str, street_name: str, direction: Optional[
     Returns:
         SearchResult with parcel_id and URL if single match found
     """
-    # Search by street number only - most reliable for this portal
-    # The portal searches across all fields, so "1225" finds addresses starting with 1225
-    search_query = street_number
+    # Search by street number AND street name for precise matching
+    # The portal supports multi-word queries like "88 Maple Springs"
+    search_query = f"{street_number} {street_name}"
 
-    logger.info(f"Searching Chatham County for: {search_query} (looking for {street_name})")
+    logger.info(f"Searching Chatham County for: {search_query}")
 
     try:
         search_url = build_search_url(search_query)

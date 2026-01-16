@@ -601,17 +601,31 @@ class CaseMonitor:
             # Calculate deadline from the most recent "Upset Bid Filed" event date
             # This ensures the deadline is always based on actual event dates, not PDF OCR
             # which may have stale data or OCR errors
+            # IMPORTANT: Only consider upset bids from CURRENT sale cycle (after sale_date)
+            # to handle resales where old upset bids should be ignored
             # Query within the existing session to avoid detached object issues
-            recent_upset = session.query(CaseEvent).filter(
+            query = session.query(CaseEvent).filter(
                 CaseEvent.case_id == case_id,
                 CaseEvent.event_type.ilike('%upset bid filed%'),
                 CaseEvent.event_date.isnot(None)
-            ).order_by(CaseEvent.event_date.desc()).first()
+            )
+
+            # If we have a sale_date, only consider upset bids AFTER that sale
+            # This prevents using upset bids from a voided/set aside sale
+            if case.sale_date:
+                query = query.filter(CaseEvent.event_date >= case.sale_date)
+
+            recent_upset = query.order_by(CaseEvent.event_date.desc()).first()
 
             if recent_upset and recent_upset.event_date:
                 adjusted_deadline = calculate_upset_bid_deadline(recent_upset.event_date)
                 case.next_bid_deadline = datetime.combine(adjusted_deadline, datetime.min.time())
-                logger.debug(f"  Calculated deadline from event {recent_upset.event_date}: {adjusted_deadline}")
+                logger.debug(f"  Calculated deadline from upset bid event {recent_upset.event_date}: {adjusted_deadline}")
+            elif case.sale_date:
+                # No upset bids yet - use sale date for deadline
+                adjusted_deadline = calculate_upset_bid_deadline(case.sale_date)
+                case.next_bid_deadline = datetime.combine(adjusted_deadline, datetime.min.time())
+                logger.debug(f"  Calculated deadline from sale date {case.sale_date}: {adjusted_deadline}")
 
             # Update sale_date if available (from Report of Sale)
             if bid_data.get('sale_date') and not case.sale_date:
@@ -727,11 +741,19 @@ class CaseMonitor:
                         # Get the actual event date from database, not HTML parse
                         # HTML-parsed party events often have NULL dates
                         with get_session() as session:
-                            latest_upset = session.query(CaseEvent).filter(
+                            # CRITICAL: Filter by sale_date to ignore upset bids from voided sales
+                            # This prevents resale cases from using old deadlines
+                            case_obj = session.query(Case).filter_by(id=case.id).first()
+                            query = session.query(CaseEvent).filter(
                                 CaseEvent.case_id == case.id,
                                 CaseEvent.event_type.ilike('%upset bid filed%'),
                                 CaseEvent.event_date.isnot(None)
-                            ).order_by(CaseEvent.event_date.desc()).first()
+                            )
+
+                            if case_obj and case_obj.sale_date:
+                                query = query.filter(CaseEvent.event_date >= case_obj.sale_date)
+
+                            latest_upset = query.order_by(CaseEvent.event_date.desc()).first()
 
                             if latest_upset and latest_upset.event_date:
                                 event_date_str = latest_upset.event_date.strftime('%m/%d/%Y')
@@ -772,13 +794,25 @@ class CaseMonitor:
             if case.classification == 'upset_bid' and not case.current_bid_amount:
                 bid_amount = self.extract_bid_amount(html)
                 if bid_amount:
-                    # Find the most recent upset bid or sale event date for deadline calculation
+                    # CRITICAL: Query database with sale_date filtering to get correct event date
+                    # This prevents resale cases from using deadline from voided sales
                     event_date = None
-                    for event in parsed_events:
-                        evt_type = (event.get('event_type') or '').lower()
-                        if 'upset' in evt_type or 'sale' in evt_type:
-                            event_date = event.get('event_date')
-                            break
+                    with get_session() as session:
+                        case_obj = session.query(Case).filter_by(id=case.id).first()
+                        if case_obj:
+                            query = session.query(CaseEvent).filter(
+                                CaseEvent.case_id == case.id,
+                                CaseEvent.event_type.ilike('%upset bid filed%'),
+                                CaseEvent.event_date.isnot(None)
+                            )
+
+                            if case_obj.sale_date:
+                                query = query.filter(CaseEvent.event_date >= case_obj.sale_date)
+
+                            latest_upset = query.order_by(CaseEvent.event_date.desc()).first()
+                            if latest_upset and latest_upset.event_date:
+                                event_date = latest_upset.event_date.strftime('%m/%d/%Y')
+
                     self.update_case_bid_info(case.id, bid_amount, event_date)
                     result['bid_updated'] = True
                     logger.info(f"  Extracted missing bid amount: ${bid_amount}")

@@ -516,6 +516,10 @@ function CaseDetail() {
             initialNotes={teamNotes}
             onSave={handleNotesSave}
             style={{ height: '100%' }}
+            interestStatus={interestStatus}
+            onInterestChange={handleInterestChange}
+            interestSaving={interestSaving}
+            interestError={interestError}
           />
         </Col>
       </Row>
@@ -530,39 +534,6 @@ function CaseDetail() {
           />
         </div>
       )}
-
-      {/* Analysis Decision */}
-      <Card title="Analysis Decision" style={{ marginBottom: 16 }}>
-        <div style={{ textAlign: 'center' }}>
-          <Space size="middle">
-            <Text strong>Interested?</Text>
-            <Button
-              type={interestStatus === 'interested' ? 'primary' : 'default'}
-              style={interestStatus === 'interested' ? {
-                backgroundColor: '#52c41a',
-                borderColor: '#52c41a'
-              } : {}}
-              onClick={() => handleInterestChange('interested')}
-              loading={interestSaving}
-            >
-              Yes
-            </Button>
-            <Button
-              type={interestStatus === 'not_interested' ? 'primary' : 'default'}
-              danger={interestStatus === 'not_interested'}
-              onClick={() => handleInterestChange('not_interested')}
-              loading={interestSaving}
-            >
-              No
-            </Button>
-          </Space>
-          {interestError && (
-            <div style={{ marginTop: 12 }}>
-              <Text type="danger">{interestError}</Text>
-            </div>
-          )}
-        </div>
-      </Card>
 
       {/* Row 2: Parties, Contacts, Events */}
       <Row gutter={16}>

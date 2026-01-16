@@ -55,6 +55,7 @@ SALE_DOCUMENT_INDICATORS = [
     'estate administration',
     'administration of estate',
     'personal representative',
+    'petition for control of decedent',  # Probate property sales (G.S. 28A-15-1)
     # Property-related proceedings
     'quiet title',
     'condemnation',
@@ -363,75 +364,95 @@ def parse_case_detail(page_content):
         date_match = re.search(r'(\d{2}/\d{2}/\d{4})', event_text)
         event_date = date_match.group(1) if date_match else None
 
-        # Extract event type - look for capitalized text that's an event description
+        # Extract event type - FIRST check for label attribute on roa-data elements
+        # This captures full event descriptions like "Petition to Sell/Lease/Mortgage Ward's Estate"
         event_type = None
         event_description = None
-        lines = [l.strip() for l in event_text.split('\n') if l.strip()]
-        event_type_index = None
 
-        # Skip patterns - metadata and non-event-type content
-        skip_patterns = ['Index', 'Created', 'Filed By', 'Against', 'A document is available',
-                        'Click here', 'Receipt #']
+        # Check for label attribute (preferred method - most accurate)
+        roa_data_with_label = event_div.find(attrs={'label': lambda v: v and len(v) > 3 and ':' not in v})
+        if roa_data_with_label:
+            label_value = roa_data_with_label.get('label', '').strip()
+            # Verify this looks like an event type (not "Filed By:", "Against:", "Created:", etc.)
+            if label_value and not any(x in label_value for x in [':', 'Filed', 'Against', 'Created', 'Index']):
+                event_type = label_value
+                logger.debug(f"Event type from label attribute: {event_type}")
 
-        for i, line in enumerate(lines):
-            # Event types are usually capitalized phrases
-            # Allow letters, spaces, parens, numbers, slashes, hyphens (for types like "Chapter 45", "Sale/Resale")
-            if (re.match(r'^[A-Z][a-zA-Z\s()/\-0-9]+$', line) and
-                5 < len(line) < 100 and
-                not any(skip in line for skip in skip_patterns)):
-                event_type = line
-                event_type_index = i
-                break
+        # Fallback: Extract from text content if label not found
+        if not event_type:
+            lines = [l.strip() for l in event_text.split('\n') if l.strip()]
+            event_type_index = None
 
-        # Fallback: Try to concatenate adjacent short lines that might form an event type
-        # This handles cases where portal splits "Order" and "for Sale of Ward's Property" into separate elements
-        if event_type is None:
-            # Find lines after the date that might be event type fragments
-            date_found = False
-            potential_fragments = []
-            fragment_start_index = None
+            # Skip patterns - metadata and non-event-type content
+            skip_patterns = ['Index', 'Created', 'Filed By', 'Against', 'A document is available',
+                            'Click here', 'Receipt #']
 
             for i, line in enumerate(lines):
-                # Skip until we're past the date
-                if re.match(r'^\d{2}/\d{2}/\d{4}$', line):
-                    date_found = True
-                    continue
-                if not date_found:
-                    continue
-
-                # Stop at metadata
-                if any(skip in line for skip in skip_patterns):
-                    break
-                # Skip dates and times
-                if re.match(r'^\d{2}/\d{2}/\d{4}', line):
+                # Event types are usually capitalized phrases
+                # Allow letters, spaces, parens, numbers, slashes, hyphens (for types like "Chapter 45", "Sale/Resale")
+                if (re.match(r'^[A-Z][a-zA-Z\s()/\-0-9]+$', line) and
+                    5 < len(line) < 100 and
+                    not any(skip in line for skip in skip_patterns)):
+                    event_type = line
+                    event_type_index = i
                     break
 
-                # Collect short fragments that could be part of event type
-                # "Order" (5 chars) followed by "for Sale of Ward's Real Property"
-                if len(line) <= 50 and not re.match(r'^\d+$', line):
-                    if fragment_start_index is None:
-                        fragment_start_index = i
-                    potential_fragments.append(line)
+            # Fallback: Try to concatenate adjacent short lines that might form an event type
+            # This handles cases where portal splits "Order" and "for Sale of Ward's Property" into separate elements
+            if event_type is None:
+                # Find lines after the date that might be event type fragments
+                date_found = False
+                potential_fragments = []
+                fragment_start_index = None
 
-                    # Try combining collected fragments
-                    combined = ' '.join(potential_fragments)
-                    # Check if combined text looks like an event type (starts with capital, reasonable length)
-                    if (re.match(r'^[A-Z]', combined) and
-                        5 < len(combined) < 150 and
-                        not any(skip in combined for skip in skip_patterns)):
-                        # Verify it's not just a party name or address
-                        if not re.search(r'\d{5}$', combined):  # Not ending in zip code
-                            event_type = combined
-                            event_type_index = fragment_start_index
-                            # Don't break yet - try to get more complete event type
+                for i, line in enumerate(lines):
+                    # Skip until we're past the date
+                    if re.match(r'^\d{2}/\d{2}/\d{4}$', line):
+                        date_found = True
+                        continue
+                    if not date_found:
+                        continue
 
-                    # Stop after collecting enough fragments
-                    if len(potential_fragments) >= 4:
+                    # Stop at metadata
+                    if any(skip in line for skip in skip_patterns):
                         break
-                else:
-                    # Non-fragment line - stop collecting
-                    if potential_fragments:
+                    # Skip dates and times
+                    if re.match(r'^\d{2}/\d{2}/\d{4}', line):
                         break
+
+                    # Collect short fragments that could be part of event type
+                    # "Order" (5 chars) followed by "for Sale of Ward's Real Property"
+                    if len(line) <= 50 and not re.match(r'^\d+$', line):
+                        if fragment_start_index is None:
+                            fragment_start_index = i
+                        potential_fragments.append(line)
+
+                        # Try combining collected fragments
+                        combined = ' '.join(potential_fragments)
+                        # Check if combined text looks like an event type (starts with capital, reasonable length)
+                        if (re.match(r'^[A-Z]', combined) and
+                            5 < len(combined) < 150 and
+                            not any(skip in combined for skip in skip_patterns)):
+                            # Verify it's not just a party name or address
+                            if not re.search(r'\d{5}$', combined):  # Not ending in zip code
+                                event_type = combined
+                                event_type_index = fragment_start_index
+                                # Don't break yet - try to get more complete event type
+
+                        # Stop after collecting enough fragments
+                        if len(potential_fragments) >= 4:
+                            break
+                    else:
+                        # Non-fragment line - stop collecting
+                        if potential_fragments:
+                            break
+
+        # Set event_type_index for description extraction (if we got it from label, skip description extraction)
+        event_type_index = None
+        if event_type:
+            # If event_type came from label attribute, we don't have an event_type_index from text parsing
+            # We still want to try to extract description though
+            lines = [l.strip() for l in event_text.split('\n') if l.strip()]
 
         # Extract event description - the line(s) after event type that contain details
         # Examples: "1508 Beacon Village Drive, Raleigh 27604" for Report of Sale

@@ -16,6 +16,7 @@ export function useAutoSave(saveFn, value, delay = 1500) {
   const timeoutRef = useRef(null);
   const resetTimeoutRef = useRef(null);
   const previousValueRef = useRef(value);
+  const lastSavedValueRef = useRef(value);  // Track what was actually saved to server
   const unmountSaveRef = useRef(false);
   const currentValueRef = useRef(value);
   const currentSaveFnRef = useRef(saveFn);
@@ -49,6 +50,7 @@ export function useAutoSave(saveFn, value, delay = 1500) {
 
       try {
         await saveFn(value);
+        lastSavedValueRef.current = value;  // Track successful save
         setSaveState('saved');
 
         // Reset to idle after 2 seconds
@@ -72,10 +74,11 @@ export function useAutoSave(saveFn, value, delay = 1500) {
     };
   }, [value, saveFn, delay]);
 
-  // Save on unmount if dirty - FIX: Use refs to avoid stale closure
+  // Save on unmount if dirty - FIX: Use lastSavedValueRef to detect unsaved changes
   useEffect(() => {
     return () => {
-      if (currentValueRef.current !== previousValueRef.current && !unmountSaveRef.current) {
+      // Compare against what was ACTUALLY saved, not just the previous render value
+      if (currentValueRef.current !== lastSavedValueRef.current && !unmountSaveRef.current) {
         unmountSaveRef.current = true;
         // Fire-and-forget save using latest values from refs
         currentSaveFnRef.current(currentValueRef.current).catch(err => {
