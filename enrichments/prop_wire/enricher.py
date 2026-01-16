@@ -39,6 +39,7 @@ class PropWireEnricher(BaseEnricher):
             if not case:
                 return EnrichmentResult(success=False, error=f"Case {case_id} not found")
 
+            # PropWire is county-agnostic - works across all NC counties
             logger.info(f"Enriching case {case.case_number} with PropWire data")
 
             # Store case data for processing outside session

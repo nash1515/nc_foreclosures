@@ -120,14 +120,21 @@ def search_by_address(address: str) -> SearchResult:
             logger.debug(f"Typing address into search box")
             search_input.fill(address)
 
-            # Wait a moment for the autocomplete dropdown to appear and API call to complete
-            page.wait_for_timeout(2000)
+            # Wait for autocomplete API response instead of arbitrary timeout
+            try:
+                page.wait_for_response(
+                    lambda r: 'api.propwire.com/api/auto_complete' in r.url,
+                    timeout=5000
+                )
+            except:
+                # API never called - autocomplete didn't trigger, continue anyway
+                pass
 
             browser.close()
 
             # Process the intercepted API response
             if not api_response_data:
-                logger.warning("No API response intercepted - autocomplete may not have triggered")
+                logger.warning(f"No API response intercepted for address '{address}' - autocomplete may not have triggered")
                 return SearchResult(
                     success=False,
                     error="No autocomplete response captured"

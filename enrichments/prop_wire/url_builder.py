@@ -1,6 +1,7 @@
 """URL construction for PropWire."""
 
 import re
+from typing import Optional
 from enrichments.prop_wire.config import PROPERTY_URL_TEMPLATE
 
 
@@ -45,7 +46,7 @@ def build_property_url(address_slug: str, property_id: str) -> str:
     )
 
 
-def extract_property_id_from_url(url: str) -> str | None:
+def extract_property_id_from_url(url: str) -> Optional[str]:
     """
     Extract property ID from PropWire URL.
 
