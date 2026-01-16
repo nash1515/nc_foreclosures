@@ -40,58 +40,59 @@ def get_county_code(case_id: int) -> str | None:
 
 def enrich_case(case_id: int) -> dict:
     """
-    Route enrichment to the appropriate county enricher.
+    Route enrichment to the appropriate county enricher and run PropWire enrichment.
 
     Args:
         case_id: Database ID of the case to enrich
 
     Returns:
         dict with keys:
-            - success: bool
-            - url: str (if successful)
-            - error: str (if failed)
-            - review_needed: bool (if manual review required)
-            - skipped: bool (if county not implemented)
+            - county_re: dict (county-specific enrichment result)
+            - propwire: dict (PropWire enrichment result)
     """
     county_code = get_county_code(case_id)
 
+    # County RE enrichment
+    county_result = None
     if not county_code:
         logger.error(f"Could not determine county code for case_id={case_id}")
-        return {'success': False, 'error': 'Could not determine county code'}
-
-    if county_code not in COUNTY_ENRICHERS:
+        county_result = {'success': False, 'error': 'Could not determine county code'}
+    elif county_code not in COUNTY_ENRICHERS:
         logger.warning(f"Unknown county code {county_code} for case_id={case_id}")
-        return {'success': False, 'error': f'Unknown county code: {county_code}'}
-
-    if county_code not in IMPLEMENTED_COUNTIES:
+        county_result = {'success': False, 'error': f'Unknown county code: {county_code}'}
+    elif county_code not in IMPLEMENTED_COUNTIES:
         enricher_name = COUNTY_ENRICHERS[county_code]
         logger.debug(f"Enricher {enricher_name} not implemented for county {county_code}")
-        return {'success': False, 'skipped': True, 'error': f'Enricher not implemented: {enricher_name}'}
+        county_result = {'success': False, 'skipped': True, 'error': f'Enricher not implemented: {enricher_name}'}
+    else:
+        # Route to the appropriate enricher
+        if county_code == '910':
+            from enrichments.wake_re import enrich_case as wake_enrich
+            county_result = wake_enrich(case_id)
+        elif county_code == '310':
+            from enrichments.durham_re import enrich_case as durham_enrich
+            county_result = durham_enrich(case_id)
+        elif county_code == '420':
+            from enrichments.harnett_re import enrich_case as harnett_enrich
+            county_result = harnett_enrich(case_id)
+        elif county_code == '520':
+            from enrichments.lee_re import enrich_case as lee_enrich
+            county_result = lee_enrich(case_id)
+        elif county_code == '670':
+            from enrichments.orange_re import enrich_case as orange_enrich
+            county_result = orange_enrich(case_id)
+        elif county_code == '180':
+            from enrichments.chatham_re import enrich_case as chatham_enrich
+            county_result = chatham_enrich(case_id)
+        else:
+            # This shouldn't happen if IMPLEMENTED_COUNTIES is kept in sync
+            county_result = {'success': False, 'error': f'Enricher routing error for county {county_code}'}
 
-    # Route to the appropriate enricher
-    if county_code == '910':
-        from enrichments.wake_re import enrich_case as wake_enrich
-        return wake_enrich(case_id)
+    # PropWire enrichment (runs for ALL counties)
+    from enrichments.prop_wire.enricher import enrich_case as propwire_enrich
+    propwire_result = propwire_enrich(case_id)
 
-    if county_code == '310':
-        from enrichments.durham_re import enrich_case as durham_enrich
-        return durham_enrich(case_id)
-
-    if county_code == '420':
-        from enrichments.harnett_re import enrich_case as harnett_enrich
-        return harnett_enrich(case_id)
-
-    if county_code == '520':
-        from enrichments.lee_re import enrich_case as lee_enrich
-        return lee_enrich(case_id)
-
-    if county_code == '670':
-        from enrichments.orange_re import enrich_case as orange_enrich
-        return orange_enrich(case_id)
-
-    if county_code == '180':
-        from enrichments.chatham_re import enrich_case as chatham_enrich
-        return chatham_enrich(case_id)
-
-    # This shouldn't happen if IMPLEMENTED_COUNTIES is kept in sync
-    return {'success': False, 'error': f'Enricher routing error for county {county_code}'}
+    return {
+        'county_re': county_result,
+        'propwire': propwire_result
+    }
