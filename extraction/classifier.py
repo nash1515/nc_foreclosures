@@ -26,10 +26,11 @@ logger = setup_logger(__name__)
 
 def _trigger_enrichment_async(case_id: int, case_number: str):
     """
-    Trigger county-specific enrichment in background thread.
+    Trigger county-specific and PropWire enrichment in background thread.
 
     This is called when a case transitions to upset_bid status.
-    The router determines which county enricher to use based on the case.
+    The router determines which county enricher to use based on the case,
+    and also runs PropWire enrichment for all counties.
     Runs asynchronously to avoid blocking the classification process.
 
     Args:
@@ -42,14 +43,25 @@ def _trigger_enrichment_async(case_id: int, case_number: str):
         logger.info(f"  Starting async enrichment for case {case_number}")
         result = enrich_case(case_id)
 
-        if result.get('success'):
-            logger.info(f"  Enrichment succeeded for {case_number}: {result.get('url')}")
-        elif result.get('skipped'):
-            logger.debug(f"  Enrichment skipped for {case_number}: {result.get('error')}")
-        elif result.get('review_needed'):
-            logger.warning(f"  Enrichment needs review for {case_number}: {result.get('error')}")
+        # Log county RE enrichment result
+        county_result = result.get('county_re', {})
+        if county_result.get('success'):
+            logger.info(f"  County RE enrichment succeeded for {case_number}: {county_result.get('url')}")
+        elif county_result.get('skipped'):
+            logger.debug(f"  County RE enrichment skipped for {case_number}: {county_result.get('error')}")
+        elif county_result.get('review_needed'):
+            logger.warning(f"  County RE enrichment needs review for {case_number}: {county_result.get('error')}")
         else:
-            logger.error(f"  Enrichment failed for {case_number}: {result.get('error')}")
+            logger.error(f"  County RE enrichment failed for {case_number}: {county_result.get('error')}")
+
+        # Log PropWire enrichment result
+        propwire_result = result.get('propwire', {})
+        if propwire_result.get('success'):
+            logger.info(f"  PropWire enrichment succeeded for {case_number}: {propwire_result.get('url')}")
+        elif propwire_result.get('review_needed'):
+            logger.warning(f"  PropWire enrichment needs review for {case_number}: {propwire_result.get('error')}")
+        else:
+            logger.error(f"  PropWire enrichment failed for {case_number}: {propwire_result.get('error')}")
     except Exception as e:
         logger.error(f"  Async enrichment failed for case {case_number}: {e}")
 
