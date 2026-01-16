@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useSearchParams } from 'react-router-dom';
 import {
   Typography, Card, Row, Col, Tag, Button, Descriptions, Timeline, Table,
   Spin, Alert, Space, Divider, message, InputNumber, Tooltip
@@ -32,6 +32,8 @@ const CLASSIFICATION_COLORS = {
 
 function CaseDetail() {
   const { id } = useParams();
+  const [searchParams] = useSearchParams();
+  const countyParam = searchParams.get('county');
   const [caseData, setCaseData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -248,7 +250,7 @@ function CaseDetail() {
     <div style={{ padding: '24px' }}>
       {/* Header */}
       <Space style={{ marginBottom: 16 }}>
-        <Link to="/">
+        <Link to={countyParam ? `/?county=${countyParam}` : '/'}>
           <Button icon={<ArrowLeftOutlined />}>Back to Dashboard</Button>
         </Link>
         <Title level={4} style={{ margin: 0 }}>{c.case_number}</Title>

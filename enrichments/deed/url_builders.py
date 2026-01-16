@@ -34,10 +34,10 @@ def build_orange_url(deed_book: str, deed_page: str) -> str:
 
 
 def build_lee_url() -> str:
-    """Lee County - Search page only (Logan Systems, user clicks Book/Page tab)."""
-    return "https://www.leencrod.org/search.wgx"
+    """Lee County - Opens disclaimer page first (Logan Systems requires acknowledgment)."""
+    return "https://www.leencrod.org/Opening.asp"
 
 
 def build_chatham_url() -> str:
-    """Chatham County - Search page only (Logan Systems, user clicks Book/Page tab)."""
-    return "https://www.chathamncrod.org/search.wgx"
+    """Chatham County - Base URL (Logan Systems generates session on entry)."""
+    return "https://www.chathamncrod.org/"

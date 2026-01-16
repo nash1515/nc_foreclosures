@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   Typography, Card, Row, Col, Table, Tag, Statistic,
   Spin, Alert, Space, Button, Tooltip, Tabs
@@ -26,7 +26,7 @@ const getCountyDeedSearchUrl = (caseNumber) => {
     '910': 'https://rodrecords.wake.gov/web/web/integration/search',
     '310': 'https://rodweb.dconc.gov/web/search/DOCSEARCH5S1',
     '420': 'https://us6.courthousecomputersystems.com/HarnettNC/',
-    '520': 'https://ustaxdata.com/nc/lee/',
+    '520': 'https://www.leencrod.org/search.wgx',
     '670': 'https://rod.orangecountync.gov/',
     '180': 'https://www.chathamnc.org/government/departments-programs-i-z/register-of-deeds',
   };
@@ -62,11 +62,25 @@ const COUNTY_TABS = [
 ];
 
 function Dashboard() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [stats, setStats] = useState(null);
   const [allUpsetBids, setAllUpsetBids] = useState([]);  // All bids for counting
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [selectedCounty, setSelectedCounty] = useState('all');
+  const [selectedCounty, setSelectedCounty] = useState(() => {
+    const countyParam = searchParams.get('county');
+    return countyParam && COUNTY_TABS.some(t => t.key === countyParam) ? countyParam : 'all';
+  });
+
+  // Update URL when county changes
+  const handleCountyChange = (county) => {
+    setSelectedCounty(county);
+    if (county === 'all') {
+      setSearchParams({});
+    } else {
+      setSearchParams({ county });
+    }
+  };
 
   useEffect(() => {
     fetchData();
@@ -214,7 +228,7 @@ function Dashboard() {
       width: 140,
       render: (_, record) => (
         <div>
-          <Link to={`/cases/${record.id}`} style={{ fontWeight: 500 }}>
+          <Link to={`/cases/${record.id}${selectedCounty !== 'all' ? `?county=${selectedCounty}` : ''}`} style={{ fontWeight: 500 }}>
             {record.case_number}
           </Link>
           <div>
@@ -518,7 +532,7 @@ function Dashboard() {
       <Card bodyStyle={{ padding: 0 }}>
         <Tabs
           activeKey={selectedCounty}
-          onChange={setSelectedCounty}
+          onChange={handleCountyChange}
           style={{ marginBottom: 0 }}
           tabBarStyle={{ marginBottom: 0, paddingLeft: 16, paddingRight: 16 }}
           items={COUNTY_TABS.map(tab => ({
