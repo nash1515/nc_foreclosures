@@ -419,6 +419,23 @@ def extract_property_address(ocr_text: str, return_quality: bool = False) -> Opt
             # Clean up extra whitespace
             address = re.sub(r'\s+', ' ', address)
 
+            # Strip common address prefixes that shouldn't be part of the address
+            # E.g., "commonly known as 88 Maple Springs Ln." -> "88 Maple Springs Ln."
+            address_prefixes = [
+                r'^commonly\s+known\s+as\s+',
+                r'^known\s+as\s+',
+            ]
+            for prefix_pattern in address_prefixes:
+                address = re.sub(prefix_pattern, '', address, flags=re.IGNORECASE)
+
+            # Truncate address after ZIP code to remove legal text that follows
+            # E.g., "3017 Forrester St, Durham, NC 27704 hereinafter referred to..."
+            # -> "3017 Forrester St, Durham, NC 27704"
+            zip_match = re.search(r'(\d{5}(?:-\d{4})?)', address)
+            if zip_match:
+                zip_end = zip_match.end()
+                address = address[:zip_end].strip()
+
             # CLEAN form artifacts from the address instead of rejecting
             # This handles OCR issues where form text like "Summons Submitted Yes No"
             # appears between street and city/state

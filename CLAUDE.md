@@ -41,13 +41,19 @@ cd frontend && npm run dev -- --host &
 - **Deed Enrichment:** 90% extraction rate (35/39 upset_bid cases)
 - **Grace Period Monitoring:** 5-day window for closed_sold cases
 
-### Recent Changes (Session 27 - Jan 12)
+### Recent Changes (Session 28 - Jan 16)
+- **Bid field clearing fix** - Users can now delete bid data and it stays empty (was reverting)
+- **Address extraction cleanup** - Strip "commonly known as" prefix and truncate after ZIP code
+- **Set-aside monitoring moved to Fridays** - Task 8 now runs on Fridays (scheduler only runs Mon-Fri)
+- **Database cleanup** - Fixed 8 cases with malformed addresses
+
+### Previous Changes (Session 27 - Jan 12)
 - **Interest Tracking feature** - Track case analysis decisions (Interested/Not Interested)
 - Dashboard: New "Review" column with hurricane warning flag (not reviewed), green check (interested), red X (not interested)
 - Case Detail: "Analysis Decision" card with Yes/No toggle buttons
 - Validation: "Yes" requires Est. Sale Price + all 3 Bid Ladder fields; "No" requires Team Notes
 
-### Previous Changes (Session 26 - Dec 29)
+### Session 26 (Dec 29)
 - Fixed OCR bid extraction bug (phone number extracted as $9M bid)
 - Tightened regex proximity windows, event descriptions now authoritative
 - Added Google Maps QuickLink to Dashboard and Case Detail

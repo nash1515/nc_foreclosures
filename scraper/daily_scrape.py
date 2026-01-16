@@ -7,6 +7,8 @@ This script runs the complete daily scraping workflow:
 4. Monitor blocked cases for status changes
 5. Monitor upset_bid cases for new bids or blocking events
 6. Reclassify stale cases based on time (upset_bid -> closed_sold)
+7. Grace period monitoring (5-day window for closed_sold cases)
+8. Set-aside monitoring (weekly on Fridays - catches resales on closed_sold cases)
 
 Usage:
     # Run all daily tasks
@@ -34,7 +36,7 @@ from datetime import datetime, timedelta, timezone, time
 from typing import Dict, Optional
 
 from database.connection import get_session
-from database.models import Case, ScrapeLog, ScrapeLogTask
+from database.models import Case, CaseEvent, ScrapeLog, ScrapeLogTask
 from scraper.date_range_scrape import DateRangeScraper
 from scraper.case_monitor import CaseMonitor, monitor_cases
 from extraction.classifier import reclassify_stale_cases
@@ -439,6 +441,74 @@ def run_grace_period_monitoring(dry_run: bool = False) -> Dict:
         return {'error': str(e)}
 
 
+def run_set_aside_monitoring(dry_run: bool = False) -> Dict:
+    """
+    TASK 8: Weekly monitoring of closed_sold cases with set-aside events.
+
+    Cases that had sales set aside might have new sales filed that we'd miss
+    since closed_sold cases aren't monitored regularly. This task runs weekly
+    (on Saturdays) to catch any new sales on these cases.
+
+    Args:
+        dry_run: If True, show what would be done
+
+    Returns:
+        Dict with monitoring results
+    """
+    logger.info("=" * 60)
+    logger.info("TASK 8: Set-Aside Case Monitoring (Weekly)")
+    logger.info("=" * 60)
+
+    with get_session() as session:
+        # Find closed_sold cases with set-aside events
+        from sqlalchemy import exists
+        set_aside_cases = session.query(Case).filter(
+            Case.classification == 'closed_sold',
+            Case.case_url.isnot(None),
+            exists().where(
+                CaseEvent.case_id == Case.id
+            ).where(
+                CaseEvent.event_type.ilike('%set aside%')
+            )
+        ).all()
+
+        # Detach from session for processing
+        session.expunge_all()
+
+    logger.info(f"Found {len(set_aside_cases)} closed_sold cases with set-aside events")
+
+    if dry_run:
+        logger.info("[DRY RUN] Would monitor the following cases:")
+        for case in set_aside_cases[:10]:
+            logger.info(f"  {case.case_number} ({case.county_name})")
+        if len(set_aside_cases) > 10:
+            logger.info(f"  ... and {len(set_aside_cases) - 10} more")
+        return {
+            'dry_run': True,
+            'set_aside_cases': len(set_aside_cases)
+        }
+
+    if len(set_aside_cases) == 0:
+        logger.info("No set-aside cases to monitor")
+        return {'cases_checked': 0, 'events_added': 0, 'classifications_changed': 0}
+
+    try:
+        # Use the existing CaseMonitor to re-check these cases
+        monitor = CaseMonitor(max_workers=3, headless=False)
+        results = monitor.run(cases=set_aside_cases, dry_run=False)
+
+        logger.info(f"Set-aside monitoring complete:")
+        logger.info(f"  Cases checked: {results.get('cases_checked', 0)}")
+        logger.info(f"  New events found: {results.get('events_added', 0)}")
+        logger.info(f"  Classifications changed: {results.get('classifications_changed', 0)}")
+
+        return results
+
+    except Exception as e:
+        logger.error(f"Set-aside monitoring failed: {e}")
+        return {'error': str(e)}
+
+
 def run_daily_tasks(
     target_date: Optional[datetime.date] = None,
     search_new: bool = True,
@@ -653,6 +723,26 @@ def run_daily_tasks(
         logger.error(f"Task 7 failed: {e}")
         results['errors'].append(f"grace_period_monitoring: {e}")
         task_logger.complete_task(task_id, status='failed', error_message=str(e))
+
+    # Task 8: Set-Aside Monitoring (Weekly - Fridays only)
+    # Friday is weekday() == 4 (scheduler runs Mon-Fri, so Friday is last day)
+    if datetime.now().weekday() == 4:
+        task_id = task_logger.start_task('set_aside_monitoring')
+        try:
+            results['set_aside_monitoring'] = run_set_aside_monitoring(dry_run)
+            task_logger.complete_task(
+                task_id,
+                items_checked=results['set_aside_monitoring'].get('cases_checked', 0),
+                items_found=results['set_aside_monitoring'].get('events_added', 0),
+                items_processed=results['set_aside_monitoring'].get('classifications_changed', 0)
+            )
+        except Exception as e:
+            logger.error(f"Task 8 failed: {e}")
+            results['errors'].append(f"set_aside_monitoring: {e}")
+            task_logger.complete_task(task_id, status='failed', error_message=str(e))
+    else:
+        logger.info("Task 8 (Set-Aside Monitoring): Skipped - only runs on Fridays")
+        results['set_aside_monitoring'] = {'skipped': True, 'reason': 'Not Friday'}
 
     # Summary
     end_time = datetime.now()

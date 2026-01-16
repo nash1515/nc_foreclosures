@@ -592,9 +592,21 @@ def update_case(case_id):
                 return jsonify({'error': 'Invalid interest_status value'}), 400
 
         # Merge current DB values with incoming request values
-        merged_initial = float(our_initial_bid) if our_initial_bid is not None else (float(case.our_initial_bid) if case.our_initial_bid is not None else None)
-        merged_second = float(our_second_bid) if our_second_bid is not None else (float(case.our_second_bid) if case.our_second_bid is not None else None)
-        merged_max = float(our_max_bid) if our_max_bid is not None else (float(case.our_max_bid) if case.our_max_bid is not None else None)
+        # Use key presence to distinguish "not sent" vs "sent as null"
+        if 'our_initial_bid' in data:
+            merged_initial = float(data['our_initial_bid']) if data['our_initial_bid'] is not None else None
+        else:
+            merged_initial = float(case.our_initial_bid) if case.our_initial_bid is not None else None
+
+        if 'our_second_bid' in data:
+            merged_second = float(data['our_second_bid']) if data['our_second_bid'] is not None else None
+        else:
+            merged_second = float(case.our_second_bid) if case.our_second_bid is not None else None
+
+        if 'our_max_bid' in data:
+            merged_max = float(data['our_max_bid']) if data['our_max_bid'] is not None else None
+        else:
+            merged_max = float(case.our_max_bid) if case.our_max_bid is not None else None
 
         # Validate merged state if all three bids are non-null
         if merged_initial is not None and merged_second is not None and merged_max is not None:
@@ -603,17 +615,17 @@ def update_case(case_id):
                     'error': 'Invalid bid ladder: our_initial_bid <= our_second_bid <= our_max_bid'
                 }), 400
 
-        # Update fields (only if provided in request)
-        if our_initial_bid is not None:
-            case.our_initial_bid = our_initial_bid
-        if our_second_bid is not None:
-            case.our_second_bid = our_second_bid
-        if our_max_bid is not None:
-            case.our_max_bid = our_max_bid
-        if estimated_sale_price is not None:
-            case.estimated_sale_price = estimated_sale_price
-        if team_notes is not None:
-            case.team_notes = team_notes
+        # Update fields (only if key exists in request - allows setting to null)
+        if 'our_initial_bid' in data:
+            case.our_initial_bid = data['our_initial_bid']
+        if 'our_second_bid' in data:
+            case.our_second_bid = data['our_second_bid']
+        if 'our_max_bid' in data:
+            case.our_max_bid = data['our_max_bid']
+        if 'estimated_sale_price' in data:
+            case.estimated_sale_price = data['estimated_sale_price']
+        if 'team_notes' in data:
+            case.team_notes = data['team_notes']
         if interest_status is not None:
             # Empty string clears the status (back to not reviewed)
             case.interest_status = interest_status if interest_status else None
