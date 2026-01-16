@@ -34,6 +34,7 @@ function CaseDetail() {
   const { id } = useParams();
   const [searchParams] = useSearchParams();
   const countyParam = searchParams.get('county');
+  const interestParam = searchParams.get('interest');
   const [caseData, setCaseData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -250,7 +251,13 @@ function CaseDetail() {
     <div style={{ padding: '24px' }}>
       {/* Header */}
       <Space style={{ marginBottom: 16 }}>
-        <Link to={countyParam ? `/?county=${countyParam}` : '/'}>
+        <Link to={(() => {
+          const params = new URLSearchParams();
+          if (countyParam) params.set('county', countyParam);
+          if (interestParam) params.set('interest', interestParam);
+          const qs = params.toString();
+          return qs ? `/?${qs}` : '/';
+        })()}>
           <Button icon={<ArrowLeftOutlined />}>Back to Dashboard</Button>
         </Link>
         <Title level={4} style={{ margin: 0 }}>{c.case_number}</Title>

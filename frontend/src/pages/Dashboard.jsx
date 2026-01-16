@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
   Typography, Card, Row, Col, Table, Tag, Statistic,
-  Spin, Alert, Space, Button, Tooltip, Tabs
+  Spin, Alert, Space, Button, Tooltip, Tabs, Radio
 } from 'antd';
 import {
   DollarOutlined, ClockCircleOutlined, HomeOutlined,
@@ -61,6 +61,13 @@ const COUNTY_TABS = [
   { key: 'Chatham', label: 'Chatham' }
 ];
 
+// Interest status filter options
+const INTEREST_FILTERS = [
+  { key: 'all', label: 'All' },
+  { key: 'interested', label: 'Interested' },
+  { key: 'needs_review', label: 'Needs Review' }
+];
+
 function Dashboard() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [stats, setStats] = useState(null);
@@ -71,15 +78,28 @@ function Dashboard() {
     const countyParam = searchParams.get('county');
     return countyParam && COUNTY_TABS.some(t => t.key === countyParam) ? countyParam : 'all';
   });
+  const [interestFilter, setInterestFilter] = useState(() => {
+    const interestParam = searchParams.get('interest');
+    return interestParam && INTEREST_FILTERS.some(f => f.key === interestParam) ? interestParam : 'all';
+  });
 
-  // Update URL when county changes
+  // Update URL when filters change
+  const updateSearchParams = (county, interest) => {
+    const params = {};
+    if (county !== 'all') params.county = county;
+    if (interest !== 'all') params.interest = interest;
+    setSearchParams(params);
+  };
+
   const handleCountyChange = (county) => {
     setSelectedCounty(county);
-    if (county === 'all') {
-      setSearchParams({});
-    } else {
-      setSearchParams({ county });
-    }
+    updateSearchParams(county, interestFilter);
+  };
+
+  const handleInterestChange = (e) => {
+    const interest = e.target.value;
+    setInterestFilter(interest);
+    updateSearchParams(selectedCounty, interest);
   };
 
   useEffect(() => {
@@ -112,16 +132,38 @@ function Dashboard() {
     }
   };
 
-  // Filter bids by selected county (client-side)
-  const filteredBids = selectedCounty === 'all'
+  // Filter bids by selected county first (for interest counts)
+  const countyFilteredBids = selectedCounty === 'all'
     ? allUpsetBids
     : allUpsetBids.filter(bid => bid.county_name === selectedCounty);
+
+  // Filter bids by selected county and interest status (client-side)
+  const filteredBids = countyFilteredBids.filter(bid => {
+    // Interest filter
+    if (interestFilter === 'all') {
+      return true;
+    }
+    if (interestFilter === 'interested' && bid.interest_status !== 'interested') {
+      return false;
+    }
+    if (interestFilter === 'needs_review' && bid.interest_status !== null) {
+      return false;
+    }
+    return true;
+  });
 
   // Count bids per county for tab labels
   const countsByCounty = allUpsetBids.reduce((acc, bid) => {
     acc[bid.county_name] = (acc[bid.county_name] || 0) + 1;
     return acc;
   }, {});
+
+  // Count bids by interest status for filter labels (filtered by selected county)
+  const countsByInterest = {
+    all: countyFilteredBids.length,
+    interested: countyFilteredBids.filter(b => b.interest_status === 'interested').length,
+    needs_review: countyFilteredBids.filter(b => b.interest_status === null).length
+  };
 
   const toggleWatchlist = async (caseId, isWatchlisted) => {
     try {
@@ -226,16 +268,22 @@ function Dashboard() {
       title: 'Case',
       key: 'case',
       width: 140,
-      render: (_, record) => (
+      render: (_, record) => {
+        const params = new URLSearchParams();
+        if (selectedCounty !== 'all') params.set('county', selectedCounty);
+        if (interestFilter !== 'all') params.set('interest', interestFilter);
+        const queryString = params.toString();
+        return (
         <div>
-          <Link to={`/cases/${record.id}${selectedCounty !== 'all' ? `?county=${selectedCounty}` : ''}`} style={{ fontWeight: 500 }}>
+          <Link to={`/cases/${record.id}${queryString ? `?${queryString}` : ''}`} style={{ fontWeight: 500 }}>
             {record.case_number}
           </Link>
           <div>
             <Tag color="blue" style={{ marginTop: 2 }}>{record.county_name}</Tag>
           </div>
         </div>
-      )
+      );
+      }
     },
     {
       title: 'Type',
@@ -543,13 +591,36 @@ function Dashboard() {
           }))}
         />
         <div style={{ padding: 12 }}>
+          {/* Interest Status Filter */}
+          <div style={{ marginBottom: 12 }}>
+            <Space>
+              <Text type="secondary">Filter by review status:</Text>
+              <Radio.Group
+                value={interestFilter}
+                onChange={handleInterestChange}
+                optionType="button"
+                buttonStyle="solid"
+                size="small"
+              >
+                {INTEREST_FILTERS.map(filter => (
+                  <Radio.Button key={filter.key} value={filter.key}>
+                    {filter.label} ({countsByInterest[filter.key]})
+                  </Radio.Button>
+                ))}
+              </Radio.Group>
+            </Space>
+          </div>
           {filteredBids.length === 0 ? (
             <Alert
               type="info"
-              message="No Active Upset Bids"
-              description={selectedCounty === 'all'
-                ? "There are currently no cases in the upset bid period. Check back later for new opportunities."
-                : `There are currently no active upset bids in ${selectedCounty} County.`}
+              message="No Matching Cases"
+              description={
+                interestFilter !== 'all'
+                  ? `No ${interestFilter === 'interested' ? 'interested' : 'unreviewed'} cases${selectedCounty !== 'all' ? ` in ${selectedCounty} County` : ''}.`
+                  : selectedCounty === 'all'
+                    ? "There are currently no cases in the upset bid period."
+                    : `There are currently no active upset bids in ${selectedCounty} County.`
+              }
               showIcon
             />
           ) : (

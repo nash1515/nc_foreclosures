@@ -42,9 +42,10 @@ cd frontend && npm run dev -- --host &
 - **Grace Period Monitoring:** 5-day window for closed_sold cases
 
 ### Recent Changes (Session 30 - Jan 16)
+- **Dashboard interest status filter** - New filter row with All/Interested/Needs Review options; counts update based on selected county; persists in URL (`?interest=needs_review`)
 - **Deed URL fixes for Logan Systems counties** - Lee and Chatham deed links now point to disclaimer pages (`Opening.asp` / base URL) instead of direct search pages that error
 - **Dashboard county tab persistence** - Navigating to case detail and back now preserves county tab selection via URL params (`?county=Lee`)
-- **Lee County enrichment** - Ran missing enrichment for case 25SP000139-520
+- **Harnett County enrichment verified** - 5/6 upset_bid cases enriched; removed from Next Priorities
 
 ### Previous Changes (Session 29 - Jan 16)
 - **Chatham County enrichment fix** - Scraper now searches with full address (e.g., "88 Maple Springs") instead of just street number, fixing false positive matches
@@ -135,7 +136,6 @@ PGPASSWORD=nc_password psql -U nc_user -d nc_foreclosures -h localhost
 
 ## Next Priorities
 1. PropWire enrichment (next quicklink)
-2. Dashboard filtering by interest status
 
 ## Session Commands
 - **"Wrap up session"** - Update CLAUDE.md + commit/push + review todos + give handoff
