@@ -135,8 +135,7 @@ PGPASSWORD=nc_password psql -U nc_user -d nc_foreclosures -h localhost
 
 ## Next Priorities
 1. PropWire enrichment (next quicklink)
-2. Harnett County RE enrichment testing
-3. Dashboard filtering by interest status
+2. Dashboard filtering by interest status
 
 ## Session Commands
 - **"Wrap up session"** - Update CLAUDE.md + commit/push + review todos + give handoff
