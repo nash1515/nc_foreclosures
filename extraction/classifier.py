@@ -709,12 +709,36 @@ def update_case_classification(case_id: int) -> Optional[str]:
                     logger.debug(f"  Case {case_id}: Cleared closed_sold_at timestamp")
 
                 # Ensure upset_bid cases have a valid deadline
-                # This handles resales where deadline was cleared but not recalculated
-                if classification == 'upset_bid' and not case.next_bid_deadline and case.sale_date:
-                    # Calculate deadline from sale date (no upset bids filed yet in current cycle)
-                    adjusted_deadline = calculate_upset_bid_deadline(case.sale_date)
-                    case.next_bid_deadline = datetime.combine(adjusted_deadline, datetime.min.time())
-                    logger.info(f"  Case {case_id}: Set deadline to {adjusted_deadline} from sale date {case.sale_date}")
+                # This handles: 1) missing deadline, 2) stale deadline from previous sale cycle
+                if classification == 'upset_bid' and case.sale_date:
+                    deadline_missing = not case.next_bid_deadline
+                    deadline_stale = case.next_bid_deadline and case.next_bid_deadline.date() < case.sale_date
+
+                    if deadline_missing or deadline_stale:
+                        # Find most recent upset bid in current sale cycle (query within this session)
+                        recent_upset = session.query(CaseEvent).filter(
+                            CaseEvent.case_id == case_id,
+                            CaseEvent.event_type.ilike('%upset bid filed%'),
+                            CaseEvent.event_date.isnot(None),
+                            CaseEvent.event_date >= case.sale_date
+                        ).order_by(CaseEvent.event_date.desc()).first()
+
+                        if recent_upset and recent_upset.event_date:
+                            # Calculate from most recent upset bid
+                            adjusted_deadline = calculate_upset_bid_deadline(recent_upset.event_date)
+                            source = f"upset bid on {recent_upset.event_date}"
+                        else:
+                            # No upset bids yet, calculate from sale date
+                            adjusted_deadline = calculate_upset_bid_deadline(case.sale_date)
+                            source = f"sale date {case.sale_date}"
+
+                        old_deadline = case.next_bid_deadline.date() if case.next_bid_deadline else None
+                        case.next_bid_deadline = datetime.combine(adjusted_deadline, datetime.min.time())
+
+                        if deadline_stale:
+                            logger.warning(f"  Case {case_id}: Fixed stale deadline {old_deadline} -> {adjusted_deadline} (from {source})")
+                        else:
+                            logger.info(f"  Case {case_id}: Set deadline to {adjusted_deadline} from {source}")
 
                 session.commit()
 
