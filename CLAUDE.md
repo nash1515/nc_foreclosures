@@ -41,13 +41,21 @@ cd frontend && npm run dev -- --host &
 - **Deed Enrichment:** 90% extraction rate (35/39 upset_bid cases)
 - **Grace Period Monitoring:** 5-day window for closed_sold cases
 
-### Recent Changes (Session 30 - Jan 16)
+### Recent Changes (Session 31 - Jan 19)
+- **Chronology audit - 4 bugs fixed** - Comprehensive audit ensuring bid amounts, case status, and related data respect chronological order:
+  - `case_monitor.py`: `extract_bid_amount()` was using `max(amounts)` instead of most recent - now returns first match (page shows newest-first)
+  - `extractor.py`: `_find_address_in_event_descriptions()` missing ORDER BY - added `ORDER BY event_date DESC, id DESC`
+  - `extractor.py`: `update_case_with_extracted_data()` used `>` comparison for bids - changed to update if different (trusts extraction chronology)
+  - `extractor.py`: `extract_all_from_case()` document iteration without ORDER BY - added `ORDER BY created_at DESC, id DESC`
+- **Interest validation race condition fix** - Fixed bug where clicking "Yes - Interested" after filling bid ladder fields showed "Complete Est. Sale Price and Bid Ladder" error; frontend now sends current form values with interest status change instead of relying on potentially stale database values
+
+### Previous Changes (Session 30 - Jan 16)
 - **Dashboard interest status filter** - New filter row with All/Interested/Needs Review options; counts update based on selected county; persists in URL (`?interest=needs_review`)
 - **Deed URL fixes for Logan Systems counties** - Lee and Chatham deed links now point to disclaimer pages (`Opening.asp` / base URL) instead of direct search pages that error
 - **Dashboard county tab persistence** - Navigating to case detail and back now preserves county tab selection via URL params (`?county=Lee`)
 - **Harnett County enrichment verified** - 5/6 upset_bid cases enriched; removed from Next Priorities
 
-### Previous Changes (Session 29 - Jan 16)
+### Session 29 (Jan 16)
 - **Chatham County enrichment fix** - Scraper now searches with full address (e.g., "88 Maple Springs") instead of just street number, fixing false positive matches
 - **Bid ladder unmount save fix** - Fixed race condition where clearing bid fields and quickly navigating away lost the changes; now tracks actual saved values vs pending changes
 
