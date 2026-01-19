@@ -93,13 +93,25 @@ def login():
 @api_bp.route('/auth/callback', methods=['GET'])
 def auth_callback():
     """Handle OAuth callback - redirect to frontend."""
+    from flask import request
+    # Get the origin from the request or use localhost
+    origin = request.headers.get('Origin', 'http://localhost:5173')
+    # If origin is not localhost, use it; otherwise use localhost
+    if 'localhost' not in origin:
+        return redirect(f'{origin}/')
     return redirect('http://localhost:5173/')
 
 
 @api_bp.route('/auth/logout', methods=['POST', 'GET'])
 def logout():
     """Log out current user."""
+    from flask import request
     # Clear Flask-Dance token
     if 'google_oauth_token' in session:
         del session['google_oauth_token']
+    # Get the origin from the request or use localhost
+    origin = request.headers.get('Origin', 'http://localhost:5173')
+    # If origin is not localhost, use it; otherwise use localhost
+    if 'localhost' not in origin:
+        return redirect(f'{origin}/login')
     return redirect('http://localhost:5173/login')

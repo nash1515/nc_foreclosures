@@ -13,4 +13,4 @@ source venv/bin/activate
 export PYTHONPATH=$(pwd)
 
 # Load environment variables and start Flask
-python -c "from dotenv import load_dotenv; load_dotenv(); from web_app.app import create_app; create_app().run(port=5001, debug=True)"
+python -c "from dotenv import load_dotenv; load_dotenv(); from web_app.app import create_app; create_app().run(host='0.0.0.0', port=5001, debug=True)"

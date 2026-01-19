@@ -25,12 +25,12 @@ export PYTHONPATH=$(pwd)
 sudo service postgresql start
 
 # Start dev servers (run in background)
-PYTHONPATH=$(pwd) venv/bin/python -c "from web_app.app import create_app; create_app().run(port=5001)" &
+PYTHONPATH=$(pwd) venv/bin/python -c "from web_app.app import create_app; create_app().run(host='0.0.0.0', port=5001)" &
 cd frontend && npm run dev -- --host &
 ```
 
-- Frontend: http://localhost:5173
-- API: http://localhost:5001
+- Frontend: http://localhost:5173 (or http://desktop-12at1ao.tail7dda89.ts.net:5173 via Tailscale)
+- API: http://localhost:5001 (or http://desktop-12at1ao.tail7dda89.ts.net:5001 via Tailscale)
 
 ## Current Status
 

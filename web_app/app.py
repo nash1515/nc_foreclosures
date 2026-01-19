@@ -34,8 +34,15 @@ def create_app():
     """Create and configure the Flask application."""
     app = Flask(__name__)
 
-    # Enable CORS for development
-    CORS(app, supports_credentials=True, origins=['http://localhost:5173'])
+    # Enable CORS for development (localhost + Tailscale)
+    tailscale_host = os.environ.get('TAILSCALE_HOST', '')
+    allowed_origins = ['http://localhost:5173']
+    if tailscale_host:
+        allowed_origins.extend([
+            f'http://{tailscale_host}:5173',
+            f'https://{tailscale_host}:5173'
+        ])
+    CORS(app, supports_credentials=True, origins=allowed_origins)
 
     # Load configuration
     app.config['SECRET_KEY'] = os.environ.get('FLASK_SECRET_KEY', 'dev-secret-key-change-in-production')
