@@ -1,6 +1,7 @@
 """Daily scrape orchestrator - coordinates all daily tasks.
 
 This script runs the complete daily scraping workflow:
+0. Database backup (runs FIRST before all other tasks)
 1. Search for new cases filed yesterday (or 3 days back on Mondays to catch weekend filings)
 2. OCR and extraction for newly downloaded documents
 3. Monitor upcoming cases for sale events
@@ -32,8 +33,10 @@ Cron example (run at 6 AM daily):
 
 import argparse
 import sys
+import subprocess
 from datetime import datetime, timedelta, timezone, time
 from typing import Dict, Optional
+from pathlib import Path
 
 from database.connection import get_session
 from database.models import Case, CaseEvent, ScrapeLog, ScrapeLogTask
@@ -135,6 +138,60 @@ def get_case_counts() -> Dict[str, int]:
             counts[classification or 'unclassified'] = count
 
         return counts
+
+
+def run_database_backup(dry_run: bool = False) -> Dict:
+    """
+    Run database backup before daily tasks.
+
+    Args:
+        dry_run: If True, show what would be done
+
+    Returns:
+        Dict with backup results
+    """
+    logger.info("=" * 60)
+    logger.info("TASK 0: Database Backup")
+    logger.info("=" * 60)
+
+    # Find backup script
+    project_root = Path(__file__).parent.parent
+    backup_script = project_root / 'scripts' / 'backup_database.sh'
+
+    if not backup_script.exists():
+        logger.error(f"Backup script not found: {backup_script}")
+        return {'error': 'Backup script not found', 'status': 'failed'}
+
+    if dry_run:
+        logger.info(f"[DRY RUN] Would run: {backup_script}")
+        return {'dry_run': True, 'script': str(backup_script)}
+
+    try:
+        logger.info(f"Running backup script: {backup_script}")
+        result = subprocess.run(
+            [str(backup_script)],
+            capture_output=True,
+            text=True,
+            timeout=300  # 5 minute timeout
+        )
+
+        if result.returncode == 0:
+            logger.info("Database backup completed successfully")
+            if result.stdout:
+                logger.info(f"Backup output: {result.stdout.strip()}")
+            return {'status': 'success', 'output': result.stdout}
+        else:
+            logger.error(f"Backup failed with exit code {result.returncode}")
+            if result.stderr:
+                logger.error(f"Backup error: {result.stderr.strip()}")
+            return {'status': 'failed', 'error': result.stderr, 'exit_code': result.returncode}
+
+    except subprocess.TimeoutExpired:
+        logger.error("Backup timed out after 5 minutes")
+        return {'status': 'failed', 'error': 'Timeout after 5 minutes'}
+    except Exception as e:
+        logger.error(f"Backup failed: {e}")
+        return {'status': 'failed', 'error': str(e)}
 
 
 def run_new_case_search(target_date: datetime.date, dry_run: bool = False) -> Dict:
@@ -556,6 +613,7 @@ def run_daily_tasks(
     results = {
         'start_time': str(start_time),
         'target_date': str(target_date),
+        'database_backup': None,
         'new_case_search': None,
         'ocr_processed': None,
         'case_monitoring': None,
@@ -568,6 +626,17 @@ def run_daily_tasks(
 
     # Task logger - will be initialized once we have a scrape_log_id
     task_logger = TaskLogger()
+
+    # Task 0: Database Backup (runs FIRST, before all other tasks)
+    try:
+        results['database_backup'] = run_database_backup(dry_run)
+        if results['database_backup'].get('status') == 'failed':
+            logger.warning("Database backup failed, but continuing with daily tasks")
+            results['errors'].append(f"database_backup: {results['database_backup'].get('error')}")
+    except Exception as e:
+        logger.error(f"Task 0 (backup) failed: {e}")
+        results['errors'].append(f"database_backup: {e}")
+        # Continue even if backup fails - we don't want to block daily tasks
 
     # Task 1: Search for new cases
     if search_new:
@@ -753,6 +822,14 @@ def run_daily_tasks(
     logger.info("DAILY SCRAPE COMPLETE")
     logger.info("=" * 60)
     logger.info(f"Duration: {duration}")
+
+    if results['database_backup']:
+        if results['database_backup'].get('dry_run'):
+            logger.info(f"Database backup: [DRY RUN]")
+        elif results['database_backup'].get('status') == 'success':
+            logger.info(f"Database backup: SUCCESS")
+        else:
+            logger.warning(f"Database backup: FAILED")
 
     if results['new_case_search']:
         new_cases = results['new_case_search'].get('cases_processed', 0)

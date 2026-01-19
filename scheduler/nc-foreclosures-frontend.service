@@ -1,0 +1,15 @@
+[Unit]
+Description=NC Foreclosures React Frontend
+After=network.target nc-foreclosures-api.service
+
+[Service]
+Type=simple
+User=ahn
+WorkingDirectory=/home/ahn/projects/nc_foreclosures/frontend
+ExecStart=/usr/bin/npm run dev -- --host --port 5173
+Restart=on-failure
+RestartSec=10
+Environment=NODE_ENV=development
+
+[Install]
+WantedBy=multi-user.target

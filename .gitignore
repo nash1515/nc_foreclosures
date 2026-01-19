@@ -66,3 +66,6 @@ temp/
 
 # Downloaded PDFs and data files
 data/
+
+# Database backups
+backups/*.sql.gz
