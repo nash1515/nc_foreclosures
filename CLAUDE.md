@@ -41,40 +41,27 @@ cd frontend && npm run dev -- --host &
 - **Deed Enrichment:** 90% extraction rate (35/39 upset_bid cases)
 - **Grace Period Monitoring:** 5-day window for closed_sold cases
 
-### Recent Changes (Session 31 - Jan 19)
-- **Chronology audit - 4 bugs fixed** - Comprehensive audit ensuring bid amounts, case status, and related data respect chronological order:
-  - `case_monitor.py`: `extract_bid_amount()` was using `max(amounts)` instead of most recent - now returns first match (page shows newest-first)
-  - `extractor.py`: `_find_address_in_event_descriptions()` missing ORDER BY - added `ORDER BY event_date DESC, id DESC`
-  - `extractor.py`: `update_case_with_extracted_data()` used `>` comparison for bids - changed to update if different (trusts extraction chronology)
-  - `extractor.py`: `extract_all_from_case()` document iteration without ORDER BY - added `ORDER BY created_at DESC, id DESC`
-- **Interest validation race condition fix** - Fixed bug where clicking "Yes - Interested" after filling bid ladder fields showed "Complete Est. Sale Price and Bid Ladder" error; frontend now sends current form values with interest status change instead of relying on potentially stale database values
+### Recent Changes (Session 32 - Jan 20)
+- **Resale bid extraction fix** - `_find_bid_in_event_descriptions()` was searching ALL events without filtering by `sale_date`, causing old bids from voided/set-aside sales to be extracted for resale cases. Added `sale_date` filtering to only search events from current sale cycle.
+- **Task 9: Weekly closed_sold scan** - New weekly task (Fridays) scans ALL closed_sold cases for new set-aside events. Complements daily grace period monitoring (Task 7) and daily set-aside monitoring (Task 8).
+- **Tailscale partner access** - Documented setup for sharing machine with business partner via Tailscale. Network access only - app protected by Google OAuth whitelist.
 
-### Previous Changes (Session 30 - Jan 16)
-- **Dashboard interest status filter** - New filter row with All/Interested/Needs Review options; counts update based on selected county; persists in URL (`?interest=needs_review`)
-- **Deed URL fixes for Logan Systems counties** - Lee and Chatham deed links now point to disclaimer pages (`Opening.asp` / base URL) instead of direct search pages that error
-- **Dashboard county tab persistence** - Navigating to case detail and back now preserves county tab selection via URL params (`?county=Lee`)
-- **Harnett County enrichment verified** - 5/6 upset_bid cases enriched; removed from Next Priorities
+### Previous Changes (Session 31 - Jan 19)
+- **Chronology audit - 4 bugs fixed** - Bid amounts, case status, and related data now respect chronological order
+- **Interest validation race condition fix** - Frontend sends current form values with interest status change
+
+### Session 30 (Jan 16)
+- Dashboard interest status filter with URL persistence
+- Deed URL fixes for Logan Systems counties (Lee, Chatham)
+- Dashboard county tab persistence
 
 ### Session 29 (Jan 16)
-- **Chatham County enrichment fix** - Scraper now searches with full address (e.g., "88 Maple Springs") instead of just street number, fixing false positive matches
-- **Bid ladder unmount save fix** - Fixed race condition where clearing bid fields and quickly navigating away lost the changes; now tracks actual saved values vs pending changes
+- Chatham County enrichment fix (full address search)
+- Bid ladder unmount save race condition fix
 
 ### Session 28 (Jan 16)
-- **Bid field clearing fix** - Users can now delete bid data and it stays empty (was reverting)
-- **Address extraction cleanup** - Strip "commonly known as" prefix and truncate after ZIP code
-- **Set-aside monitoring moved to Fridays** - Task 8 now runs on Fridays (scheduler only runs Mon-Fri)
-- **Database cleanup** - Fixed 8 cases with malformed addresses
-
-### Session 27 (Jan 12)
-- **Interest Tracking feature** - Track case analysis decisions (Interested/Not Interested)
-- Dashboard: New "Review" column with hurricane warning flag (not reviewed), green check (interested), red X (not interested)
-- Case Detail: "Analysis Decision" card with Yes/No toggle buttons
-- Validation: "Yes" requires Est. Sale Price + all 3 Bid Ladder fields; "No" requires Team Notes
-
-### Session 26 (Dec 29)
-- Fixed OCR bid extraction bug (phone number extracted as $9M bid)
-- Tightened regex proximity windows, event descriptions now authoritative
-- Added Google Maps QuickLink to Dashboard and Case Detail
+- Bid field clearing fix, address extraction cleanup
+- Set-aside monitoring moved to daily
 
 *Full session history: [docs/SESSION_HISTORY.md](docs/SESSION_HISTORY.md)*
 

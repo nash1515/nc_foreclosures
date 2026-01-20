@@ -4,6 +4,87 @@ Detailed session-by-session history for NC Foreclosures project. This file prese
 
 ---
 
+## Session 32 (Jan 20, 2026) - Resale Extraction Fix & Weekly Scan
+
+**Resale bid extraction bug fixed:**
+- **Root cause:** `_find_bid_in_event_descriptions()` in `extractor.py` searched ALL events without filtering by `sale_date`
+- For resale cases (where sale was set aside), this caused old bids from voided sales to be extracted
+- Cases 24SP001381-910 and 23SP003301-910 showed EXPIRED deadlines because extraction overwrote correct deadline
+- **Fix:** Added `sale_date` filtering to only search events from current sale cycle
+
+**Task 9: Weekly closed_sold scan:**
+- New task runs every Friday (scheduler only runs Mon-Fri)
+- Scans ALL closed_sold cases for new set-aside events
+- Complements daily grace period monitoring (Task 7) and daily set-aside monitoring (Task 8)
+- Ensures no set-aside events slip through after the 5-day grace period
+
+**Tailscale partner access discussion:**
+- Explained Tailscale network access vs application auth distinction
+- Sharing machine gives network connectivity; Google OAuth whitelist protects app
+- Documented ACL option for port-level restrictions if needed
+
+**Files modified:**
+- `extraction/extractor.py` - Added sale_date filtering to `_find_bid_in_event_descriptions()`
+- `scraper/daily_scrape.py` - Added Task 9 (run_closed_sold_weekly_scan) with Friday check
+
+---
+
+## Session 31 (Jan 19, 2026) - Chronology Audit
+
+**Chronology audit - 4 bugs fixed:**
+- `case_monitor.py`: `extract_bid_amount()` was using `max(amounts)` instead of most recent - now returns first match (page shows newest-first)
+- `extractor.py`: `_find_address_in_event_descriptions()` missing ORDER BY - added `ORDER BY event_date DESC, id DESC`
+- `extractor.py`: `update_case_with_extracted_data()` used `>` comparison for bids - changed to update if different (trusts extraction chronology)
+- `extractor.py`: `extract_all_from_case()` document iteration without ORDER BY - added `ORDER BY created_at DESC, id DESC`
+
+**Interest validation race condition fix:**
+- Bug: Clicking "Yes - Interested" after filling bid ladder fields showed "Complete Est. Sale Price and Bid Ladder" error
+- Root cause: Backend read stale database values instead of current form values
+- Fix: Frontend now sends current form values with interest status change request
+
+---
+
+## Session 30 (Jan 16, 2026) - Dashboard Interest Filter
+
+**Dashboard interest status filter:**
+- New filter row with All/Interested/Needs Review options
+- Counts update based on selected county
+- Persists in URL (`?interest=needs_review`)
+
+**Deed URL fixes for Logan Systems counties:**
+- Lee and Chatham deed links now point to disclaimer pages
+- Direct search pages caused errors
+
+**Dashboard county tab persistence:**
+- Navigating to case detail and back now preserves county tab selection via URL params
+
+---
+
+## Session 29 (Jan 16, 2026) - Chatham Enrichment Fix
+
+**Chatham County enrichment fix:**
+- Scraper now searches with full address (e.g., "88 Maple Springs") instead of just street number
+- Fixed false positive matches
+
+**Bid ladder unmount save fix:**
+- Fixed race condition where clearing bid fields and quickly navigating away lost changes
+
+---
+
+## Session 28 (Jan 16, 2026) - Bid Field Clearing
+
+**Bid field clearing fix:**
+- Users can now delete bid data and it stays empty (was reverting)
+
+**Address extraction cleanup:**
+- Strip "commonly known as" prefix
+- Truncate after ZIP code
+
+**Set-aside monitoring moved to daily:**
+- Task 8 now runs daily (was Friday-only)
+
+---
+
 ## Session 27 (Jan 12, 2026) - Interest Tracking Feature
 
 **Interest Tracking - Complete implementation:**
