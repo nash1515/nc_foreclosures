@@ -1215,19 +1215,33 @@ def _find_bid_in_event_descriptions(case_id: int) -> Optional[Decimal]:
 
     # Patterns to match bid amounts in event descriptions
     BID_DESCRIPTION_PATTERNS = [
-        r'[Bb]id\s+[Aa]mount\s*\$?\s*([\d,]+\.?\d*)',  # "Bid Amount $9,830.00"
+        r'[Bb]id\s+[Aa]m(?:oun)?t[:\s]*\$?\s*([\d,]+\.?\d*)',  # "Bid Amount $9,830.00" or "Bid Amt: $135,000"
         r'[Ss]old\s+for\s*\$?\s*([\d,]+\.?\d*)',  # "sold for $125,000"
-        r'[Aa]mount\s+[Bb]id\s*\$?\s*([\d,]+\.?\d*)',  # "Amount Bid $50,000"
+        r'[Aa]m(?:oun)?t\s+[Bb]id\s*\$?\s*([\d,]+\.?\d*)',  # "Amount Bid $50,000" or "Amt Bid"
         r'\$\s*([\d,]+\.\d{2})\s+[Bb]id',  # "$9,830.00 Bid"
+        r'[Uu]pset\s+[Bb]id\s+[Aa]m(?:oun)?t[:\s]*\$?\s*([\d,]+\.?\d*)',  # "Upset Bid Amount $57,881.25"
     ]
 
     with get_session() as session:
-        # Get events ordered by date descending (most recent first)
-        events = session.query(CaseEvent).filter_by(case_id=case_id).order_by(
-            CaseEvent.event_date.desc().nullslast()
-        ).all()
+        # First get the case's sale_date to filter to current sale cycle
+        case = session.query(Case).filter_by(id=case_id).first()
+        sale_date = case.sale_date if case else None
 
-        highest_bid = None
+        # Build query for events ordered by date descending (most recent first)
+        # We want the MOST RECENT bid, not the highest, because:
+        # 1. Upset bids should always increase (NC law requires 5% increase)
+        # 2. The current bid is always the most recent one filed
+        query = session.query(CaseEvent).filter_by(case_id=case_id)
+
+        # CRITICAL: Filter to current sale cycle only
+        # For resale cases, we must ignore bids from voided/set-aside sales
+        if sale_date:
+            query = query.filter(CaseEvent.event_date >= sale_date)
+
+        events = query.order_by(
+            CaseEvent.event_date.desc().nullslast(),
+            CaseEvent.id.desc()  # Secondary sort by ID for same-date events
+        ).all()
 
         for event in events:
             if not event.event_description:
@@ -1244,16 +1258,11 @@ def _find_bid_in_event_descriptions(case_id: int) -> Optional[Decimal]:
                 if match:
                     amount = clean_amount(match.group(1))
                     if amount and amount > 0:
-                        # Keep the highest bid found (upset bids increase)
-                        if highest_bid is None or amount > highest_bid:
-                            highest_bid = amount
-                            logger.debug(f"  Found bid ${amount} in event description: {event.event_description[:50]}...")
-                        break
+                        # Return the MOST RECENT bid (first match since ordered by date DESC)
+                        logger.info(f"  Found bid ${amount} in event description (date={event.event_date}): {event.event_description[:50]}...")
+                        return amount
 
-        if highest_bid:
-            logger.info(f"  Found bid in event descriptions for case {case_id}: ${highest_bid}")
-
-        return highest_bid
+        return None
 
 
 def _find_address_in_event_descriptions(case_id: int) -> Optional[str]:
@@ -1289,7 +1298,15 @@ def _find_address_in_event_descriptions(case_id: int) -> Optional[str]:
     )
 
     with get_session() as session:
-        events = session.query(CaseEvent).filter_by(case_id=case_id).all()
+        # Get events ordered by date descending (most recent first)
+        # We want the MOST RECENT address because:
+        # 1. Property addresses don't change during a case
+        # 2. More recent events may have better formatting or corrections
+        # 3. Consistent with _find_bid_in_event_descriptions pattern
+        events = session.query(CaseEvent).filter_by(case_id=case_id).order_by(
+            CaseEvent.event_date.desc().nullslast(),
+            CaseEvent.id.desc()  # Secondary sort by ID for same-date events
+        ).all()
 
         for event in events:
             if not event.event_description:
@@ -1305,7 +1322,8 @@ def _find_address_in_event_descriptions(case_id: int) -> Optional[str]:
             match = EVENT_ADDRESS_PATTERN.search(desc)  # Use search() not match() to find anywhere in string
             if match:
                 address = match.group(1).strip()
-                logger.info(f"  Found address in event description ({event.event_type}): {address}")
+                # Return the MOST RECENT address (first match since ordered by date DESC)
+                logger.info(f"  Found address in event description (date={event.event_date}, {event.event_type}): {address}")
                 return address
 
     return None
@@ -1364,7 +1382,14 @@ def extract_all_from_case(case_id: int) -> Dict[str, Any]:
 
     # For property_address: search ALL documents in priority order
     with get_session() as session:
-        documents = session.query(Document).filter_by(case_id=case_id).all()
+        # Get documents ordered by creation date descending (most recent first)
+        # Process documents in chronological order (newest first) for two reasons:
+        # 1. For cumulative fields (sale_date, etc), most recent data is authoritative
+        # 2. Break on first valid result to avoid processing unnecessary older documents
+        documents = session.query(Document).filter_by(case_id=case_id).order_by(
+            Document.created_at.desc().nullslast(),
+            Document.id.desc()  # Secondary sort by ID for same-timestamp documents
+        ).all()
 
         if not result['property_address']:
             addr, quality = _find_address_in_documents(documents, return_quality=True)
@@ -1373,6 +1398,7 @@ def extract_all_from_case(case_id: int) -> Dict[str, Any]:
 
         # For other fields: use first non-null value from any document
         # SKIP current_bid_amount if event bid already found (event bid is authoritative)
+        # Process documents in chronological order (newest first) so most recent values win
         for doc in documents:
             if not doc.ocr_text:
                 continue
@@ -1518,10 +1544,12 @@ def update_case_with_extracted_data(case_id: int) -> bool:
                     else:
                         updated_fields.append('property_address')
 
-            if extracted['current_bid_amount'] and (
-                not case.current_bid_amount or
-                extracted['current_bid_amount'] > case.current_bid_amount
-            ):
+            # Current bid: Update if we have new data AND it differs from existing
+            # IMPORTANT: We don't use ">" comparison because extract_all_from_case()
+            # already returns the MOST RECENT bid (from chronologically ordered events).
+            # The most recent bid is authoritative, even if it's somehow lower (rare edge case).
+            # Trust the extraction layer's chronology, don't second-guess with value comparison.
+            if extracted['current_bid_amount'] and extracted['current_bid_amount'] != case.current_bid_amount:
                 old_amount = case.current_bid_amount
                 case.current_bid_amount = extracted['current_bid_amount']
                 # NC law: minimum next bid is 5% higher than current bid
