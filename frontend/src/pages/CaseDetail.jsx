@@ -201,11 +201,18 @@ function CaseDetail() {
 
     setInterestSaving(true);
     try {
+      // Include current bid ladder values to avoid race condition with auto-save
       const response = await fetch(`/api/cases/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ interest_status: statusToSet })
+        body: JSON.stringify({
+          interest_status: statusToSet,
+          estimated_sale_price: estimatedSalePrice,
+          our_initial_bid: ourInitialBid,
+          our_second_bid: ourSecondBid,
+          our_max_bid: ourMaxBid
+        })
       });
 
       const data = await response.json();
@@ -274,10 +281,9 @@ function CaseDetail() {
       <Card style={{ marginBottom: 16 }}>
         <Row gutter={24}>
           <Col xs={24} lg={16}>
-            <Title level={4} style={{ marginTop: 0, marginBottom: 4 }}>{c.style || c.case_number}</Title>
+            <Title level={4} style={{ marginTop: 0, marginBottom: 4 }}>{c.property_address || 'No address on record'}</Title>
             <div>
-              <Text>{c.property_address || 'No address on record'}</Text>
-              <Text type="secondary"> • {c.county_name} County</Text>
+              <Text type="secondary">{c.county_name} County</Text>
               {daysUntilDeadline !== null && daysUntilDeadline >= 0 && (
                 <Text strong style={{ color: daysUntilDeadline <= 3 ? '#ff4d4f' : '#fa8c16', marginLeft: 8 }}>
                   Deadline: {dayjs(c.next_bid_deadline).format('MMM D')} ({daysUntilDeadline}d)
