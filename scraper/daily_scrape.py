@@ -9,7 +9,7 @@ This script runs the complete daily scraping workflow:
 5. Monitor upset_bid cases for new bids or blocking events
 6. Reclassify stale cases based on time (upset_bid -> closed_sold)
 7. Grace period monitoring (5-day window for closed_sold cases)
-8. Set-aside monitoring (weekly on Fridays - catches resales on closed_sold cases)
+8. Set-aside monitoring (daily - catches resales on closed_sold cases)
 
 Usage:
     # Run all daily tasks
@@ -500,11 +500,11 @@ def run_grace_period_monitoring(dry_run: bool = False) -> Dict:
 
 def run_set_aside_monitoring(dry_run: bool = False) -> Dict:
     """
-    TASK 8: Weekly monitoring of closed_sold cases with set-aside events.
+    TASK 8: Daily monitoring of closed_sold cases with set-aside events.
 
     Cases that had sales set aside might have new sales filed that we'd miss
-    since closed_sold cases aren't monitored regularly. This task runs weekly
-    (on Saturdays) to catch any new sales on these cases.
+    since closed_sold cases aren't monitored regularly. This task runs daily
+    to catch any resales on these cases within 1 day instead of up to 7.
 
     Args:
         dry_run: If True, show what would be done
@@ -513,7 +513,7 @@ def run_set_aside_monitoring(dry_run: bool = False) -> Dict:
         Dict with monitoring results
     """
     logger.info("=" * 60)
-    logger.info("TASK 8: Set-Aside Case Monitoring (Weekly)")
+    logger.info("TASK 8: Set-Aside Case Monitoring (Daily)")
     logger.info("=" * 60)
 
     with get_session() as session:
@@ -793,25 +793,21 @@ def run_daily_tasks(
         results['errors'].append(f"grace_period_monitoring: {e}")
         task_logger.complete_task(task_id, status='failed', error_message=str(e))
 
-    # Task 8: Set-Aside Monitoring (Weekly - Fridays only)
-    # Friday is weekday() == 4 (scheduler runs Mon-Fri, so Friday is last day)
-    if datetime.now().weekday() == 4:
-        task_id = task_logger.start_task('set_aside_monitoring')
-        try:
-            results['set_aside_monitoring'] = run_set_aside_monitoring(dry_run)
-            task_logger.complete_task(
-                task_id,
-                items_checked=results['set_aside_monitoring'].get('cases_checked', 0),
-                items_found=results['set_aside_monitoring'].get('events_added', 0),
-                items_processed=results['set_aside_monitoring'].get('classifications_changed', 0)
-            )
-        except Exception as e:
-            logger.error(f"Task 8 failed: {e}")
-            results['errors'].append(f"set_aside_monitoring: {e}")
-            task_logger.complete_task(task_id, status='failed', error_message=str(e))
-    else:
-        logger.info("Task 8 (Set-Aside Monitoring): Skipped - only runs on Fridays")
-        results['set_aside_monitoring'] = {'skipped': True, 'reason': 'Not Friday'}
+    # Task 8: Set-Aside Monitoring (Daily)
+    # Monitors closed_sold cases with set-aside events for potential resales
+    task_id = task_logger.start_task('set_aside_monitoring')
+    try:
+        results['set_aside_monitoring'] = run_set_aside_monitoring(dry_run)
+        task_logger.complete_task(
+            task_id,
+            items_checked=results['set_aside_monitoring'].get('cases_checked', 0),
+            items_found=results['set_aside_monitoring'].get('events_added', 0),
+            items_processed=results['set_aside_monitoring'].get('classifications_changed', 0)
+        )
+    except Exception as e:
+        logger.error(f"Task 8 failed: {e}")
+        results['errors'].append(f"set_aside_monitoring: {e}")
+        task_logger.complete_task(task_id, status='failed', error_message=str(e))
 
     # Summary
     end_time = datetime.now()
