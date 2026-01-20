@@ -308,11 +308,23 @@ def get_latest_event_of_type(
 
 
 def is_foreclosure_case(case_id: int) -> bool:
-    """Check if case type indicates this is a foreclosure case."""
+    """Check if case type indicates this is a foreclosure case.
+
+    NC foreclosures can have case_type:
+    - "Foreclosure (Special Proceeding)" - explicit
+    - "Special Proceeding" - older cases, but still foreclosures in this database
+    """
     with get_session() as session:
         case = session.query(Case).filter_by(id=case_id).first()
         if case and case.case_type:
-            return 'foreclosure' in case.case_type.lower()
+            case_type_lower = case.case_type.lower()
+            # Match explicit foreclosure case type
+            if 'foreclosure' in case_type_lower:
+                return True
+            # NC foreclosures are often filed as "Special Proceeding"
+            # All cases in this database are foreclosures (scraped from foreclosure portal)
+            if case_type_lower == 'special proceeding':
+                return True
         return False
 
 
