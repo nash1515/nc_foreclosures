@@ -41,12 +41,17 @@ cd frontend && npm run dev -- --host &
 - **Deed Enrichment:** 90% extraction rate (35/39 upset_bid cases)
 - **Grace Period Monitoring:** 5-day window for closed_sold cases
 
-### Recent Changes (Session 32 - Jan 20)
-- **Resale bid extraction fix** - `_find_bid_in_event_descriptions()` was searching ALL events without filtering by `sale_date`, causing old bids from voided/set-aside sales to be extracted for resale cases. Added `sale_date` filtering to only search events from current sale cycle.
-- **Task 9: Weekly closed_sold scan** - New weekly task (Fridays) scans ALL closed_sold cases for new set-aside events. Complements daily grace period monitoring (Task 7) and daily set-aside monitoring (Task 8).
-- **Tailscale partner access** - Documented setup for sharing machine with business partner via Tailscale. Network access only - app protected by Google OAuth whitelist.
+### Recent Changes (Session 33 - Jan 21)
+- **Est. Rehab Cost field** - Added to Bid Information tile below Est. Sale Price. Currency input with auto-save.
+- **Profit calculation updated** - Now: `Est. Sale Price - Our Max Bid - Est. Rehab Cost`
+- **Case Detail header redesign** - Property address is now the prominent header; removed case style/type title
 
-### Previous Changes (Session 31 - Jan 19)
+### Previous Changes (Session 32 - Jan 20)
+- Resale bid extraction fix - added sale_date filtering to event search
+- Task 9: Weekly closed_sold scan (Fridays) for set-aside events
+- Tailscale partner access documented
+
+### Session 31 (Jan 19)
 - **Chronology audit - 4 bugs fixed** - Bid amounts, case status, and related data now respect chronological order
 - **Interest validation race condition fix** - Frontend sends current form values with interest status change
 
@@ -54,14 +59,6 @@ cd frontend && npm run dev -- --host &
 - Dashboard interest status filter with URL persistence
 - Deed URL fixes for Logan Systems counties (Lee, Chatham)
 - Dashboard county tab persistence
-
-### Session 29 (Jan 16)
-- Chatham County enrichment fix (full address search)
-- Bid ladder unmount save race condition fix
-
-### Session 28 (Jan 16)
-- Bid field clearing fix, address extraction cleanup
-- Set-aside monitoring moved to daily
 
 *Full session history: [docs/SESSION_HISTORY.md](docs/SESSION_HISTORY.md)*
 

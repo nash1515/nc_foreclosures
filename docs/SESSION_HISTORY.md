@@ -4,6 +4,29 @@ Detailed session-by-session history for NC Foreclosures project. This file prese
 
 ---
 
+## Session 33 (Jan 21, 2026) - Est. Rehab Cost & Header Redesign
+
+**Est. Rehab Cost field added:**
+- New field in Bid Information tile below Est. Sale Price
+- Currency input with auto-save (like other bid fields)
+- Database column added: `cases.estimated_rehab_cost` (DECIMAL 12,2)
+
+**Profit calculation updated:**
+- Now: `Est. Sale Price - Our Max Bid - Est. Rehab Cost`
+- Updated in all 3 locations in `web_app/api/cases.py`
+
+**Case Detail header redesign:**
+- Property address is now the prominent header (Title level 4)
+- Removed case style/type title (was "FORECLOSURE OF A DEED OF TRUST Ida Delaney")
+- Case number and county remain in subtitle
+
+**Files modified:**
+- `frontend/src/pages/CaseDetail.jsx` - Header redesign, Est. Rehab Cost state/input/auto-save
+- `database/models.py` - Added estimated_rehab_cost column
+- `web_app/api/cases.py` - Added estimated_rehab_cost to GET/PATCH, updated profit calc
+
+---
+
 ## Session 32 (Jan 20, 2026) - Resale Extraction Fix & Weekly Scan
 
 **Resale bid extraction bug fixed:**
