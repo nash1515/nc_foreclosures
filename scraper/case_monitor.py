@@ -302,6 +302,10 @@ class CaseMonitor:
         - Bid Amount: $123,456.78
         - Sale Price: $123,456.78
 
+        CRITICAL: Returns the FIRST match (most recent chronologically), not the highest.
+        Events on the page are ordered newest-first, so the first bid amount found
+        is the most recent upset bid, which may be lower than previous bids.
+
         Args:
             page_text: Full text of the case page
 
@@ -317,17 +321,16 @@ class CaseMonitor:
         for pattern in patterns:
             matches = re.findall(pattern, page_text, re.IGNORECASE)
             if matches:
-                # Take the largest amount found (likely the bid)
-                amounts = []
+                # Return the FIRST valid amount (most recent chronologically)
+                # NOT the max - we want newest bid, not highest bid
                 for match in matches:
                     try:
                         amount = Decimal(match.replace(',', ''))
-                        if amount > 1000:  # Filter out small amounts
-                            amounts.append(amount)
+                        if amount > 1000:  # Filter out small amounts like filing fees
+                            logger.debug(f"Returning first valid bid amount: ${amount}")
+                            return amount
                     except Exception as e:
                         logger.debug(f"Amount parse failed for '{match}': {e}")
-                if amounts:
-                    return max(amounts)
 
         return None
 

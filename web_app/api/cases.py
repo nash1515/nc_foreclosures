@@ -270,7 +270,8 @@ def get_case(case_id):
             'our_second_bid': float(case.our_second_bid) if case.our_second_bid else None,
             'our_max_bid': float(case.our_max_bid) if case.our_max_bid else None,
             'estimated_sale_price': float(case.estimated_sale_price) if case.estimated_sale_price else None,
-            'estimated_profit': float(case.estimated_sale_price - case.our_max_bid) if case.estimated_sale_price and case.our_max_bid else None,
+            'estimated_rehab_cost': float(case.estimated_rehab_cost) if case.estimated_rehab_cost else None,
+            'estimated_profit': float(case.estimated_sale_price - case.our_max_bid - (case.estimated_rehab_cost or 0)) if case.estimated_sale_price and case.our_max_bid else None,
             'team_notes': case.team_notes,
             'interest_status': case.interest_status,
             'parties': parties,
@@ -516,7 +517,8 @@ def get_upset_bids():
                 'case_url': case.case_url,
                 'our_max_bid': float(case.our_max_bid) if case.our_max_bid else None,
                 'estimated_sale_price': float(case.estimated_sale_price) if case.estimated_sale_price else None,
-                'estimated_profit': float(case.estimated_sale_price - case.our_max_bid) if case.estimated_sale_price and case.our_max_bid else None,
+                'estimated_rehab_cost': float(case.estimated_rehab_cost) if case.estimated_rehab_cost else None,
+                'estimated_profit': float(case.estimated_sale_price - case.our_max_bid - (case.estimated_rehab_cost or 0)) if case.estimated_sale_price and case.our_max_bid else None,
                 'foreclosure_type': foreclosure_type,
                 'wake_re_url': enrichment.wake_re_url if enrichment else None,
                 'durham_re_url': enrichment.durham_re_url if enrichment else None,
@@ -624,6 +626,8 @@ def update_case(case_id):
             case.our_max_bid = data['our_max_bid']
         if 'estimated_sale_price' in data:
             case.estimated_sale_price = data['estimated_sale_price']
+        if 'estimated_rehab_cost' in data:
+            case.estimated_rehab_cost = data['estimated_rehab_cost']
         if 'team_notes' in data:
             case.team_notes = data['team_notes']
         if interest_status is not None:
@@ -632,10 +636,10 @@ def update_case(case_id):
 
         # Return only the updated collaboration fields
         # (Avoids lazy-loading relationships which causes session issues)
-        # Calculate estimated_profit for response
+        # Calculate estimated_profit for response (sale price - max bid - rehab cost)
         est_profit = None
         if case.estimated_sale_price and case.our_max_bid:
-            est_profit = float(case.estimated_sale_price - case.our_max_bid)
+            est_profit = float(case.estimated_sale_price - case.our_max_bid - (case.estimated_rehab_cost or 0))
 
         return jsonify({
             'id': case.id,
@@ -643,6 +647,7 @@ def update_case(case_id):
             'our_second_bid': float(case.our_second_bid) if case.our_second_bid else None,
             'our_max_bid': float(case.our_max_bid) if case.our_max_bid else None,
             'estimated_sale_price': float(case.estimated_sale_price) if case.estimated_sale_price else None,
+            'estimated_rehab_cost': float(case.estimated_rehab_cost) if case.estimated_rehab_cost else None,
             'estimated_profit': est_profit,
             'team_notes': case.team_notes,
             'interest_status': case.interest_status

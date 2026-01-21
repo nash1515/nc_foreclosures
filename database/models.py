@@ -76,6 +76,7 @@ class Case(Base):
     our_second_bid = Column(DECIMAL(12, 2))
     our_max_bid = Column(DECIMAL(12, 2))
     estimated_sale_price = Column(DECIMAL(12, 2))  # User-entered for profit calculation
+    estimated_rehab_cost = Column(DECIMAL(12, 2))  # User-entered for profit calculation
     team_notes = Column(Text)
     interest_status = Column(String(20))  # NULL, 'interested', 'not_interested'
 

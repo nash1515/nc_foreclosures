@@ -44,6 +44,7 @@ function CaseDetail() {
   const [ourSecondBid, setOurSecondBid] = useState(null);
   const [ourMaxBid, setOurMaxBid] = useState(null);
   const [estimatedSalePrice, setEstimatedSalePrice] = useState(null);
+  const [estimatedRehabCost, setEstimatedRehabCost] = useState(null);
   const [bidValidationError, setBidValidationError] = useState(null);
 
   // Team notes state
@@ -69,6 +70,7 @@ function CaseDetail() {
         setOurSecondBid(data.our_second_bid);
         setOurMaxBid(data.our_max_bid);
         setEstimatedSalePrice(data.estimated_sale_price);
+        setEstimatedRehabCost(data.estimated_rehab_cost);
 
         // Initialize team notes
         setTeamNotes(data.team_notes || '');
@@ -167,17 +169,23 @@ function CaseDetail() {
     (value) => handleBidSave({ estimated_sale_price: value }),
     estimatedSalePrice
   );
+  const { saveState: estimatedRehabCostSaveState } = useAutoSave(
+    (value) => handleBidSave({ estimated_rehab_cost: value }),
+    estimatedRehabCost
+  );
 
   // Unified save state for the card (show if any field is saving/saved)
   const bidCardSaveState = initialBidSaveState === 'saving' ||
                            secondBidSaveState === 'saving' ||
                            maxBidSaveState === 'saving' ||
-                           estimatedSalePriceSaveState === 'saving'
+                           estimatedSalePriceSaveState === 'saving' ||
+                           estimatedRehabCostSaveState === 'saving'
                            ? 'saving'
                            : initialBidSaveState === 'saved' ||
                              secondBidSaveState === 'saved' ||
                              maxBidSaveState === 'saved' ||
-                             estimatedSalePriceSaveState === 'saved'
+                             estimatedSalePriceSaveState === 'saved' ||
+                             estimatedRehabCostSaveState === 'saved'
                            ? 'saved'
                            : 'idle';
 
@@ -209,6 +217,7 @@ function CaseDetail() {
         body: JSON.stringify({
           interest_status: statusToSet,
           estimated_sale_price: estimatedSalePrice,
+          estimated_rehab_cost: estimatedRehabCost,
           our_initial_bid: ourInitialBid,
           our_second_bid: ourSecondBid,
           our_max_bid: ourMaxBid
@@ -451,18 +460,35 @@ function CaseDetail() {
                     placeholder="Est. Sale Price"
                   />
                 </div>
+                <div style={{ marginBottom: 8 }}>
+                  <Text type="secondary" style={{ fontSize: 11 }}>Est. Rehab Cost</Text>
+                  <InputNumber
+                    value={estimatedRehabCost}
+                    onChange={setEstimatedRehabCost}
+                    formatter={value => `$${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+                    parser={value => value.replace(/\$\s?|(,*)/g, '')}
+                    style={{ width: '100%' }}
+                    size="small"
+                    min={0}
+                    step={1000}
+                    placeholder="Est. Rehab Cost"
+                  />
+                </div>
                 <div>
                   <Text type="secondary" style={{ fontSize: 11 }}>Est. Profit</Text>
                   <div>
-                    {estimatedSalePrice && ourMaxBid ? (
-                      <Text strong style={{
-                        fontSize: 16,
-                        color: (estimatedSalePrice - ourMaxBid) >= 0 ? '#52c41a' : '#ff4d4f'
-                      }}>
-                        {(estimatedSalePrice - ourMaxBid) >= 0 ? '+' : ''}
-                        ${(estimatedSalePrice - ourMaxBid).toLocaleString()}
-                      </Text>
-                    ) : (
+                    {estimatedSalePrice && ourMaxBid ? (() => {
+                      const profit = estimatedSalePrice - ourMaxBid - (estimatedRehabCost || 0);
+                      return (
+                        <Text strong style={{
+                          fontSize: 16,
+                          color: profit >= 0 ? '#52c41a' : '#ff4d4f'
+                        }}>
+                          {profit >= 0 ? '+' : ''}
+                          ${profit.toLocaleString()}
+                        </Text>
+                      );
+                    })() : (
                       <Text type="secondary">-</Text>
                     )}
                   </div>
