@@ -41,12 +41,18 @@ cd frontend && npm run dev -- --host &
 - **Deed Enrichment:** 90% extraction rate (35/39 upset_bid cases)
 - **Grace Period Monitoring:** 5-day window for closed_sold cases
 
-### Recent Changes (Session 33 - Jan 21)
-- **Est. Rehab Cost field** - Added to Bid Information tile below Est. Sale Price. Currency input with auto-save.
-- **Profit calculation updated** - Now: `Est. Sale Price - Our Max Bid - Est. Rehab Cost`
-- **Case Detail header redesign** - Property address is now the prominent header; removed case style/type title
+### Recent Changes (Session 34 - Jan 22)
+- **Resale case extraction fix** - Added sale_date filtering to document extraction and Vision OCR fallback; prevents stale bid/deadline data from voided sales being extracted
+- **Bid pattern fix** - Added pattern to extract "$X Name" format from event descriptions (e.g., "$294,275.00 Billy Finch")
+- **OCR deadline extraction removed** - Deadlines must always be calculated from event dates, never from OCR
+- **Manual price fixes** - Fixed 4 upset_bid cases with incorrect bid amounts
 
-### Previous Changes (Session 32 - Jan 20)
+### Session 33 (Jan 21)
+- Est. Rehab Cost field added to Bid Information tile
+- Profit calculation: `Est. Sale Price - Our Max Bid - Est. Rehab Cost`
+- Case Detail header redesign - property address prominent
+
+### Session 32 (Jan 20)
 - Resale bid extraction fix - added sale_date filtering to event search
 - Task 9: Weekly closed_sold scan (Fridays) for set-aside events
 - Tailscale partner access documented

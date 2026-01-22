@@ -4,6 +4,32 @@ Detailed session-by-session history for NC Foreclosures project. This file prese
 
 ---
 
+## Session 34 (Jan 22, 2026) - Resale Case Extraction Fix
+
+**Resale case extraction fix (comprehensive):**
+- **Problem:** Resale cases (sale set aside, new sale occurred) had stale bid/deadline data from voided sales
+- Case 23SP003301-910 had 3 sales (Apr 2024, Feb 2025, Jan 2026) - extraction was reading old documents
+- **Fix 1:** `extract_all_from_case()` - Added sale_date filtering to skip documents dated before current sale
+- **Fix 2:** `_try_vision_ocr_fallback()` - Added sale_date filtering to skip Vision OCR on old documents
+- **Fix 3:** Removed OCR deadline extraction entirely - deadlines must ONLY come from event dates
+- **Fix 4:** Skip "unknown__*.pdf" files (NULL dates) when sale_date filtering is active
+
+**Bid pattern fix:**
+- Event descriptions like "$294,275.00 Billy Finch" weren't being matched
+- Added pattern: `^\$\s*([\d,]+\.\d{2})\s+[A-Z]` for amount at start followed by name
+- Ensures event descriptions (authoritative) are used instead of Vision OCR fallback
+
+**Manual price fixes:**
+- 23SP003301-910: $9,210 → $22,253 (resale case, old doc extracted)
+- 25SP000031-420: $894,275 → $294,275 (Vision OCR misread 2 as 8)
+- 25SP000219-420: $2,735 → $60,000 (deposit extracted instead of bid)
+- 25SP000383-670: NULL → $113,800 (Commissioner sale, empty event description)
+
+**Files modified:**
+- `extraction/extractor.py` - sale_date filtering, bid pattern, removed OCR deadline extraction
+
+---
+
 ## Session 33 (Jan 21, 2026) - Est. Rehab Cost & Header Redesign
 
 **Est. Rehab Cost field added:**
