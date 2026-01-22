@@ -1220,6 +1220,7 @@ def _find_bid_in_event_descriptions(case_id: int) -> Optional[Decimal]:
         r'[Aa]m(?:oun)?t\s+[Bb]id\s*\$?\s*([\d,]+\.?\d*)',  # "Amount Bid $50,000" or "Amt Bid"
         r'\$\s*([\d,]+\.\d{2})\s+[Bb]id',  # "$9,830.00 Bid"
         r'[Uu]pset\s+[Bb]id\s+[Aa]m(?:oun)?t[:\s]*\$?\s*([\d,]+\.?\d*)',  # "Upset Bid Amount $57,881.25"
+        r'^\$\s*([\d,]+\.\d{2})\s+[A-Z]',  # "$294,275.00 Billy Finch" - amount at start followed by name
     ]
 
     with get_session() as session:
