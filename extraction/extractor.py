@@ -1382,6 +1382,10 @@ def extract_all_from_case(case_id: int) -> Dict[str, Any]:
 
     # For property_address: search ALL documents in priority order
     with get_session() as session:
+        # Get the case's sale_date to filter documents for resale cases
+        case = session.query(Case).filter_by(id=case_id).first()
+        case_sale_date = case.sale_date if case else None
+
         # Get documents ordered by creation date descending (most recent first)
         # Process documents in chronological order (newest first) for two reasons:
         # 1. For cumulative fields (sale_date, etc), most recent data is authoritative
@@ -1398,10 +1402,24 @@ def extract_all_from_case(case_id: int) -> Dict[str, Any]:
 
         # For other fields: use first non-null value from any document
         # SKIP current_bid_amount if event bid already found (event bid is authoritative)
+        # SKIP documents from before sale_date (for resale cases, old docs have stale data)
         # Process documents in chronological order (newest first) so most recent values win
         for doc in documents:
             if not doc.ocr_text:
                 continue
+
+            # For resale cases: skip documents from before sale_date for bid/sale data
+            # These old documents contain stale data from voided/set-aside sales
+            # Note: We still process old docs for addresses, trustee info, etc. which don't change
+            # Also skip documents with unknown dates when we have a sale_date - these are likely old
+            doc_is_from_old_sale = False
+            if case_sale_date:
+                if doc.document_date:
+                    if doc.document_date < case_sale_date:
+                        doc_is_from_old_sale = True
+                elif doc.document_name and doc.document_name.startswith('unknown'):
+                    # "unknown__*.pdf" files don't have dates - skip for bid data in resale cases
+                    doc_is_from_old_sale = True
 
             doc_data = extract_from_document(doc.ocr_text)
 
@@ -1414,6 +1432,9 @@ def extract_all_from_case(case_id: int) -> Dict[str, Any]:
                     if value and abs(value - event_bid) > event_bid * Decimal('0.1'):
                         logger.warning(f"  OCR bid discrepancy for case {case_id}: OCR=${value}, Event=${event_bid} (>10% diff). Using event bid.")
                     continue  # Skip OCR bid - event bid already set
+                # Skip bid/sale data from documents predating current sale (resale protection)
+                if doc_is_from_old_sale and key in ('current_bid_amount', 'sale_date'):
+                    continue
                 if value is not None and result[key] is None:
                     result[key] = value
 
@@ -1454,12 +1475,26 @@ def _try_vision_ocr_fallback(case_id: int, result: Dict[str, Any]) -> Dict[str, 
         return result
 
     with get_session() as session:
+        # Get case's sale_date for filtering (resale protection)
+        case = session.query(Case).filter_by(id=case_id).first()
+        case_sale_date = case.sale_date if case else None
+
         documents = session.query(Document).filter_by(case_id=case_id).all()
 
         for doc in documents:
             # Only try vision OCR on relevant document types
             if not _is_vision_ocr_document(doc.document_name):
                 continue
+
+            # For resale cases: skip documents from before current sale_date
+            # These contain stale bid data from voided/set-aside sales
+            if case_sale_date:
+                if doc.document_date and doc.document_date < case_sale_date:
+                    logger.debug(f"  Skipping Vision OCR for {doc.document_name} - document_date {doc.document_date} < sale_date {case_sale_date}")
+                    continue
+                elif doc.document_name and doc.document_name.startswith('unknown'):
+                    logger.debug(f"  Skipping Vision OCR for {doc.document_name} - unknown date document in resale case")
+                    continue
 
             # Check if we should use fallback based on Tesseract output
             if not doc.ocr_text:
@@ -1561,9 +1596,13 @@ def update_case_with_extracted_data(case_id: int) -> bool:
                     updated_fields.append('current_bid_amount')
                     updated_fields.append('minimum_next_bid')
 
-            if extracted['next_bid_deadline'] and not case.next_bid_deadline:
-                case.next_bid_deadline = extracted['next_bid_deadline']
-                updated_fields.append('next_bid_deadline')
+            # NOTE: next_bid_deadline is NOT populated from OCR extraction.
+            # Deadlines MUST be calculated from event dates using business day logic.
+            # OCR data may come from old documents (voided/set-aside sales) and be incorrect.
+            # The deadline is calculated by:
+            # - case_monitor.py (from most recent "Upset Bid Filed" event date)
+            # - classifier.py (stale deadline fix logic)
+            # See also: case_monitor.py update_case_with_pdf_bid_data() comments
 
             if extracted['sale_date'] and not case.sale_date:
                 case.sale_date = extracted['sale_date']
