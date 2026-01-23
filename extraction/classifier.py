@@ -132,6 +132,7 @@ BANKRUPTCY_LIFTED_EVENTS = [
     'reopen',
     'reinstated',
     'case reopened',
+    'notice of sale/resale',  # Resale notice implies block was lifted
 ]
 
 # Events that DISMISS/TERMINATE the case (case is closed)
@@ -621,7 +622,27 @@ def classify_case(case_id: int) -> Optional[str]:
                 logger.debug(f"  Case {case_id}: Within upset period (from {reference_source} on {reference_date}, deadline {adjusted_deadline}) -> 'upset_bid'")
                 return 'upset_bid'
             else:
-                # Past deadline - verify with confirmation event for extra confidence
+                # Past deadline - but first check if a blocking event interrupted the upset period
+                # If bankruptcy/stay was filed DURING the upset period, the sale never completed
+                blocking_event = get_latest_event_of_type(events, BANKRUPTCY_EVENTS, exclusions=BANKRUPTCY_EXCLUSIONS)
+                if blocking_event and blocking_event.event_date:
+                    block_date = blocking_event.event_date.date() if hasattr(blocking_event.event_date, 'date') else blocking_event.event_date
+                    ref_date = reference_date.date() if hasattr(reference_date, 'date') else reference_date
+                    # Was the block during the upset period? (after reference_date, before/on deadline)
+                    if ref_date < block_date <= adjusted_deadline:
+                        # Block interrupted the upset period - sale never completed
+                        lifted_event = get_latest_event_of_type(events, BANKRUPTCY_LIFTED_EVENTS)
+                        if lifted_event and lifted_event.event_date:
+                            lift_date = lifted_event.event_date.date() if hasattr(lifted_event.event_date, 'date') else lifted_event.event_date
+                            if lift_date > block_date:
+                                # Block was lifted - case is upcoming (awaiting resale)
+                                logger.info(f"  Case {case_id}: Block during upset period ({block_date}) was lifted ({lift_date}) -> 'upcoming'")
+                                return 'upcoming'
+                        # Block still active
+                        logger.info(f"  Case {case_id}: Block during upset period ({block_date}), not lifted -> 'blocked'")
+                        return 'blocked'
+
+                # No blocking event during upset period - proceed with closed_sold logic
                 # Defense in depth: require BOTH time passed AND confirmation event
                 has_confirmation = has_event_type(
                     events, SALE_CONFIRMED_EVENTS, exclusions=SALE_CONFIRMED_EXCLUSIONS
