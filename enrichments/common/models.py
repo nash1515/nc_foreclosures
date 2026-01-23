@@ -65,6 +65,11 @@ class Enrichment(Base):
     property_info_enriched_at = Column(TIMESTAMP)
     property_info_error = Column(Text)
 
+    zillow_url = Column(Text)
+    zillow_zestimate = Column(Integer)
+    zillow_enriched_at = Column(TIMESTAMP)
+    zillow_error = Column(Text)
+
     # Metadata
     created_at = Column(TIMESTAMP, server_default=func.now())
     updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
