@@ -321,12 +321,21 @@ function CaseDetail() {
                       </Button>
                     </a>
                   )}
-                  <Tooltip title={c.property_address ? "Search on Zillow" : "No address available"}>
+                  <Tooltip title={
+                    c.zillow_url
+                      ? `Zillow${c.zillow_zestimate ? ` (Zestimate: $${c.zillow_zestimate.toLocaleString()})` : ''}`
+                      : c.property_address
+                        ? "Search on Zillow"
+                        : "No address available"
+                  }>
                     <Button
                       size="small"
-                      icon={<ZillowIcon size={14} style={{ opacity: c.property_address ? 1 : 0.4 }} />}
-                      disabled={!c.property_address}
-                      onClick={() => c.property_address && window.open(formatZillowUrl(c.property_address), '_blank')}
+                      icon={<ZillowIcon size={14} style={{ opacity: (c.zillow_url || c.property_address) ? 1 : 0.4 }} />}
+                      disabled={!c.zillow_url && !c.property_address}
+                      onClick={() => {
+                        const url = c.zillow_url || (c.property_address && formatZillowUrl(c.property_address));
+                        if (url) window.open(url, '_blank');
+                      }}
                     >
                       Zillow
                     </Button>
