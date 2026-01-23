@@ -286,7 +286,9 @@ def get_case(case_id):
             'lee_re_url': enrichment.lee_re_url if enrichment else None,
             'orange_re_url': enrichment.orange_re_url if enrichment else None,
             'chatham_re_url': enrichment.chatham_re_url if enrichment else None,
-            'deed_url': enrichment.deed_url if enrichment else None
+            'deed_url': enrichment.deed_url if enrichment else None,
+            'zillow_url': enrichment.zillow_url if enrichment else None,
+            'zillow_zestimate': enrichment.zillow_zestimate if enrichment else None,
         })
 
 
@@ -527,6 +529,8 @@ def get_upset_bids():
                 'orange_re_url': enrichment.orange_re_url if enrichment else None,
                 'chatham_re_url': enrichment.chatham_re_url if enrichment else None,
                 'deed_url': enrichment.deed_url if enrichment else None,
+                'zillow_url': enrichment.zillow_url if enrichment else None,
+                'zillow_zestimate': enrichment.zillow_zestimate if enrichment else None,
                 'interest_status': case.interest_status
             })
 
