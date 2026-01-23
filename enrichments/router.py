@@ -92,7 +92,12 @@ def enrich_case(case_id: int) -> dict:
     from enrichments.prop_wire.enricher import enrich_case as propwire_enrich
     propwire_result = propwire_enrich(case_id)
 
+    # Zillow enrichment (runs for ALL counties)
+    from enrichments.zillow.enricher import enrich_case as zillow_enrich
+    zillow_result = zillow_enrich(case_id)
+
     return {
         'county_re': county_result,
-        'propwire': propwire_result
+        'propwire': propwire_result,
+        'zillow': zillow_result,
     }
