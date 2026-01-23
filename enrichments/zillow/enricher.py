@@ -45,7 +45,7 @@ class ZillowEnricher(BaseEnricher):
                 return EnrichmentResult(
                     success=True,
                     url=enrichment.zillow_url,
-                    account_id=str(enrichment.zillow_zestimate) if enrichment.zillow_zestimate else None
+                    account_id=str(enrichment.zillow_zestimate) if enrichment.zillow_zestimate is not None else None
                 )
 
             logger.info(f"Enriching case {case.case_number} with Zillow data")
@@ -84,11 +84,11 @@ class ZillowEnricher(BaseEnricher):
             return EnrichmentResult(
                 success=True,
                 url=url,
-                account_id=str(zestimate) if zestimate else None
+                account_id=str(zestimate) if zestimate is not None else None
             )
         else:
             # ZillowError
-            error = result.message or result.error
+            error = result.message
             logger.warning(f"Case {case_number}: Zillow lookup failed - {error}")
             self._save_error(case_id, error)
             return EnrichmentResult(success=False, error=error)

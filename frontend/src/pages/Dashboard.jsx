@@ -428,7 +428,7 @@ function Dashboard() {
               </span>
             </Tooltip>
 
-            <Tooltip title={record.zillow_url ? "View on Zillow" : hasAddress ? "Search on Zillow" : "No address available"}>
+            <Tooltip title={record.zillow_url ? `View on Zillow${record.zillow_zestimate ? ` ($${record.zillow_zestimate.toLocaleString()})` : ''}` : hasAddress ? "Search on Zillow" : "No address available"}>
               <span
                 onClick={(e) => {
                   e.stopPropagation();
