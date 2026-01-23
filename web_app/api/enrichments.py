@@ -151,3 +151,20 @@ def get_enrichment_status(case_id):
                 'error': enrichment.wake_re_error,
             },
         })
+
+
+@bp.route('/api/enrichments/zillow/<int:case_id>', methods=['POST'])
+@require_auth
+def enrich_zillow(case_id):
+    """Manually trigger Zillow enrichment for a case."""
+    from enrichments.zillow.enricher import enrich_case
+
+    force = request.json.get('force', False) if request.json else False
+    result = enrich_case(case_id, force=force)
+
+    return jsonify({
+        'success': result.get('success', False),
+        'url': result.get('url'),
+        'zestimate': result.get('account_id'),  # account_id holds zestimate as string
+        'error': result.get('error'),
+    })
