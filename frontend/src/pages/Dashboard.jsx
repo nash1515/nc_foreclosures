@@ -355,6 +355,15 @@ function Dashboard() {
       }
     },
     {
+      title: 'Zestimate',
+      dataIndex: 'zillow_zestimate',
+      key: 'zillow_zestimate',
+      width: 100,
+      align: 'right',
+      sorter: (a, b) => (a.zillow_zestimate || 0) - (b.zillow_zestimate || 0),
+      render: (value) => value ? `$${value.toLocaleString()}` : '-',
+    },
+    {
       title: 'Min Next Bid',
       key: 'min_next_bid',
       align: 'right',
@@ -419,15 +428,16 @@ function Dashboard() {
               </span>
             </Tooltip>
 
-            <Tooltip title={hasAddress ? "Search on Zillow" : "No address available"}>
+            <Tooltip title={record.zillow_url ? "View on Zillow" : hasAddress ? "Search on Zillow" : "No address available"}>
               <span
                 onClick={(e) => {
                   e.stopPropagation();
-                  if (hasAddress) window.open(formatZillowUrl(record.property_address), '_blank');
+                  const url = record.zillow_url || (hasAddress ? formatZillowUrl(record.property_address) : null);
+                  if (url) window.open(url, '_blank');
                 }}
                 style={{
-                  cursor: hasAddress ? 'pointer' : 'not-allowed',
-                  opacity: hasAddress ? 1 : 0.4,
+                  cursor: (record.zillow_url || hasAddress) ? 'pointer' : 'not-allowed',
+                  opacity: (record.zillow_url || hasAddress) ? 1 : 0.4,
                   display: 'inline-flex',
                   alignItems: 'center'
                 }}
