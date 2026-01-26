@@ -15,7 +15,7 @@ from enrichments.lee_re.config import (
     HEADLESS,
     TIMEOUT_MS,
 )
-from enrichments.lee_re.url_builder import extract_parid_from_text
+from enrichments.lee_re.url_builder import build_property_url, extract_parid_from_text
 
 
 logger = logging.getLogger(__name__)
@@ -146,9 +146,8 @@ def search_by_address(street_number: str, street_name: str, direction: Optional[
                     parid = parid_match.group(1)
                     logger.info(f"Extracted Parcel ID from results: {parid}")
 
-                    # Build the property URL using the session index
-                    # Format: https://taxaccess.leecountync.gov/pt/Datalets/Datalet.aspx?sIndex=N&idx=1
-                    property_url = f"https://taxaccess.leecountync.gov/pt/Datalets/Datalet.aspx?sIndex=0&idx=1"
+                    # Build the direct property URL using parcel ID
+                    property_url = build_property_url(parid)
 
                     browser.close()
                     return SearchResult(

@@ -1,24 +1,24 @@
 """URL construction for Lee County Real Estate."""
 
 import re
+from datetime import datetime
 
 
-def build_property_url(parid: str, index: int = 1) -> str:
+def build_property_url(parid: str) -> str:
     """
     Build direct URL to Lee County property page.
 
-    Note: Lee County uses session-based URLs that require a search first.
-    This URL format is what gets returned after search, but may not work
-    as a direct link without the search session.
+    Uses the UseSearch=no&pin= format which bypasses session-based URLs
+    and provides a direct link to the property page.
 
     Args:
         parid: Parcel ID (e.g., "964267347000")
-        index: Result index in search (default 1)
 
     Returns:
         Property detail URL
     """
-    return f'https://taxaccess.leecountync.gov/pt/Datalets/Datalet.aspx?sIndex=0&idx={index}'
+    current_year = datetime.now().year
+    return f'https://taxaccess.leecountync.gov/PT/Datalets/Datalet.aspx?mode=&UseSearch=no&pin={parid}&jur=000&taxyr={current_year}'
 
 
 def extract_parid_from_text(text: str) -> str | None:
