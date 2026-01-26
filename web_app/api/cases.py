@@ -537,6 +537,7 @@ def get_upset_bids():
                 'deed_url': enrichment.deed_url if enrichment else None,
                 'zillow_url': enrichment.zillow_url if enrichment else None,
                 'zillow_zestimate': enrichment.zillow_zestimate if enrichment else None,
+                'zillow_price': enrichment.zillow_price if enrichment else None,
                 'interest_status': case.interest_status
             })
 
