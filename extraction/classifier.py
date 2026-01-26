@@ -13,7 +13,7 @@ from typing import Optional, List
 from threading import Thread
 
 from database.connection import get_session
-from database.models import Case, CaseEvent, Document
+from database.models import Case, CaseEvent, Document, ClassificationHistory
 from common.logger import setup_logger
 from common.business_days import calculate_upset_bid_deadline
 
@@ -772,6 +772,16 @@ def update_case_classification(case_id: int) -> Optional[str]:
                             logger.warning(f"  Case {case_id}: Fixed stale deadline {old_deadline} -> {adjusted_deadline} (from {source})")
                         else:
                             logger.info(f"  Case {case_id}: Set deadline to {adjusted_deadline} from {source}")
+
+                # Log classification change if it occurred
+                if old_classification != classification:
+                    history = ClassificationHistory(
+                        case_id=case_id,
+                        old_classification=old_classification,
+                        new_classification=classification,
+                        trigger='scrape'
+                    )
+                    session.add(history)
 
                 session.commit()
 

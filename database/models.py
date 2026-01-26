@@ -292,6 +292,25 @@ class SkippedCase(Base):
         return f"<SkippedCase(case_number='{self.case_number}', scrape_date='{self.scrape_date}')>"
 
 
+class ClassificationHistory(Base):
+    """Track classification changes for cases."""
+
+    __tablename__ = 'classification_history'
+
+    id = Column(Integer, primary_key=True)
+    case_id = Column(Integer, ForeignKey('cases.id', ondelete='CASCADE'), nullable=False)
+    old_classification = Column(String(20))  # NULL if new case
+    new_classification = Column(String(20), nullable=False)
+    trigger = Column(String(50), nullable=False)  # 'scrape', 'manual', 'reclassify_batch', etc.
+    changed_at = Column(TIMESTAMP, server_default=func.current_timestamp())
+
+    # Relationship
+    case = relationship("Case")
+
+    def __repr__(self):
+        return f"<ClassificationHistory(case_id={self.case_id}, {self.old_classification}->{self.new_classification})>"
+
+
 class CaseAnalysis(Base):
     """AI analysis results for upset_bid cases."""
     __tablename__ = 'case_analyses'
