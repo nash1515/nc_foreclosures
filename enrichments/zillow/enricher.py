@@ -79,8 +79,9 @@ class ZillowEnricher(BaseEnricher):
             # Success
             url = result.url
             zestimate = result.zestimate
-            logger.info(f"Case {case_number}: Found Zillow URL, zestimate=${zestimate}")
-            self._save_success(case_id, url, zestimate)
+            price = result.price
+            logger.info(f"Case {case_number}: Found Zillow URL, zestimate=${zestimate}, price=${price}")
+            self._save_success(case_id, url, zestimate, price)
             return EnrichmentResult(
                 success=True,
                 url=url,
@@ -93,14 +94,14 @@ class ZillowEnricher(BaseEnricher):
             self._save_error(case_id, error)
             return EnrichmentResult(success=False, error=error)
 
-    def _save_success(self, case_id: int, url: str, zestimate: Optional[int]) -> None:
+    def _save_success(self, case_id: int, url: str, zestimate: Optional[int], price: Optional[int] = None) -> None:
         """Save successful Zillow enrichment."""
         with get_session() as session:
             enrichment = session.query(Enrichment).filter_by(case_id=case_id).first()
             if not enrichment:
                 enrichment = Enrichment(case_id=case_id)
                 session.add(enrichment)
-            self._set_enrichment_fields(enrichment, url, zestimate, error=None)
+            self._set_enrichment_fields(enrichment, url, zestimate, price, error=None)
 
     def _save_error(self, case_id: int, error: str) -> None:
         """Save Zillow enrichment error."""
@@ -109,18 +110,20 @@ class ZillowEnricher(BaseEnricher):
             if not enrichment:
                 enrichment = Enrichment(case_id=case_id)
                 session.add(enrichment)
-            self._set_enrichment_fields(enrichment, url=None, zestimate=None, error=error)
+            self._set_enrichment_fields(enrichment, url=None, zestimate=None, price=None, error=error)
 
     def _set_enrichment_fields(
         self,
         enrichment: Enrichment,
         url: Optional[str],
         zestimate: Optional[int],
+        price: Optional[int],
         error: Optional[str]
     ) -> None:
         """Set Zillow specific fields."""
         enrichment.zillow_url = url
         enrichment.zillow_zestimate = zestimate
+        enrichment.zillow_price = price
         enrichment.zillow_error = error
         enrichment.zillow_enriched_at = datetime.now() if url else None
         enrichment.updated_at = datetime.now()

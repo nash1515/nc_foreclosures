@@ -73,8 +73,10 @@ def list_cases():
     sort_order = request.args.get('sort_order', 'desc')
 
     with get_session() as db_session:
-        # Base query
-        query = db_session.query(Case)
+        # Base query - join with enrichments for Zillow data
+        query = db_session.query(Case, Enrichment).outerjoin(
+            Enrichment, Case.id == Enrichment.case_id
+        )
 
         # Classification filter
         if classification:
@@ -141,20 +143,20 @@ def list_cases():
 
         # Pagination
         offset = (page - 1) * page_size
-        cases = query.offset(offset).limit(page_size).all()
+        rows = query.offset(offset).limit(page_size).all()
 
         # Get watchlist status for current user
         watchlist_case_ids = set()
         if user_id:
             watchlist_items = db_session.query(Watchlist.case_id).filter(
                 Watchlist.user_id == user_id,
-                Watchlist.case_id.in_([c.id for c in cases])
+                Watchlist.case_id.in_([row[0].id for row in rows])
             ).all()
             watchlist_case_ids = {w.case_id for w in watchlist_items}
 
         # Serialize
         result = []
-        for case in cases:
+        for case, enrichment in rows:
             result.append({
                 'id': case.id,
                 'case_number': case.case_number,
@@ -166,7 +168,10 @@ def list_cases():
                 'property_address': case.property_address,
                 'current_bid_amount': float(case.current_bid_amount) if case.current_bid_amount else None,
                 'next_bid_deadline': case.next_bid_deadline.isoformat() if case.next_bid_deadline else None,
-                'is_watchlisted': case.id in watchlist_case_ids
+                'is_watchlisted': case.id in watchlist_case_ids,
+                'zillow_url': enrichment.zillow_url if enrichment else None,
+                'zillow_zestimate': enrichment.zillow_zestimate if enrichment else None,
+                'zillow_price': enrichment.zillow_price if enrichment else None,
             })
 
         return jsonify({
@@ -289,6 +294,7 @@ def get_case(case_id):
             'deed_url': enrichment.deed_url if enrichment else None,
             'zillow_url': enrichment.zillow_url if enrichment else None,
             'zillow_zestimate': enrichment.zillow_zestimate if enrichment else None,
+            'zillow_price': enrichment.zillow_price if enrichment else None,
         })
 
 

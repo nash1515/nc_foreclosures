@@ -358,10 +358,17 @@ function Dashboard() {
       title: 'Zestimate',
       dataIndex: 'zillow_zestimate',
       key: 'zillow_zestimate',
-      width: 100,
+      width: 110,
       align: 'right',
-      sorter: (a, b) => (a.zillow_zestimate || 0) - (b.zillow_zestimate || 0),
-      render: (value) => value ? `$${value.toLocaleString()}` : '-',
+      sorter: (a, b) => (a.zillow_zestimate || a.zillow_price || 0) - (b.zillow_zestimate || b.zillow_price || 0),
+      render: (value, record) => {
+        if (value) {
+          return `$${value.toLocaleString()}`;
+        } else if (record.zillow_price) {
+          return `$${record.zillow_price.toLocaleString()} (S)`;
+        }
+        return '-';
+      },
     },
     {
       title: 'Min Next Bid',
@@ -428,7 +435,7 @@ function Dashboard() {
               </span>
             </Tooltip>
 
-            <Tooltip title={record.zillow_url ? `View on Zillow${record.zillow_zestimate ? ` ($${record.zillow_zestimate.toLocaleString()})` : ''}` : hasAddress ? "Search on Zillow" : "No address available"}>
+            <Tooltip title={record.zillow_url ? `View on Zillow${record.zillow_zestimate ? ` ($${record.zillow_zestimate.toLocaleString()})` : record.zillow_price ? ` ($${record.zillow_price.toLocaleString()} S)` : ''}` : hasAddress ? "Search on Zillow" : "No address available"}>
               <span
                 onClick={(e) => {
                   e.stopPropagation();

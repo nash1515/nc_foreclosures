@@ -67,6 +67,7 @@ class Enrichment(Base):
 
     zillow_url = Column(Text)
     zillow_zestimate = Column(Integer)
+    zillow_price = Column(Integer)  # Sale/listing price (shown with "S" suffix when no zestimate)
     zillow_enriched_at = Column(TIMESTAMP)
     zillow_error = Column(Text)
 

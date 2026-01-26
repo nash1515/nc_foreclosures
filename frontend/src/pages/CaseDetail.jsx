@@ -323,7 +323,7 @@ function CaseDetail() {
                   )}
                   <Tooltip title={
                     c.zillow_url
-                      ? `Zillow${c.zillow_zestimate ? ` (Zestimate: $${c.zillow_zestimate.toLocaleString()})` : ''}`
+                      ? `Zillow${c.zillow_zestimate ? ` (Zestimate: $${c.zillow_zestimate.toLocaleString()})` : c.zillow_price ? ` ($${c.zillow_price.toLocaleString()} S)` : ''}`
                       : c.property_address
                         ? "Search on Zillow"
                         : "No address available"
