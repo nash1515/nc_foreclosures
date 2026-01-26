@@ -36,8 +36,21 @@ def clean_amount(amount_str: str) -> Optional[Decimal]:
     if not amount_str:
         return None
     try:
-        # Remove $ and commas, then convert
-        cleaned = amount_str.replace('$', '').replace(',', '').replace(' ', '').strip()
+        # Remove $ and spaces first
+        cleaned = amount_str.replace('$', '').replace(' ', '').strip()
+
+        # Detect malformed European-style amounts like "350,00.00" (should be "350,000.00")
+        # Pattern: 1-3 digits, comma, exactly 2 digits, period, exactly 2 digits
+        # This is likely a typo where someone meant to type "XXX,XXX.XX" but typed "XXX,XX.XX"
+        malformed_pattern = re.match(r'^(\d{1,3}),(\d{2})\.(\d{2})$', cleaned)
+        if malformed_pattern:
+            # Likely meant to have 3 digits after comma - add a zero
+            corrected = f"{malformed_pattern.group(1)},{malformed_pattern.group(2)}0.{malformed_pattern.group(3)}"
+            logger.warning(f"  Detected malformed amount '{amount_str}' - correcting to '{corrected}' (assumed missing digit)")
+            cleaned = corrected
+
+        # Remove commas and convert
+        cleaned = cleaned.replace(',', '')
         return Decimal(cleaned)
     except Exception:
         return None
