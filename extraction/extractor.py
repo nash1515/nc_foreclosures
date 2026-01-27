@@ -1343,7 +1343,7 @@ def _find_address_in_event_descriptions(case_id: int) -> Optional[str]:
     return None
 
 
-def extract_all_from_case(case_id: int) -> Dict[str, Any]:
+def extract_all_from_case(case_id: int, event_ids: List[int] = None) -> Dict[str, Any]:
     """
     Extract all available data from all documents for a case.
 
@@ -1353,6 +1353,8 @@ def extract_all_from_case(case_id: int) -> Dict[str, Any]:
 
     Args:
         case_id: Database ID of the case
+        event_ids: If provided, only process documents linked to these events.
+                   If None, process ALL documents (reprocess mode).
 
     Returns:
         Dict with all extracted fields (best values from all documents).
@@ -1404,7 +1406,17 @@ def extract_all_from_case(case_id: int) -> Dict[str, Any]:
         # Process documents in chronological order (newest first) for two reasons:
         # 1. For cumulative fields (sale_date, etc), most recent data is authoritative
         # 2. Break on first valid result to avoid processing unnecessary older documents
-        documents = session.query(Document).filter_by(case_id=case_id).order_by(
+        query = session.query(Document).filter_by(case_id=case_id)
+
+        if event_ids is not None:
+            # Incremental mode: only documents linked to specified events
+            query = query.filter(Document.event_id.in_(event_ids))
+            logger.info(f"Incremental extraction: processing {len(event_ids)} events' documents")
+        else:
+            # Reprocess mode: all documents
+            logger.info(f"Full extraction: processing all documents for case {case_id}")
+
+        documents = query.order_by(
             Document.created_at.desc().nullslast(),
             Document.id.desc()  # Secondary sort by ID for same-timestamp documents
         ).all()
@@ -1538,18 +1550,20 @@ def _try_vision_ocr_fallback(case_id: int, result: Dict[str, Any]) -> Dict[str, 
     return result
 
 
-def update_case_with_extracted_data(case_id: int) -> bool:
+def update_case_with_extracted_data(case_id: int, event_ids: List[int] = None) -> bool:
     """
     Extract data from case documents and update the case record.
 
     Args:
         case_id: Database ID of the case
+        event_ids: If provided, only process documents linked to these events.
+                   If None, process ALL documents (reprocess mode).
 
     Returns:
         True if case was updated, False otherwise
     """
     try:
-        extracted = extract_all_from_case(case_id)
+        extracted = extract_all_from_case(case_id, event_ids=event_ids)
 
         # Check if we have any data to update
         has_data = any(v is not None for v in extracted.values())
