@@ -41,10 +41,17 @@ cd frontend && npm run dev -- --host &
 - **Deed Enrichment:** 90% extraction rate (35/39 upset_bid cases)
 - **Grace Period Monitoring:** 5-day window for closed_sold cases
 
-### Recent Changes (Session 35 - Jan 27)
-- **Classification history logging** - New `classification_history` table tracks when cases change status (e.g., upcoming → upset_bid) with timestamps
-- **Zillow sale price fallback** - Shows sale price with "(S)" suffix when no Zestimate available (e.g., "$275,625 (S)")
-- **Lee County RE direct URLs** - Fixed session-based URLs using `UseSearch=no&pin=` format for direct links
+### Recent Changes (Session 36 - Jan 27)
+- **Incremental scraping** - System now only processes NEW events/documents, not re-reading all documents on every scrape
+- **Sticky address** - Property addresses are now first-set-wins, never overwritten by bad OCR (fixes Forest Fern Lane bug)
+- **Event index tracking** - Added `event_index` column to track portal's Index # for chronological event detection
+- **Reprocess command** - New `scripts/reprocess_case.py` for nuclear reset when full re-extraction needed
+- **Backfill scripts** - Added `scripts/backfill_event_index.py` for populating event_index on existing events
+
+### Session 35 (Jan 27)
+- Classification history logging - New `classification_history` table
+- Zillow sale price fallback - Shows "(S)" suffix when no Zestimate
+- Lee County RE direct URLs fix
 
 ### Session 34 (Jan 22)
 - Resale case extraction fix - sale_date filtering for documents
