@@ -664,6 +664,7 @@ class CaseMonitor:
                 event = CaseEvent(
                     case_id=case_id,
                     event_date=event_date,
+                    event_index=event_data.get('event_index'),  # ADD THIS
                     event_type=event_data.get('event_type'),
                     event_description=event_data.get('event_description'),
                     filed_by=event_data.get('filed_by'),
@@ -671,6 +672,7 @@ class CaseMonitor:
                     document_url=event_data.get('document_url')
                 )
                 session.add(event)
+                logger.info(f"  Added event: {event.event_type} (Index #{event.event_index})")
 
             session.commit()
 
