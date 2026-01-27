@@ -10,10 +10,11 @@ Usage:
 """
 import argparse
 import sys
+import os
 from datetime import datetime
 
 # Add project root to path
-sys.path.insert(0, '/home/ahn/projects/nc_foreclosures')
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from database.connection import get_session
 from database.models import Case, Document
@@ -31,6 +32,8 @@ def backfill_vision_extraction(dry_run: bool = False, limit: int = None):
         dry_run: If True, only report what would be done
         limit: Max number of cases to process (None = all)
     """
+    # Extract case data first to avoid long-lived session
+    case_data = []
     with get_session() as session:
         # Get all upset_bid cases
         query = session.query(Case).filter_by(classification='upset_bid')
@@ -39,10 +42,7 @@ def backfill_vision_extraction(dry_run: bool = False, limit: int = None):
 
         cases = query.all()
 
-        logger.info(f"Found {len(cases)} upset_bid cases to process")
-
-        total_docs = 0
-        total_cost = 0.0
+        logger.info(f"Found {len(cases)} upset_bid cases to check")
 
         for case in cases:
             # Count unprocessed documents
@@ -52,35 +52,52 @@ def backfill_vision_extraction(dry_run: bool = False, limit: int = None):
                 Document.file_path.isnot(None)
             ).count()
 
-            if unprocessed == 0:
-                logger.info(f"  {case.case_number}: No unprocessed documents, skipping")
-                continue
+            if unprocessed > 0:
+                case_data.append({
+                    'id': case.id,
+                    'case_number': case.case_number,
+                    'unprocessed': unprocessed
+                })
 
-            logger.info(f"  {case.case_number}: {unprocessed} documents to process")
+    if not case_data:
+        logger.info("No cases with unprocessed documents found")
+        return
 
-            if dry_run:
-                total_docs += unprocessed
-                # Estimate cost: ~$0.02 per document
-                total_cost += unprocessed * 0.02
-                continue
+    logger.info(f"Processing {len(case_data)} cases with unprocessed documents")
 
-            # Process the case
-            result = sweep_case_documents(case.id)
+    total_docs = 0
+    total_cost = 0.0
 
-            if result['documents_processed'] > 0:
-                update_case_from_vision_results(case.id, result['results'])
+    # Process outside session (each sweep_case_documents opens its own session)
+    for i, case_info in enumerate(case_data, 1):
+        logger.info(
+            f"[{i}/{len(case_data)}] {case_info['case_number']}: "
+            f"{case_info['unprocessed']} documents to process"
+        )
 
-            total_docs += result['documents_processed']
-            total_cost += result['total_cost_cents'] / 100.0
+        if dry_run:
+            total_docs += case_info['unprocessed']
+            # Estimate cost: ~$0.02 per document
+            total_cost += case_info['unprocessed'] * 0.02
+            continue
 
-            if result['errors']:
-                for err in result['errors']:
-                    logger.warning(f"    Error: {err}")
+        # Process the case (opens its own session internally)
+        result = sweep_case_documents(case_info['id'])
 
-            logger.info(
-                f"    Processed {result['documents_processed']} docs, "
-                f"${result['total_cost_cents']/100:.2f}"
-            )
+        if result['documents_processed'] > 0:
+            update_case_from_vision_results(case_info['id'], result['results'])
+
+        total_docs += result['documents_processed']
+        total_cost += result['total_cost_cents'] / 100.0
+
+        if result['errors']:
+            for err in result['errors']:
+                logger.warning(f"    Error: {err}")
+
+        logger.info(
+            f"    Processed {result['documents_processed']} docs, "
+            f"${result['total_cost_cents']/100:.2f}"
+        )
 
     # Summary
     logger.info("=" * 50)
