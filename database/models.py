@@ -173,6 +173,7 @@ class Document(Base):
     ocr_text = Column(Text)
     document_date = Column(Date)
     extraction_attempted_at = Column(TIMESTAMP)  # When extraction was last attempted
+    vision_processed_at = Column(TIMESTAMP)  # When Vision extraction completed
     created_at = Column(TIMESTAMP, server_default=func.current_timestamp())
 
     # Relationships
