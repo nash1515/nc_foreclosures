@@ -66,6 +66,44 @@ def _trigger_enrichment_async(case_id: int, case_number: str):
         logger.error(f"  Async enrichment failed for case {case_number}: {e}")
 
 
+def _trigger_vision_extraction_async(case_id: int, case_number: str):
+    """
+    Trigger Vision extraction sweep for all case documents in background thread.
+
+    This is called when a case transitions to upset_bid status.
+    Runs asynchronously to avoid blocking the classification process.
+
+    Args:
+        case_id: Database ID of the case
+        case_number: Case number for logging
+    """
+    try:
+        from ocr.vision_extraction import sweep_case_documents, update_case_from_vision_results
+
+        logger.info(f"  Starting Vision sweep for case {case_number}")
+
+        # Sweep all unprocessed documents
+        sweep_result = sweep_case_documents(case_id)
+
+        if sweep_result['documents_processed'] > 0:
+            # Update case with extracted data
+            update_case_from_vision_results(case_id, sweep_result['results'])
+            logger.info(
+                f"  Vision sweep complete for {case_number}: "
+                f"{sweep_result['documents_processed']} docs, "
+                f"${sweep_result['total_cost_cents']:.2f}"
+            )
+        else:
+            logger.info(f"  Vision sweep: no documents to process for {case_number}")
+
+        if sweep_result['errors']:
+            for err in sweep_result['errors']:
+                logger.warning(f"  Vision sweep warning: {err}")
+
+    except Exception as e:
+        logger.error(f"  Vision extraction failed for case {case_number}: {e}")
+
+
 # =============================================================================
 # EVENT TYPE CONSTANTS
 # =============================================================================
@@ -796,6 +834,14 @@ def update_case_classification(case_id: int) -> Optional[str]:
                             daemon=True
                         ).start()
                         logger.info(f"  Case {case.case_number}: Queued enrichment")
+
+                        # Trigger Vision extraction sweep
+                        Thread(
+                            target=_trigger_vision_extraction_async,
+                            args=(case.id, case.case_number),
+                            daemon=True
+                        ).start()
+                        logger.info(f"  Case {case.case_number}: Queued Vision extraction")
 
                 return classification
 
