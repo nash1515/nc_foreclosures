@@ -526,6 +526,7 @@ def parse_case_detail(page_content):
             event_data = {
                 'event_date': event_date,
                 'event_type': event_type,
+                'event_index': int(index_match.group(1)) if index_match else None,
                 'event_description': event_description,
                 'document_title': document_title,  # Document title for classification
                 'filed_by': filed_by_match.group(1).strip() if filed_by_match else None,
@@ -535,7 +536,7 @@ def parse_case_detail(page_content):
                 'has_document': has_document
             }
             case_data['events'].append(event_data)
-            logger.debug(f"Event: {event_date} - {event_type} - Doc: {document_title}")
+            logger.debug(f"Event: {event_date} - {event_type} (Index #{event_data['event_index']}) - Doc: {document_title}")
 
     # ========== 6. HEARINGS ==========
     # Hearings are in a separate section with ng-repeat="hearing in ..."
