@@ -21,7 +21,7 @@ from typing import List, Dict, Optional, Tuple
 os.environ['PLAYWRIGHT_CHROMIUM_USE_HEADLESS_NEW'] = '1'
 
 from playwright.sync_api import sync_playwright, Browser, Page
-from sqlalchemy import or_
+from sqlalchemy import or_, func
 
 from database.connection import get_session
 from database.models import Case, CaseEvent
@@ -188,24 +188,64 @@ class CaseMonitor:
 
         return None
 
+    def get_max_event_index(self, case_id: int) -> int:
+        """
+        Get the highest event_index stored for a case.
+
+        Args:
+            case_id: Database ID of the case
+
+        Returns:
+            Highest event_index, or 0 if none exist
+        """
+        with get_session() as session:
+            result = session.query(func.max(CaseEvent.event_index))\
+                .filter(CaseEvent.case_id == case_id).scalar()
+            return result or 0
+
     def detect_new_events(
         self,
         existing_events: List[Dict],
-        parsed_events: List[Dict]
+        parsed_events: List[Dict],
+        case_id: int = None
     ) -> List[Dict]:
         """
         Compare parsed events against existing to find new ones.
 
+        Uses event_index for comparison when available (preferred).
+        Falls back to signature-based comparison for events without index.
+
         Args:
             existing_events: Events already in database
             parsed_events: Events parsed from current page
+            case_id: Optional case ID for index-based detection
 
         Returns:
             List of new events not in database
         """
         new_events = []
 
-        # Create set of existing event signatures for comparison
+        # Try index-based detection first (preferred)
+        if case_id:
+            max_index = self.get_max_event_index(case_id)
+            if max_index > 0:
+                # Use index-based detection
+                for event in parsed_events:
+                    event_index = event.get('event_index')
+                    if event_index and event_index > max_index:
+                        new_events.append(event)
+                        logger.debug(f"  New event by index: #{event_index} > #{max_index}")
+
+                # If we found new events by index, return them
+                if new_events:
+                    return new_events
+
+                # If no new events by index and max_index exists, nothing is new
+                # (all parsed events have index <= max_index)
+                if all(e.get('event_index') for e in parsed_events):
+                    return []
+
+        # Fallback: signature-based detection (for cases without index data yet)
         existing_signatures = set()
         for e in existing_events:
             sig = (e.get('event_date'), (e.get('event_type') or '').strip().lower())
@@ -718,7 +758,7 @@ class CaseMonitor:
             existing_events = self.get_existing_events(case.id)
 
             # Find new events
-            new_events = self.detect_new_events(existing_events, parsed_events)
+            new_events = self.detect_new_events(existing_events, parsed_events, case_id=case.id)
 
             # Update existing events with missing descriptions
             # (e.g., "Bid Amount $9,830.00" wasn't captured in earlier scrapes)
