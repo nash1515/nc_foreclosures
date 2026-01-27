@@ -1564,34 +1564,17 @@ def update_case_with_extracted_data(case_id: int) -> bool:
                 return False
 
             # Update fields only if we have new data and field is empty
-            # Exception: property_address can be overwritten if new address has better quality
+            # All fields are now "sticky" - once set, never overwritten
             updated_fields = []
 
-            # Property address: overwrite if (1) empty, or (2) new address is high quality
-            # High quality = patterns 0-12 (explicit labels like "Address of Property:")
-            # Low quality = patterns 13+ (generic patterns that may match mailing addresses)
-            if extracted['property_address']:
-                new_quality = extracted.get('address_quality', 99)
-                should_update = False
-
-                if not case.property_address:
-                    # No existing address, always update
-                    should_update = True
-                elif new_quality is not None and new_quality <= ADDRESS_QUALITY_THRESHOLD:
-                    # New address is high quality (explicit label pattern)
-                    # Overwrite existing address which may have been from generic pattern
-                    if case.property_address != extracted['property_address']:
-                        should_update = True
-                        logger.info(f"  Overwriting address (quality={new_quality} <= {ADDRESS_QUALITY_THRESHOLD}): "
-                                    f"'{case.property_address}' -> '{extracted['property_address']}'")
-
-                if should_update:
-                    old_address = case.property_address
-                    case.property_address = extracted['property_address']
-                    if old_address:
-                        updated_fields.append(f'property_address (corrected: {old_address} -> {extracted["property_address"]})')
-                    else:
-                        updated_fields.append('property_address')
+            # Address is STICKY - only set if not already present
+            # Manual corrections are preserved; use reprocess_case() for full reset
+            if extracted['property_address'] and not case.property_address:
+                case.property_address = extracted['property_address']
+                logger.info(f"  Set property address: {extracted['property_address'][:50]}...")
+                updated_fields.append('property_address')
+            elif extracted['property_address'] and case.property_address:
+                logger.debug(f"  Preserving existing address (sticky): {case.property_address[:50]}...")
 
             # Current bid: Update if we have new data AND it differs from existing
             # IMPORTANT: We don't use ">" comparison because extract_all_from_case()
