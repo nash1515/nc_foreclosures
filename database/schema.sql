@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS case_events (
     id SERIAL PRIMARY KEY,
     case_id INTEGER NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
     event_date DATE,
+    event_index INTEGER,  -- Portal's Index # for chronological ordering
     event_type VARCHAR(200),
     event_description TEXT,
     filed_by TEXT,  -- Party who filed the event
@@ -138,6 +139,7 @@ CREATE INDEX IF NOT EXISTS idx_cases_county_code ON cases(county_code);
 CREATE INDEX IF NOT EXISTS idx_cases_classification ON cases(classification);
 CREATE INDEX IF NOT EXISTS idx_cases_file_date ON cases(file_date);
 CREATE INDEX IF NOT EXISTS idx_case_events_case_id ON case_events(case_id);
+CREATE INDEX IF NOT EXISTS idx_case_events_event_index ON case_events(case_id, event_index);
 CREATE INDEX IF NOT EXISTS idx_parties_case_id ON parties(case_id);
 CREATE INDEX IF NOT EXISTS idx_hearings_case_id ON hearings(case_id);
 CREATE INDEX IF NOT EXISTS idx_documents_case_id ON documents(case_id);

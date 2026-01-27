@@ -107,6 +107,7 @@ class CaseEvent(Base):
     id = Column(Integer, primary_key=True)
     case_id = Column(Integer, ForeignKey('cases.id', ondelete='CASCADE'), nullable=False)
     event_date = Column(Date)
+    event_index = Column(Integer)  # Portal's Index # for chronological ordering
     event_type = Column(String(200))
     event_description = Column(Text)
     filed_by = Column(Text)  # Party who filed the event
@@ -119,7 +120,7 @@ class CaseEvent(Base):
     case = relationship("Case", back_populates="events")
 
     def __repr__(self):
-        return f"<CaseEvent(case_id={self.case_id}, type='{self.event_type}')>"
+        return f"<CaseEvent(case_id={self.case_id}, index={self.event_index}, type='{self.event_type}')>"
 
 
 class Party(Base):
