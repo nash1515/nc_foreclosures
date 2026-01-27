@@ -41,11 +41,15 @@ cd frontend && npm run dev -- --host &
 - **Deed Enrichment:** 90% extraction rate (35/39 upset_bid cases)
 - **Grace Period Monitoring:** 5-day window for closed_sold cases
 
-### Recent Changes (Session 34 - Jan 22)
-- **Resale case extraction fix** - Added sale_date filtering to document extraction and Vision OCR fallback; prevents stale bid/deadline data from voided sales being extracted
-- **Bid pattern fix** - Added pattern to extract "$X Name" format from event descriptions (e.g., "$294,275.00 Billy Finch")
-- **OCR deadline extraction removed** - Deadlines must always be calculated from event dates, never from OCR
-- **Manual price fixes** - Fixed 4 upset_bid cases with incorrect bid amounts
+### Recent Changes (Session 35 - Jan 27)
+- **Classification history logging** - New `classification_history` table tracks when cases change status (e.g., upcoming → upset_bid) with timestamps
+- **Zillow sale price fallback** - Shows sale price with "(S)" suffix when no Zestimate available (e.g., "$275,625 (S)")
+- **Lee County RE direct URLs** - Fixed session-based URLs using `UseSearch=no&pin=` format for direct links
+
+### Session 34 (Jan 22)
+- Resale case extraction fix - sale_date filtering for documents
+- Bid pattern fix - "$X Name" format extraction
+- OCR deadline extraction removed
 
 ### Session 33 (Jan 21)
 - Est. Rehab Cost field added to Bid Information tile
