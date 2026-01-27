@@ -167,14 +167,16 @@ def process_document(document_id: int, run_extraction: bool = True) -> bool:
             from ocr.vision_extraction import process_document_with_vision
             result = process_document_with_vision(document_id)
 
+            # Refresh document after inner session modified it
+            session.refresh(document)
+
             # Store any text representation for compatibility
             if result.get('document_type'):
                 document.ocr_text = f"[Vision extracted: {result['document_type']}]"
                 session.commit()
 
-            # Run case extraction if requested
-            if run_extraction and not result.get('error'):
-                _run_extraction_for_case(document.case_id)
+            # Note: Vision extraction already updates case via update_case_from_vision_results()
+            # so we skip _run_extraction_for_case() to avoid redundancy
 
             return not result.get('error')
 
