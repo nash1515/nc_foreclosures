@@ -1408,7 +1408,7 @@ def extract_all_from_case(case_id: int, event_ids: List[int] = None) -> Dict[str
         # 2. Break on first valid result to avoid processing unnecessary older documents
         query = session.query(Document).filter_by(case_id=case_id)
 
-        if event_ids is not None:
+        if event_ids:  # Pythonic: checks both None and empty list
             # Incremental mode: only documents linked to specified events
             query = query.filter(Document.event_id.in_(event_ids))
             logger.info(f"Incremental extraction: processing {len(event_ids)} events' documents")
