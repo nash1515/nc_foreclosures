@@ -124,6 +124,9 @@ def process_document(document_id: int, run_extraction: bool = True) -> bool:
     """
     Process a document by ID - extract text and update database.
 
+    For upset_bid cases, uses Vision extraction for better accuracy.
+    For other cases, uses Tesseract OCR.
+
     Args:
         document_id: Database ID of the document to process
         run_extraction: If True, auto-trigger data extraction after OCR
@@ -154,7 +157,29 @@ def process_document(document_id: int, run_extraction: bool = True) -> bool:
 
         logger.info(f"Processing document: {document.document_name}")
 
-        # Extract text
+        # Get case to check classification
+        from database.models import Case
+        case = session.query(Case).filter_by(id=document.case_id).first()
+
+        # Route to Vision for upset_bid cases
+        if case and case.classification == 'upset_bid':
+            logger.info(f"Document {document_id}: Using Vision (upset_bid case)")
+            from ocr.vision_extraction import process_document_with_vision
+            result = process_document_with_vision(document_id)
+
+            # Store any text representation for compatibility
+            if result.get('document_type'):
+                document.ocr_text = f"[Vision extracted: {result['document_type']}]"
+                session.commit()
+
+            # Run case extraction if requested
+            if run_extraction and not result.get('error'):
+                _run_extraction_for_case(document.case_id)
+
+            return not result.get('error')
+
+        # Standard Tesseract path for non-upset_bid cases
+        logger.info(f"Document {document_id}: Using Tesseract OCR")
         text, method = extract_text_from_pdf(document.file_path)
 
         # Check if we got usable text (minimum 50 chars)
