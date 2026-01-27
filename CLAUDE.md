@@ -41,7 +41,14 @@ cd frontend && npm run dev -- --host &
 - **Deed Enrichment:** 90% extraction rate (35/39 upset_bid cases)
 - **Grace Period Monitoring:** 5-day window for closed_sold cases
 
-### Recent Changes (Session 36 - Jan 27)
+### Recent Changes (Session 37 - Jan 27)
+- **Vision extraction for upset_bid** - Claude Vision replaces Tesseract for upset_bid cases, eliminating OCR data quality issues
+- Documents processed with Vision when case enters upset_bid status (automatic sweep)
+- New documents during upset period go directly to Vision (skip Tesseract)
+- Backfill script: `scripts/backfill_vision_extraction.py` for existing upset_bid cases
+- ~$0.02/document, ~$5-20/month ongoing cost
+
+### Session 36 (Jan 27)
 - **Incremental scraping** - System now only processes NEW events/documents, not re-reading all documents on every scrape
 - **Sticky address** - Property addresses are now first-set-wins, never overwritten by bad OCR (fixes Forest Fern Lane bug)
 - **Event index tracking** - Added `event_index` column to track portal's Index # for chronological event detection
@@ -117,7 +124,7 @@ PGPASSWORD=nc_password psql -U nc_user -d nc_foreclosures -h localhost
 - `scheduler/` - Daily scrape automation (5 AM Mon-Fri)
 - `web_app/` - Flask API with Google OAuth
 - `frontend/` - React + Vite + Ant Design
-- `ocr/` - PDF text extraction (Tesseract + Claude Vision fallback)
+- `ocr/` - PDF text extraction (Tesseract for upcoming, Claude Vision for upset_bid)
 - `analysis/` - Claude AI analysis
 - `enrichments/` - County RE enrichment (all 6 counties) + Deed URLs
 
