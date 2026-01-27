@@ -683,6 +683,25 @@ class CaseMonitor:
 
             return True
 
+    def _get_recent_event_ids(self, case_id: int, count: int) -> List[int]:
+        """
+        Get IDs of the most recently added events for a case.
+
+        Args:
+            case_id: Case ID
+            count: Number of recent events to get
+
+        Returns:
+            List of event IDs
+        """
+        with get_session() as session:
+            events = session.query(CaseEvent.id)\
+                .filter(CaseEvent.case_id == case_id)\
+                .order_by(CaseEvent.created_at.desc())\
+                .limit(count)\
+                .all()
+            return [e.id for e in events]
+
     def add_new_events(self, case_id: int, new_events: List[Dict]):
         """
         Add new events to the database.
@@ -771,11 +790,14 @@ class CaseMonitor:
             if new_events:
                 logger.info(f"  Found {len(new_events)} new events")
                 for event in new_events:
-                    logger.info(f"    - {event.get('event_date')}: {event.get('event_type')}")
+                    logger.info(f"    - {event.get('event_date')}: {event.get('event_type')} (Index #{event.get('event_index')})")
 
                 # Add new events to database
                 self.add_new_events(case.id, new_events)
                 result['events_added'] = len(new_events)
+
+                # Get the IDs of newly added events for incremental extraction
+                new_event_ids = self._get_recent_event_ids(case.id, len(new_events))
 
                 # Check for specific event types that need special handling
                 for event in new_events:
@@ -898,11 +920,17 @@ class CaseMonitor:
             old_classification = case.classification
             new_classification = update_case_classification(case.id)
 
-            # Run full extraction to populate any missing fields from new documents
-            extraction_updated = update_case_with_extracted_data(case.id)
-            if extraction_updated:
-                logger.info(f"  Extraction updated case data")
-                result['extraction_updated'] = True
+            # Run extraction - incremental if new events, skip if no changes
+            if new_events:
+                # Incremental: only process new events' documents
+                extraction_updated = update_case_with_extracted_data(case.id, event_ids=new_event_ids)
+                if extraction_updated:
+                    logger.info(f"  Extraction updated case data")
+                    result['extraction_updated'] = True
+            else:
+                # No new events - skip extraction entirely (preserves existing data)
+                extraction_updated = False
+                logger.debug(f"  No new events - skipping extraction")
 
             if new_classification and old_classification != new_classification:
                 logger.info(f"  Classification changed: {old_classification} -> {new_classification}")
