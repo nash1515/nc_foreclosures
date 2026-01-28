@@ -34,19 +34,27 @@ cd frontend && npm run dev -- --host &
 
 ## Current Status
 
-- **2,254 cases** across 6 counties (Wake, Durham, Harnett, Lee, Orange, Chatham)
-- **Active upset_bid cases:** 39
+- **2,383 cases** across 6 counties (Wake, Durham, Harnett, Lee, Orange, Chatham)
+- **Active upset_bid cases:** 31
 - **Scheduler:** 5 AM Mon-Fri + catch-up logic on startup
 - **All 6 counties** have RE enrichment complete
-- **Deed Enrichment:** 90% extraction rate (35/39 upset_bid cases)
-- **Grace Period Monitoring:** 5-day window for closed_sold cases
+- **Deed Enrichment:** 90% extraction rate
+- **Finalization-based monitoring:** Monitor all non-finalized cases daily (2,223 cases)
 
-### Recent Changes (Session 37 - Jan 28)
-- **Vision extraction for upset_bid** - Claude Vision replaces Tesseract for upset_bid cases, eliminating OCR data quality issues
-- Automatic sweep when case enters upset_bid status; new docs during upset go straight to Vision
+### Recent Changes (Session 38 - Jan 28)
+- **Finalization-based monitoring** - Replaced classification-based monitoring with binary `is_finalized` flag
+- Monitor ALL non-finalized cases daily (2,223 cases vs previous 1,836) - never miss a reopened case
+- Cases only stop monitoring when true finalization event detected (Order Confirming Sale, Final Report of Sale, etc.)
+- Added `is_finalized`, `finalized_at`, `finalized_event_id` columns to cases table
+- Backfilled 158 existing cases as finalized
+- Removed obsolete Tasks 7, 8, 9 (grace period, set-aside, weekly scan) - 264 lines removed
+- New script: `scripts/backfill_finalized.py`
+
+### Session 37 (Jan 28)
+- **Vision extraction for upset_bid** - Claude Vision replaces Tesseract for upset_bid cases
+- Automatic sweep when case enters upset_bid status
 - Backfill complete: 29 cases, 1,515 docs, $19.59 cost
-- County validation prevents wrong address overwrites (attorney vs property address)
-- Forest Fern Lane bug fixed ("/312" → "1312")
+- County validation prevents wrong address overwrites
 
 ### Session 36 (Jan 27)
 - **Incremental scraping** - System now only processes NEW events/documents, not re-reading all documents on every scrape
@@ -146,6 +154,7 @@ PGPASSWORD=nc_password psql -U nc_user -d nc_foreclosures -h localhost
 4. **Headless=False** - Angular pages fail in headless mode
 5. **Documents linked to events** - `documents.event_id` foreign key ties PDFs to case_events
 6. **Event descriptions authoritative** - For bid amounts, event text takes precedence over OCR
+7. **Finalization-based monitoring** - Monitor ALL cases until court finalization event (Order Confirming Sale, Final Report, etc.). Classification doesn't gate monitoring; only `is_finalized` flag does.
 
 ## Environment Variables (.env)
 `DATABASE_URL`, `CAPSOLVER_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `FLASK_SECRET_KEY`, `ADMIN_EMAIL`, `AUTH_DISABLED`
