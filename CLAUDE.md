@@ -41,12 +41,12 @@ cd frontend && npm run dev -- --host &
 - **Deed Enrichment:** 90% extraction rate (35/39 upset_bid cases)
 - **Grace Period Monitoring:** 5-day window for closed_sold cases
 
-### Recent Changes (Session 37 - Jan 27)
+### Recent Changes (Session 37 - Jan 28)
 - **Vision extraction for upset_bid** - Claude Vision replaces Tesseract for upset_bid cases, eliminating OCR data quality issues
-- Documents processed with Vision when case enters upset_bid status (automatic sweep)
-- New documents during upset period go directly to Vision (skip Tesseract)
-- Backfill script: `scripts/backfill_vision_extraction.py` for existing upset_bid cases
-- ~$0.02/document, ~$5-20/month ongoing cost
+- Automatic sweep when case enters upset_bid status; new docs during upset go straight to Vision
+- Backfill complete: 29 cases, 1,515 docs, $19.59 cost
+- County validation prevents wrong address overwrites (attorney vs property address)
+- Forest Fern Lane bug fixed ("/312" → "1312")
 
 ### Session 36 (Jan 27)
 - **Incremental scraping** - System now only processes NEW events/documents, not re-reading all documents on every scrape

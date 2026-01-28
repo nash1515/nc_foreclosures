@@ -114,6 +114,8 @@ def main():
     args = parser.parse_args()
 
     # Find cases with events missing event_index
+    # Store case data as tuples to avoid session issues
+    case_data = []
     with get_session() as session:
         query = session.query(Case).join(CaseEvent).filter(
             CaseEvent.event_index.is_(None)
@@ -127,9 +129,17 @@ def main():
         if args.limit:
             cases = cases[:args.limit]
 
-        logger.info(f"Found {len(cases)} cases with events missing event_index")
+        # Extract needed data before session closes
+        for case in cases:
+            case_data.append({
+                'id': case.id,
+                'case_number': case.case_number,
+                'case_url': case.case_url
+            })
 
-    if not cases:
+        logger.info(f"Found {len(case_data)} cases with events missing event_index")
+
+    if not case_data:
         logger.info("No cases need backfill")
         return
 
@@ -143,9 +153,17 @@ def main():
         page = context.new_page()
 
         try:
-            for i, case in enumerate(cases):
-                logger.info(f"[{i+1}/{len(cases)}] Processing {case.case_number}")
-                updated = backfill_case_events(case, page, dry_run=args.dry_run)
+            for i, case_dict in enumerate(case_data):
+                logger.info(f"[{i+1}/{len(case_data)}] Processing {case_dict['case_number']}")
+                # Create a simple object to pass to backfill_case_events
+                class CaseProxy:
+                    def __init__(self, data):
+                        self.id = data['id']
+                        self.case_number = data['case_number']
+                        self.case_url = data['case_url']
+
+                case_obj = CaseProxy(case_dict)
+                updated = backfill_case_events(case_obj, page, dry_run=args.dry_run)
                 total_updated += updated
 
                 # Small delay to be nice to the server
@@ -155,7 +173,7 @@ def main():
             browser.close()
 
     action = "Would update" if args.dry_run else "Updated"
-    logger.info(f"Backfill complete: {action} {total_updated} events across {len(cases)} cases")
+    logger.info(f"Backfill complete: {action} {total_updated} events across {len(case_data)} cases")
 
 
 if __name__ == '__main__':
