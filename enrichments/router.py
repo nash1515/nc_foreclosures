@@ -40,7 +40,7 @@ def get_county_code(case_id: int) -> str | None:
 
 def enrich_case(case_id: int) -> dict:
     """
-    Route enrichment to the appropriate county enricher and run PropWire enrichment.
+    Route enrichment to the appropriate county enricher.
 
     Args:
         case_id: Database ID of the case to enrich
@@ -48,7 +48,7 @@ def enrich_case(case_id: int) -> dict:
     Returns:
         dict with keys:
             - county_re: dict (county-specific enrichment result)
-            - propwire: dict (PropWire enrichment result)
+            - zillow: dict (Zillow enrichment result)
     """
     county_code = get_county_code(case_id)
 
@@ -88,16 +88,11 @@ def enrich_case(case_id: int) -> dict:
             # This shouldn't happen if IMPLEMENTED_COUNTIES is kept in sync
             county_result = {'success': False, 'error': f'Enricher routing error for county {county_code}'}
 
-    # PropWire enrichment (runs for ALL counties)
-    from enrichments.prop_wire.enricher import enrich_case as propwire_enrich
-    propwire_result = propwire_enrich(case_id)
-
     # Zillow enrichment (runs for ALL counties)
     from enrichments.zillow.enricher import enrich_case as zillow_enrich
     zillow_result = zillow_enrich(case_id)
 
     return {
         'county_re': county_result,
-        'propwire': propwire_result,
         'zillow': zillow_result,
     }

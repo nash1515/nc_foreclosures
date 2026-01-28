@@ -53,10 +53,6 @@ class Enrichment(Base):
     chatham_re_error = Column(Text)
 
     # Future enrichments
-    propwire_url = Column(Text)
-    propwire_enriched_at = Column(TIMESTAMP)
-    propwire_error = Column(Text)
-
     deed_url = Column(Text)
     deed_enriched_at = Column(TIMESTAMP)
     deed_error = Column(Text)

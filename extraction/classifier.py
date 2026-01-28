@@ -26,11 +26,10 @@ logger = setup_logger(__name__)
 
 def _trigger_enrichment_async(case_id: int, case_number: str):
     """
-    Trigger county-specific and PropWire enrichment in background thread.
+    Trigger county-specific enrichment in background thread.
 
     This is called when a case transitions to upset_bid status.
-    The router determines which county enricher to use based on the case,
-    and also runs PropWire enrichment for all counties.
+    The router determines which county enricher to use based on the case.
     Runs asynchronously to avoid blocking the classification process.
 
     Args:
@@ -53,15 +52,6 @@ def _trigger_enrichment_async(case_id: int, case_number: str):
             logger.warning(f"  County RE enrichment needs review for {case_number}: {county_result.get('error')}")
         else:
             logger.error(f"  County RE enrichment failed for {case_number}: {county_result.get('error')}")
-
-        # Log PropWire enrichment result
-        propwire_result = result.get('propwire', {})
-        if propwire_result.get('success'):
-            logger.info(f"  PropWire enrichment succeeded for {case_number}: {propwire_result.get('url')}")
-        elif propwire_result.get('review_needed'):
-            logger.warning(f"  PropWire enrichment needs review for {case_number}: {propwire_result.get('error')}")
-        else:
-            logger.error(f"  PropWire enrichment failed for {case_number}: {propwire_result.get('error')}")
     except Exception as e:
         logger.error(f"  Async enrichment failed for case {case_number}: {e}")
 

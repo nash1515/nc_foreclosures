@@ -41,7 +41,11 @@ cd frontend && npm run dev -- --host &
 - **Deed Enrichment:** 90% extraction rate
 - **Finalization-based monitoring:** Monitor all non-finalized cases daily (2,223 cases)
 
-### Recent Changes (Session 38 - Jan 28)
+### Recent Changes (Session 39 - Jan 28)
+- **Removed PropWire enrichment** - Deleted entire module, frontend components, and integration points
+- Cleaned up: `enrichments/prop_wire/`, classifier.py, router.py, models.py, Dashboard.jsx, CaseDetail.jsx
+
+### Session 38 (Jan 28)
 - **Finalization-based monitoring** - Replaced classification-based monitoring with binary `is_finalized` flag
 - Monitor ALL non-finalized cases daily (2,223 cases vs previous 1,836) - never miss a reopened case
 - Cases only stop monitoring when true finalization event detected (Order Confirming Sale, Final Report of Sale, etc.)
@@ -158,9 +162,6 @@ PGPASSWORD=nc_password psql -U nc_user -d nc_foreclosures -h localhost
 
 ## Environment Variables (.env)
 `DATABASE_URL`, `CAPSOLVER_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `FLASK_SECRET_KEY`, `ADMIN_EMAIL`, `AUTH_DISABLED`
-
-## Next Priorities
-1. PropWire enrichment (next quicklink)
 
 ## Session Commands
 - **"Wrap up session"** - Update CLAUDE.md + commit/push + review todos + give handoff

@@ -12,7 +12,6 @@ import {
 import dayjs from 'dayjs';
 import { formatZillowUrl, formatGoogleMapsUrl } from '../utils/urlHelpers';
 import { ZillowIcon } from '../assets/ZillowIcon';
-import { PropWireIcon } from '../assets/PropWireIcon';
 import { GavelIcon } from '../assets/GavelIcon';
 import { GoogleMapsIcon } from '../assets/GoogleMapsIcon';
 import { HurricaneWarningIcon } from '../assets/HurricaneWarningIcon';
@@ -467,12 +466,6 @@ function Dashboard() {
                 }}
               >
                 <GoogleMapsIcon size={16} />
-              </span>
-            </Tooltip>
-
-            <Tooltip title="PropWire - Coming soon">
-              <span style={{ cursor: 'not-allowed', opacity: 0.4, display: 'inline-flex', alignItems: 'center' }}>
-                <PropWireIcon size={16} />
               </span>
             </Tooltip>
 

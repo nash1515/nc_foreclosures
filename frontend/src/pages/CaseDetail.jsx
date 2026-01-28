@@ -392,7 +392,6 @@ function CaseDetail() {
                       </Button>
                     </a>
                   )}
-                  <Button size="small" icon={<LinkOutlined />} disabled>Propwire</Button>
                   {c.deed_url ? (
                     <a href={c.deed_url} target="_blank" rel="noopener noreferrer">
                       <Button size="small" icon={<FileTextOutlined />}>
