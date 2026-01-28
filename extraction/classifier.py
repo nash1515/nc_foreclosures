@@ -242,6 +242,18 @@ LEGACY_EXCLUSIONS = [
     'bankruptcy petition',
 ]
 
+# Events indicating the foreclosure has been finalized (case truly completed)
+# These indicate all funds have been disbursed and the case is done
+FINALIZATION_EVENTS = [
+    'order confirming sale',
+    'order of confirmation',
+    'final report of sale',
+    'commissioner\'s final report',
+    'final account',
+    'order for disbursement',
+    'settlement statement',
+]
+
 # Combined list of all blocking events (for backward compatibility)
 # Used by case_monitor to detect any event that stops/pauses the process
 BLOCKING_EVENTS = BANKRUPTCY_EVENTS + DISMISSAL_EVENTS
@@ -344,6 +356,67 @@ def get_latest_event_of_type(
                     return event
 
     return None
+
+
+def has_finalization_event(events: List[CaseEvent]) -> bool:
+    """
+    Check if any event indicates the case has been finalized.
+
+    Finalization events indicate the case is truly complete - funds disbursed,
+    all accounts settled, etc. These are stronger indicators than just
+    "Order Confirming Sale" which happens after upset period.
+
+    Args:
+        events: List of CaseEvent objects
+
+    Returns:
+        True if any event matches finalization patterns
+    """
+    return has_event_type(events, FINALIZATION_EVENTS)
+
+
+def get_finalization_event(events: List[CaseEvent]) -> Optional[CaseEvent]:
+    """
+    Get the most recent finalization event.
+
+    Args:
+        events: List of CaseEvent objects (should be sorted by date desc)
+
+    Returns:
+        Most recent finalization event or None
+    """
+    return get_latest_event_of_type(events, FINALIZATION_EVENTS)
+
+
+def mark_case_finalized(case_id: int, event_id: int) -> bool:
+    """
+    Mark a case as finalized in the database.
+
+    Sets is_finalized=True, finalized_at=now(), and finalized_event_id.
+
+    Args:
+        case_id: Database ID of the case
+        event_id: Database ID of the finalization event
+
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        with get_session() as session:
+            case = session.query(Case).filter_by(id=case_id).first()
+            if case:
+                case.is_finalized = True
+                case.finalized_at = datetime.now()
+                case.finalized_event_id = event_id
+                session.commit()
+                logger.info(f"  Case {case_id}: Marked as finalized (event_id={event_id})")
+                return True
+            else:
+                logger.error(f"  Case {case_id}: Not found in database")
+                return False
+    except Exception as e:
+        logger.error(f"  Error marking case {case_id} as finalized: {e}")
+        return False
 
 
 def is_foreclosure_case(case_id: int) -> bool:

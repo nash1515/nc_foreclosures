@@ -32,7 +32,11 @@ from extraction.classifier import (
     BLOCKING_EVENTS,
     UPSET_BID_EVENTS,
     classify_case,
-    update_case_classification
+    update_case_classification,
+    has_finalization_event,
+    get_finalization_event,
+    get_case_events,
+    mark_case_finalized
 )
 from extraction.extractor import (
     extract_upset_bid_data, is_upset_bid_document,
@@ -83,12 +87,15 @@ class CaseMonitor:
         """
         Get all cases that need monitoring.
 
+        Returns cases where is_finalized=False (active cases that may still change).
+        This includes upcoming, blocked, upset_bid, and any other non-finalized cases.
+
         Returns:
-            List of Case objects with classification in ('upcoming', 'blocked', 'upset_bid')
+            List of Case objects with is_finalized=False and case_url populated
         """
         with get_session() as session:
             cases = session.query(Case).filter(
-                Case.classification.in_(['upcoming', 'blocked', 'upset_bid']),
+                Case.is_finalized == False,
                 Case.case_url.isnot(None)
             ).all()
 
@@ -856,6 +863,20 @@ class CaseMonitor:
                     if self.is_blocking_event(event_type):
                         logger.info(f"  Blocking event detected")
 
+                # Check if any new events are finalization events
+                # Get all events for the case (including newly added ones)
+                all_events = get_case_events(case.id)
+                finalization_event = get_finalization_event(all_events)
+
+                if finalization_event:
+                    # Check if case is already marked as finalized
+                    with get_session() as session:
+                        db_case = session.query(Case).filter_by(id=case.id).first()
+                        if db_case and not db_case.is_finalized:
+                            # Mark case as finalized
+                            mark_case_finalized(case.id, finalization_event.id)
+                            logger.info(f"  Finalization event detected: {finalization_event.event_type} on {finalization_event.event_date}")
+
             # For upset_bid cases missing bid amount, try to extract from page
             # This handles cases that were already classified but never had bid extracted
             if case.classification == 'upset_bid' and not case.current_bid_amount:
@@ -1094,8 +1115,11 @@ def monitor_cases(
     """
     Convenience function to monitor cases.
 
+    By default, monitors all non-finalized cases (is_finalized=False).
+    This includes upcoming, blocked, upset_bid, and any other active cases.
+
     Args:
-        classification: Filter by classification (upcoming, blocked, upset_bid)
+        classification: Optional filter by specific classification (for backwards compatibility)
         limit: Maximum number of cases to check
         dry_run: If True, just count cases
         max_workers: Number of parallel browsers (default: 8)
@@ -1119,14 +1143,11 @@ def monitor_cases(
         )
 
         if classification:
+            # Allow filtering by classification for backwards compatibility
             query = query.filter(Case.classification == classification)
         else:
-            query = query.filter(
-                or_(
-                    Case.classification.in_(['upcoming', 'blocked', 'upset_bid']),
-                    Case.classification.is_(None)
-                )
-            )
+            # Default: monitor all non-finalized cases
+            query = query.filter(Case.is_finalized == False)
 
         if limit:
             query = query.limit(limit)

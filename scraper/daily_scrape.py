@@ -4,13 +4,8 @@ This script runs the complete daily scraping workflow:
 0. Database backup (runs FIRST before all other tasks)
 1. Search for new cases filed yesterday (or 3 days back on Mondays to catch weekend filings)
 2. OCR and extraction for newly downloaded documents
-3. Monitor upcoming cases for sale events
-4. Monitor blocked cases for status changes
-5. Monitor upset_bid cases for new bids or blocking events
-6. Reclassify stale cases based on time (upset_bid -> closed_sold)
-7. Grace period monitoring (5-day window for closed_sold cases)
-8. Set-aside monitoring (daily - catches resales on closed_sold cases with set-aside events)
-9. Weekly closed_sold scan (Fridays - catches new set-aside events on ALL closed_sold cases)
+3. Monitor all non-finalized cases (upcoming, blocked, upset_bid, closed_sold)
+4. Reclassify stale cases based on time (upset_bid -> closed_sold)
 
 Usage:
     # Run all daily tasks
@@ -433,201 +428,10 @@ def run_stale_reclassification(dry_run: bool = False) -> Dict:
         return {'error': str(e)}
 
 
-def run_grace_period_monitoring(dry_run: bool = False) -> Dict:
-    """
-    Monitor recently-closed cases for late upset bids.
-
-    Cases that transitioned to closed_sold within the last 5 days are
-    re-monitored to catch late-filed events like:
-    - Upset Bid Filed (new upset bid)
-    - Report of Sale (someone won previous bid round)
-
-    Args:
-        dry_run: If True, show what would be done
-
-    Returns:
-        Dict with monitoring results
-    """
-    logger.info("=" * 60)
-    logger.info("TASK 7: Grace Period Monitoring")
-    logger.info("=" * 60)
-
-    GRACE_PERIOD_DAYS = 5
-    cutoff = datetime.now() - timedelta(days=GRACE_PERIOD_DAYS)
-
-    with get_session() as session:
-        grace_period_cases = session.query(Case).filter(
-            Case.classification == 'closed_sold',
-            Case.closed_sold_at.isnot(None),
-            Case.closed_sold_at >= cutoff,
-            Case.case_url.isnot(None)
-        ).all()
-
-        # Detach from session for processing
-        session.expunge_all()
-
-    logger.info(f"Cases in {GRACE_PERIOD_DAYS}-day grace period: {len(grace_period_cases)}")
-
-    if dry_run:
-        logger.info("[DRY RUN] Would monitor the following cases:")
-        for case in grace_period_cases:
-            days_ago = (datetime.now() - case.closed_sold_at).days
-            logger.info(f"  {case.case_number} (closed {days_ago} days ago)")
-        return {
-            'dry_run': True,
-            'grace_period_cases': len(grace_period_cases)
-        }
-
-    if len(grace_period_cases) == 0:
-        logger.info("No cases in grace period")
-        return {'cases_checked': 0, 'events_added': 0, 'classifications_changed': 0}
-
-    try:
-        # Use the existing CaseMonitor to re-check these cases
-        monitor = CaseMonitor(max_workers=8, headless=False)
-        results = monitor.run(cases=grace_period_cases, dry_run=False)
-
-        logger.info(f"Grace period monitoring complete:")
-        logger.info(f"  Cases checked: {results.get('cases_checked', 0)}")
-        logger.info(f"  New events found: {results.get('events_added', 0)}")
-        logger.info(f"  Classifications changed: {results.get('classifications_changed', 0)}")
-
-        return results
-
-    except Exception as e:
-        logger.error(f"Grace period monitoring failed: {e}")
-        return {'error': str(e)}
 
 
-def run_set_aside_monitoring(dry_run: bool = False) -> Dict:
-    """
-    TASK 8: Daily monitoring of closed_sold cases with set-aside events.
-
-    Cases that had sales set aside might have new sales filed that we'd miss
-    since closed_sold cases aren't monitored regularly. This task runs daily
-    to catch any resales on these cases within 1 day instead of up to 7.
-
-    Args:
-        dry_run: If True, show what would be done
-
-    Returns:
-        Dict with monitoring results
-    """
-    logger.info("=" * 60)
-    logger.info("TASK 8: Set-Aside Case Monitoring (Daily)")
-    logger.info("=" * 60)
-
-    with get_session() as session:
-        # Find closed_sold cases with set-aside events
-        from sqlalchemy import exists
-        set_aside_cases = session.query(Case).filter(
-            Case.classification == 'closed_sold',
-            Case.case_url.isnot(None),
-            exists().where(
-                CaseEvent.case_id == Case.id
-            ).where(
-                CaseEvent.event_type.ilike('%set aside%')
-            )
-        ).all()
-
-        # Detach from session for processing
-        session.expunge_all()
-
-    logger.info(f"Found {len(set_aside_cases)} closed_sold cases with set-aside events")
-
-    if dry_run:
-        logger.info("[DRY RUN] Would monitor the following cases:")
-        for case in set_aside_cases[:10]:
-            logger.info(f"  {case.case_number} ({case.county_name})")
-        if len(set_aside_cases) > 10:
-            logger.info(f"  ... and {len(set_aside_cases) - 10} more")
-        return {
-            'dry_run': True,
-            'set_aside_cases': len(set_aside_cases)
-        }
-
-    if len(set_aside_cases) == 0:
-        logger.info("No set-aside cases to monitor")
-        return {'cases_checked': 0, 'events_added': 0, 'classifications_changed': 0}
-
-    try:
-        # Use the existing CaseMonitor to re-check these cases
-        monitor = CaseMonitor(max_workers=3, headless=False)
-        results = monitor.run(cases=set_aside_cases, dry_run=False)
-
-        logger.info(f"Set-aside monitoring complete:")
-        logger.info(f"  Cases checked: {results.get('cases_checked', 0)}")
-        logger.info(f"  New events found: {results.get('events_added', 0)}")
-        logger.info(f"  Classifications changed: {results.get('classifications_changed', 0)}")
-
-        return results
-
-    except Exception as e:
-        logger.error(f"Set-aside monitoring failed: {e}")
-        return {'error': str(e)}
 
 
-def run_closed_sold_weekly_scan(dry_run: bool = False) -> Dict:
-    """
-    TASK 9: Weekly scan of ALL closed_sold cases (Fridays).
-
-    Complements the daily set-aside monitoring (Task 8) by scanning ALL
-    closed_sold cases, not just ones with existing set-aside events.
-    This catches new set-aside events that appear after the 5-day grace period.
-
-    Args:
-        dry_run: If True, show what would be done
-
-    Returns:
-        Dict with monitoring results
-    """
-    logger.info("=" * 60)
-    logger.info("TASK 9: Weekly Closed_Sold Scan (All Cases)")
-    logger.info("=" * 60)
-
-    with get_session() as session:
-        # Find ALL closed_sold cases (not just ones with set-aside events)
-        closed_sold_cases = session.query(Case).filter(
-            Case.classification == 'closed_sold',
-            Case.case_url.isnot(None)
-        ).all()
-
-        # Detach from session for processing
-        session.expunge_all()
-
-    logger.info(f"Found {len(closed_sold_cases)} closed_sold cases to scan")
-
-    if dry_run:
-        logger.info("[DRY RUN] Would scan the following cases:")
-        for case in closed_sold_cases[:10]:
-            logger.info(f"  {case.case_number} ({case.county_name})")
-        if len(closed_sold_cases) > 10:
-            logger.info(f"  ... and {len(closed_sold_cases) - 10} more")
-        return {
-            'dry_run': True,
-            'closed_sold_cases': len(closed_sold_cases)
-        }
-
-    if len(closed_sold_cases) == 0:
-        logger.info("No closed_sold cases to scan")
-        return {'cases_checked': 0, 'events_added': 0, 'classifications_changed': 0}
-
-    try:
-        # Use the existing CaseMonitor to re-check these cases
-        # Use fewer workers since this is a larger batch
-        monitor = CaseMonitor(max_workers=3, headless=False)
-        results = monitor.run(cases=closed_sold_cases, dry_run=False)
-
-        logger.info(f"Weekly closed_sold scan complete:")
-        logger.info(f"  Cases checked: {results.get('cases_checked', 0)}")
-        logger.info(f"  New events found: {results.get('events_added', 0)}")
-        logger.info(f"  Classifications changed: {results.get('classifications_changed', 0)}")
-
-        return results
-
-    except Exception as e:
-        logger.error(f"Weekly closed_sold scan failed: {e}")
-        return {'error': str(e)}
 
 
 def run_daily_tasks(
@@ -684,9 +488,6 @@ def run_daily_tasks(
         'upset_bid_validation': None,
         'stale_reclassification': None,
         'self_diagnosis': None,
-        'grace_period_monitoring': None,
-        'set_aside_monitoring': None,
-        'closed_sold_weekly_scan': None,
         'errors': []
     }
 
@@ -844,55 +645,6 @@ def run_daily_tasks(
         results['errors'].append(f"ai_analysis_queue: {e}")
         task_logger.complete_task(task_id, status='failed', error_message=str(e))
 
-    # Task 7: Grace Period Monitoring
-    task_id = task_logger.start_task('grace_period_monitoring')
-    try:
-        results['grace_period_monitoring'] = run_grace_period_monitoring(dry_run)
-        task_logger.complete_task(
-            task_id,
-            items_checked=results['grace_period_monitoring'].get('cases_checked', 0),
-            items_found=results['grace_period_monitoring'].get('events_added', 0),
-            items_processed=results['grace_period_monitoring'].get('classifications_changed', 0)
-        )
-    except Exception as e:
-        logger.error(f"Task 7 failed: {e}")
-        results['errors'].append(f"grace_period_monitoring: {e}")
-        task_logger.complete_task(task_id, status='failed', error_message=str(e))
-
-    # Task 8: Set-Aside Monitoring (Daily)
-    # Monitors closed_sold cases with set-aside events for potential resales
-    task_id = task_logger.start_task('set_aside_monitoring')
-    try:
-        results['set_aside_monitoring'] = run_set_aside_monitoring(dry_run)
-        task_logger.complete_task(
-            task_id,
-            items_checked=results['set_aside_monitoring'].get('cases_checked', 0),
-            items_found=results['set_aside_monitoring'].get('events_added', 0),
-            items_processed=results['set_aside_monitoring'].get('classifications_changed', 0)
-        )
-    except Exception as e:
-        logger.error(f"Task 8 failed: {e}")
-        results['errors'].append(f"set_aside_monitoring: {e}")
-        task_logger.complete_task(task_id, status='failed', error_message=str(e))
-
-    # Task 9: Weekly Closed_Sold Scan (Fridays only)
-    # Scans ALL closed_sold cases to catch new set-aside events after grace period
-    if datetime.now().weekday() == 4:  # Friday
-        task_id = task_logger.start_task('closed_sold_weekly_scan')
-        try:
-            results['closed_sold_weekly_scan'] = run_closed_sold_weekly_scan(dry_run)
-            task_logger.complete_task(
-                task_id,
-                items_checked=results['closed_sold_weekly_scan'].get('cases_checked', 0),
-                items_found=results['closed_sold_weekly_scan'].get('events_added', 0),
-                items_processed=results['closed_sold_weekly_scan'].get('classifications_changed', 0)
-            )
-        except Exception as e:
-            logger.error(f"Task 9 failed: {e}")
-            results['errors'].append(f"closed_sold_weekly_scan: {e}")
-            task_logger.complete_task(task_id, status='failed', error_message=str(e))
-    else:
-        results['closed_sold_weekly_scan'] = {'skipped': True, 'reason': 'Not Friday'}
 
     # Summary
     end_time = datetime.now()
@@ -952,22 +704,6 @@ def run_daily_tasks(
                 logger.info(f"Self-diagnosis: All {checked} upset_bid cases complete")
             else:
                 logger.info(f"Self-diagnosis: {incomplete} incomplete, {healed} healed, {unresolved} unresolved")
-
-    if results['grace_period_monitoring']:
-        gpm = results['grace_period_monitoring']
-        if not gpm.get('skipped'):
-            logger.info(f"Grace period monitoring: {gpm.get('cases_checked', 0)} cases, {gpm.get('events_added', 0)} events, {gpm.get('classifications_changed', 0)} reclassified")
-
-    if results['set_aside_monitoring']:
-        sam = results['set_aside_monitoring']
-        logger.info(f"Set-aside monitoring: {sam.get('cases_checked', 0)} cases, {sam.get('events_added', 0)} events, {sam.get('classifications_changed', 0)} reclassified")
-
-    if results['closed_sold_weekly_scan']:
-        csws = results['closed_sold_weekly_scan']
-        if csws.get('skipped'):
-            logger.info(f"Weekly closed_sold scan: Skipped ({csws.get('reason', 'Not Friday')})")
-        else:
-            logger.info(f"Weekly closed_sold scan: {csws.get('cases_checked', 0)} cases, {csws.get('events_added', 0)} events, {csws.get('classifications_changed', 0)} reclassified")
 
     if results['errors']:
         logger.warning(f"Errors: {len(results['errors'])}")

@@ -83,17 +83,23 @@ class Case(Base):
     # Grace period monitoring
     closed_sold_at = Column(TIMESTAMP)  # When case transitioned to closed_sold
 
+    # Finalization monitoring
+    is_finalized = Column(Boolean, default=False)
+    finalized_at = Column(TIMESTAMP)
+    finalized_event_id = Column(Integer, ForeignKey('case_events.id', ondelete='SET NULL'))
+
     reviewed_at = Column(TIMESTAMP)
     last_scraped_at = Column(TIMESTAMP)
     created_at = Column(TIMESTAMP, server_default=func.current_timestamp())
     updated_at = Column(TIMESTAMP, server_default=func.current_timestamp(), onupdate=func.current_timestamp())
 
     # Relationships
-    events = relationship("CaseEvent", back_populates="case", cascade="all, delete-orphan")
+    events = relationship("CaseEvent", back_populates="case", cascade="all, delete-orphan", foreign_keys="CaseEvent.case_id")
     parties = relationship("Party", back_populates="case", cascade="all, delete-orphan")
     hearings = relationship("Hearing", back_populates="case", cascade="all, delete-orphan")
     documents = relationship("Document", back_populates="case", cascade="all, delete-orphan")
     notes = relationship("UserNote", back_populates="case", cascade="all, delete-orphan")
+    finalized_event = relationship("CaseEvent", foreign_keys=[finalized_event_id], post_update=True)
 
     def __repr__(self):
         return f"<Case(case_number='{self.case_number}', county='{self.county_name}')>"
@@ -117,7 +123,7 @@ class CaseEvent(Base):
     created_at = Column(TIMESTAMP, server_default=func.current_timestamp())
 
     # Relationship
-    case = relationship("Case", back_populates="events")
+    case = relationship("Case", back_populates="events", foreign_keys=[case_id])
 
     def __repr__(self):
         return f"<CaseEvent(case_id={self.case_id}, index={self.event_index}, type='{self.event_type}')>"
