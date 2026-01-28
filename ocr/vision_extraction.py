@@ -337,11 +337,32 @@ def update_case_from_vision_results(case_id: int, results: list) -> bool:
         updated = False
 
         # Property address: Vision-extracted data is trusted, can overwrite bad OCR
+        # But validate that the new address is in the same general area (NC county check)
         if 'property_address' in merged and merged['property_address']:
-            if case.property_address != merged['property_address']:
-                logger.info(f"Case {case.case_number}: Updating address from '{case.property_address}' to '{merged['property_address']}'")
-                case.property_address = merged['property_address']
-                updated = True
+            new_addr = merged['property_address']
+            if case.property_address != new_addr:
+                # Sanity check: only overwrite if new address looks like same area
+                # Skip if new address is in a clearly different NC city/county
+                county_cities = {
+                    'WAKE': ['raleigh', 'cary', 'apex', 'holly springs', 'fuquay', 'garner', 'knightdale', 'wendell', 'zebulon', 'wake forest', 'morrisville', 'rolesville'],
+                    'DURHAM': ['durham'],
+                    'ORANGE': ['chapel hill', 'hillsborough', 'carrboro'],
+                    'CHATHAM': ['pittsboro', 'siler city'],
+                    'HARNETT': ['lillington', 'dunn', 'angier', 'erwin', 'coats'],
+                    'LEE': ['sanford', 'broadway']
+                }
+                valid_cities = county_cities.get(case.county_code.upper(), [])
+                new_addr_lower = new_addr.lower()
+
+                # Check if new address contains a valid city for this county or is in NC
+                is_valid = any(city in new_addr_lower for city in valid_cities) or ', nc' in new_addr_lower
+
+                if is_valid:
+                    logger.info(f"Case {case.case_number}: Updating address from '{case.property_address}' to '{new_addr}'")
+                    case.property_address = new_addr
+                    updated = True
+                else:
+                    logger.warning(f"Case {case.case_number}: Skipping address update - '{new_addr}' doesn't match county {case.county_code}")
 
         # Financial fields: always update if we have new data
         if 'bid_amount' in merged and merged['bid_amount']:
