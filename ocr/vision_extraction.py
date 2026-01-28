@@ -336,11 +336,12 @@ def update_case_from_vision_results(case_id: int, results: list) -> bool:
 
         updated = False
 
-        # Property address: first-set-wins (sticky)
-        if 'property_address' in merged and not case.property_address:
-            case.property_address = merged['property_address']
-            updated = True
-            logger.info(f"Case {case.case_number}: Set property_address via Vision")
+        # Property address: Vision-extracted data is trusted, can overwrite bad OCR
+        if 'property_address' in merged and merged['property_address']:
+            if case.property_address != merged['property_address']:
+                logger.info(f"Case {case.case_number}: Updating address from '{case.property_address}' to '{merged['property_address']}'")
+                case.property_address = merged['property_address']
+                updated = True
 
         # Financial fields: always update if we have new data
         if 'bid_amount' in merged and merged['bid_amount']:
